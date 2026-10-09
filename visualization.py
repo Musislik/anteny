@@ -68,7 +68,7 @@ def plot_geometry(params, filename="geometry_iso.png"):
     feed_offset_y = 15.0
     x_T = params.get('feed_x_T', -W/2 - feed_offset_x)
     y_T = params.get('feed_y_T', -L/2 - feed_offset_y)
-    delay_offset = lambda_g_4 / 4.0
+    delay_offset = lambda_g_4 / 2.0
     y_delay = y_T - delay_offset
 
     # Hlavní přívod (port k T-uzlu)

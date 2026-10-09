@@ -70,8 +70,8 @@ def build_model(params):
     params['feed_y_T'] = y_T
     
     # Pro LHCP dle IEEE standardu musí spodní větev (Ey) mít fázové zpoždění -90 deg
-    # oproti levé větvi (Ex). Čtvrtvlnné zpoždění lambda_g/4 náleží spodní větvi.
-    delay_offset = lambda_g_4 / 4.0  # svislé snížení spodního vedení pro celkové prodloužení lambda_g_4
+    # oproti levé větvi (Ex). Celkové prodloužení dráhy je 2 * delay_offset = lambda_g_4 (fázový posun 90 deg).
+    delay_offset = lambda_g_4 / 2.0
     y_delay = y_T - delay_offset
 
     metal_surfs = [patch_tag]
