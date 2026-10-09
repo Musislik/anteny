@@ -36,3 +36,5 @@ config.json
 .vscode/
 .idea/
 *.swp
+D/code/anteny/mlruns/
+mlruns/

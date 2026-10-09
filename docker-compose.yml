@@ -1,8 +1,35 @@
 version: '3.8'
 services:
+  # 1. Samotný solver (Mock Palace / Real Palace)
   palace:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.palace
     volumes:
       - .:/workspace
     working_dir: /workspace
     command: python mock_palace.py config.json
+
+  # 2. Průzkumník simulací (MLflow Web UI)
+  # Spuštění: docker compose up -d mlflow
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: mlflow ui --host 0.0.0.0 --port 5000
+
+  # 3. Nástroj pro spouštění simulací (zde poběží main.py nebo sweep.py)
+  # Spuštění: docker compose run --rm pipeline python sweep.py
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /workspace
