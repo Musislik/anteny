@@ -64,8 +64,9 @@ def plot_geometry(params, filename="geometry_iso.png"):
     eps_eff_p_trans = calc_microstrip_eps_eff(w_p_trans, h, eps_r)
     lambda_p_trans_4 = calc_quarter_wave_length(f_design, eps_eff_p_trans)
 
-    feed_offset_x = 10.0
-    feed_offset_y = 15.0
+    default_feed_offset = float(np.round(lambda_p_trans_4 + 6.0, 1))
+    feed_offset_x = params.get('feed_offset_x', default_feed_offset)
+    feed_offset_y = params.get('feed_offset_y', default_feed_offset)
     x_T = params.get('feed_x_T', -W/2 - feed_offset_x)
     y_T = params.get('feed_y_T', -L/2 - feed_offset_y)
     delay_offset = lambda_g_4 / 2.0
@@ -99,8 +100,9 @@ def plot_geometry(params, filename="geometry_iso.png"):
         add_rect(ax, -feed_W/2, y_delay - feed_W/2, feed_W, abs(y_delay) - L/2 + feed_W, h)
 
     # Zvýraznění portu na hraně substrátu
-    port_verts = [[(x_T - feed_W/2, -L_sub/2, 0), (x_T + feed_W/2, -L_sub/2, 0),
-                   (x_T + feed_W/2, -L_sub/2, h), (x_T - feed_W/2, -L_sub/2, h)]]
+    w_port_entry = feed_W if y_trans_start > -L_sub/2 else w_t_trans
+    port_verts = [[(x_T - w_port_entry/2, -L_sub/2, 0), (x_T + w_port_entry/2, -L_sub/2, 0),
+                   (x_T + w_port_entry/2, -L_sub/2, h), (x_T - w_port_entry/2, -L_sub/2, h)]]
     ax.add_collection3d(Poly3DCollection(port_verts, facecolors='red', alpha=0.9, edgecolors='k'))
     
     # Vzduchový box (čáry, aby to nepřekáželo výhledu)
