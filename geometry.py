@@ -27,15 +27,12 @@ def build_model(params):
     patch_tag = gmsh.model.occ.addRectangle(-W/2, -L/2, h, W, L)
     
     # Napájecí dělič dle obrázku (cross-fed patch)
-    # Spočítáme dynamicky z vlnové délky (pro LHCP)
+    # Výpočet efektivní permitivity a čtvrtvlnné délky z parametrů mikropásku při návrhové frekvenci fc
+    from rf_calc import calc_microstrip_eps_eff, calc_quarter_wave_length, DESIGN_FREQ_GHZ
     eps_r = params['eps_r']
-    eps_eff = (eps_r + 1) / 2 + (eps_r - 1) / 2 / np.sqrt(1 + 12 * h / W)
-    delta_L = 0.412 * h * (eps_eff + 0.3) * (W/h + 0.264) / ((eps_eff - 0.258) * (W/h + 0.8))
-    L_eff = L + 2 * delta_L
-    
-    # f_res je přibližně c / (2 * L_eff * sqrt(eps_eff)). Z toho plyne, že vlnová délka v substrátu
-    # lambda_g je přesně 2 * L_eff (u půlvlnného flíčku).
-    lambda_g_4 = L_eff / 2.0  # čtvrtka vlnové délky
+    f_design = params.get('design_freq_ghz', DESIGN_FREQ_GHZ)
+    eps_eff_feed = calc_microstrip_eps_eff(feed_W, h, eps_r)
+    lambda_g_4 = calc_quarter_wave_length(f_design, eps_eff_feed)
     
     # Port je dole na y = -L_sub/2, x = x_T
     x_T = -25.4
