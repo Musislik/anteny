@@ -2,8 +2,9 @@ import gmsh
 import numpy as np
 
 # Technické konstanty geometrie
-FEED_OFFSET_X = 10.0  # Odsazení T-uzlu vlevo od levé hrany flíčku [mm]
-FEED_OFFSET_Y = 15.0  # Odsazení T-uzlu pod spodní hranu flíčku [mm]
+FEED_OFFSET_MARGIN = 6.0  # Přídavná rezerva pro připojovací 50 Ohm vedení k transformátorům [mm]
+FEED_OFFSET_X = 24.5      # Základní orientační odsazení T-uzlu [mm]
+FEED_OFFSET_Y = 24.5      # Základní orientační odsazení T-uzlu [mm]
 
 def build_model(params):
     gmsh.initialize()
@@ -62,9 +63,12 @@ def build_model(params):
     eps_eff_p_trans = calc_microstrip_eps_eff(w_p_trans, h, eps_r)
     lambda_p_trans_4 = calc_quarter_wave_length(f_design, eps_eff_p_trans)
 
-    # Port a poloha T-uzlu (odvozeno dynamicky)
-    x_T = params.get('feed_x_T', -W/2 - FEED_OFFSET_X)
-    y_T = params.get('feed_y_T', -L/2 - FEED_OFFSET_Y)
+    # Port a poloha T-uzlu (odvozeno dynamicky z délek transformátorů)
+    default_feed_offset = float(np.round(lambda_p_trans_4 + FEED_OFFSET_MARGIN, 1))
+    feed_offset_x = params.get('feed_offset_x', default_feed_offset)
+    feed_offset_y = params.get('feed_offset_y', default_feed_offset)
+    x_T = params.get('feed_x_T', -W/2 - feed_offset_x)
+    y_T = params.get('feed_y_T', -L/2 - feed_offset_y)
     params['port_x'] = x_T
     params['feed_x_T'] = x_T
     params['feed_y_T'] = y_T
@@ -122,10 +126,12 @@ def build_model(params):
     gmsh.model.occ.synchronize()
     
     # Vytvoření portové plochy (XZ rovina na kraji substrátu y = -L_sub/2)
-    p1 = gmsh.model.occ.addPoint(x_T - feed_W/2, -L_sub/2, 0)
-    p2 = gmsh.model.occ.addPoint(x_T + feed_W/2, -L_sub/2, 0)
-    p3 = gmsh.model.occ.addPoint(x_T + feed_W/2, -L_sub/2, h)
-    p4 = gmsh.model.occ.addPoint(x_T - feed_W/2, -L_sub/2, h)
+    w_port_entry = feed_W if y_trans_start > -L_sub/2 else w_t_trans
+    params['port_w'] = w_port_entry
+    p1 = gmsh.model.occ.addPoint(x_T - w_port_entry/2, -L_sub/2, 0)
+    p2 = gmsh.model.occ.addPoint(x_T + w_port_entry/2, -L_sub/2, 0)
+    p3 = gmsh.model.occ.addPoint(x_T + w_port_entry/2, -L_sub/2, h)
+    p4 = gmsh.model.occ.addPoint(x_T - w_port_entry/2, -L_sub/2, h)
     l1 = gmsh.model.occ.addLine(p1, p2)
     l2 = gmsh.model.occ.addLine(p2, p3)
     l3 = gmsh.model.occ.addLine(p3, p4)

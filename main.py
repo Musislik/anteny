@@ -35,17 +35,18 @@ def main(custom_params=None):
     patch_l = patch_size
     patch_w = patch_size
     
-    # Šířka 50 Ohm přívodního mikropásku syntetizovaná z parametrů substrátu
-    feed_w = float(np.round(synth_microstrip_w(PORT_Z0, sub_h, eps_r), 2))
+    # Rozměry napájecí sítě a substrátu odvozené z analytického modelu bez magických čísel
+    from rf_calc import calc_feed_network_dimensions
+    feed_net = calc_feed_network_dimensions(patch_w, patch_l, sub_h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0)
+    feed_w = feed_net['feed_w']
+    sub_w = feed_net['sub_w']
+    sub_l = feed_net['sub_l']
+    feed_offset_x = feed_net['feed_offset_x']
+    feed_offset_y = feed_net['feed_offset_y']
     
     # Rozměry vzduchového boxu: vzdálenost stěn >= lambda_0 / 4 při nejnižší frekvenci
     lambda_0_max = C_0_MM_GHZ / freq_min
     air_margin = float(np.round(lambda_0_max / 4.0, 1))  # cca 35.7 mm
-    
-    # Rozměry substrátu odvozené z velikosti flíčku a manipulačního prostoru napájecí sítě
-    sub_margin_side = 20.0
-    sub_w = float(np.round(patch_w + 2.0 * sub_margin_side, 1))
-    sub_l = float(np.round(patch_l + 2.0 * sub_margin_side, 1))
 
     params = {
         # Geometrie
@@ -55,6 +56,8 @@ def main(custom_params=None):
         'sub_L': sub_l,
         'sub_W': sub_w,
         'feed_W': feed_w,
+        'feed_offset_x': feed_offset_x,
+        'feed_offset_y': feed_offset_y,
         'air_margin': air_margin,
         
         # Materiály

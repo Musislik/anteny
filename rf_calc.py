@@ -137,3 +137,47 @@ def calc_patch_edge_impedance(patch_w, patch_l, h, eps_r):
     r_in = 1.0 / max(2.0 * g1, 1e-4)
     # Zastropujeme do fyzikálně realistického rozsahu
     return float(np.clip(r_in, 150.0, 300.0))
+
+def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0):
+    """
+    Vypočte veškeré rozměry napájecí sítě (vedení, čtvrtvlnné transformátory, zpožďovací linku,
+    odsazení T-uzlu a doporučené rozměry substrátu).
+    """
+    feed_w = synth_microstrip_w(port_z0, h, eps_r)
+    eps_eff_feed = calc_microstrip_eps_eff(feed_w, h, eps_r)
+    lambda_g_4 = calc_quarter_wave_length(freq_ghz, eps_eff_feed)
+    delay_offset = lambda_g_4 / 2.0
+
+    r_edge = calc_patch_edge_impedance(patch_w, patch_l, h, eps_r)
+    z_p_trans = calc_quarter_wave_transformer_z(port_z0, r_edge)
+    w_p_trans = synth_microstrip_w(z_p_trans, h, eps_r)
+    eps_eff_p_trans = calc_microstrip_eps_eff(w_p_trans, h, eps_r)
+    lambda_p_trans_4 = calc_quarter_wave_length(freq_ghz, eps_eff_p_trans)
+
+    z_t_node = port_z0 / 2.0
+    z_t_trans = calc_quarter_wave_transformer_z(port_z0, z_t_node)
+    w_t_trans = synth_microstrip_w(z_t_trans, h, eps_r)
+    eps_eff_t_trans = calc_microstrip_eps_eff(w_t_trans, h, eps_r)
+    lambda_t_trans_4 = calc_quarter_wave_length(freq_ghz, eps_eff_t_trans)
+
+    feed_offset_x = float(np.round(lambda_p_trans_4 + 6.0, 1))
+    feed_offset_y = float(np.round(lambda_p_trans_4 + 6.0, 1))
+
+    # Potřebný prostor v ose Y pod flíčkem: polovina flíčku + FEED_OFFSET_Y + delay_offset + lambda_t_trans_4 + vstupní rezerva
+    y_needed = (patch_l / 2.0) + feed_offset_y + delay_offset + lambda_t_trans_4 + 10.0
+    sub_l = float(np.round(2.0 * y_needed, 1))
+    sub_w = float(np.round(patch_w + 2.0 * (feed_offset_x + 15.0), 1))
+
+    return {
+        'feed_w': float(np.round(feed_w, 2)),
+        'lambda_g_4': lambda_g_4,
+        'delay_offset': delay_offset,
+        'w_t_trans': float(np.round(w_t_trans, 2)),
+        'lambda_t_trans_4': lambda_t_trans_4,
+        'w_p_trans': float(np.round(w_p_trans, 2)),
+        'lambda_p_trans_4': lambda_p_trans_4,
+        'feed_offset_x': feed_offset_x,
+        'feed_offset_y': feed_offset_y,
+        'sub_l': sub_l,
+        'sub_w': sub_w,
+    }

@@ -38,7 +38,7 @@ def assign_physical_groups_and_mesh(params):
         port_surfs = list(params['port_tags'])
         
     port_x = params.get('port_x', params.get('feed_x_T', -params['patch_W']/2 - 10.0))
-    feed_w = params.get('feed_W', 3.0)
+    feed_w = params.get('port_w', params.get('feed_W', 3.0))
 
     for dim, tag in surfs:
         bbox = gmsh.model.getBoundingBox(dim, tag)
