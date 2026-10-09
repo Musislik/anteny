@@ -8,7 +8,7 @@ try:
 except ImportError:
     mlflow = None
 
-def analyze_and_log_run(params, s1p_filepath):
+def analyze_and_log_run(params, s1p_filepath, run_name=None):
     if mlflow is None:
         print("MLflow Tracker: Balíček 'mlflow' není nainstalován. Logování přeskočeno.")
         return
@@ -53,7 +53,7 @@ def analyze_and_log_run(params, s1p_filepath):
     print(f"MLflow Tracker: Loguji běh do databáze...")
     mlflow.set_experiment("Antenna_Patch_Sweep")
     
-    with mlflow.start_run():
+    with mlflow.start_run(run_name=run_name):
         # Zalogování parametrů
         mlflow.log_params(params)
         

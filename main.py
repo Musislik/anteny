@@ -39,8 +39,10 @@ def main(custom_params=None):
         'amr_threshold': 0.3
     }
     
+    run_name = None
     if custom_params:
         params.update(custom_params)
+        run_name = "_".join([f"{k}={v}" for k, v in custom_params.items()])
 
     print("--- 1. Generování geometrie (OpenCASCADE) ---")
     build_model(params)
@@ -87,7 +89,7 @@ def main(custom_params=None):
         print(f"Graf byl úspěšně uložen do {plot_path}")
         
         # Logování do Aim Trackeru
-        analyze_and_log_run(params, s11_file)
+        analyze_and_log_run(params, s11_file, run_name=run_name)
     else:
         print(f"Výstupní soubor {s11_file} nebyl nalezen. Simulace zřejmě selhala nebo byla zapsána jinam.")
 
