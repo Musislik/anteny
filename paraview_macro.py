@@ -26,13 +26,26 @@ def setup_scene():
     display_model.Representation = 'Surface'
     display_model.Opacity = 0.1
     
-    # 4. Vytvoření řezu (Slice) na rozhraní substrát-vzduch (z = 1.52 mm)
+    # 4. Vytvoření řezu (Slice) na rozhraní substrát-vzduch (dynamicky podle config.json)
+    sub_h_mm = 1.52  # Výchozí hodnota pro FR4
+    config_file = os.path.join(current_dir, "config.json")
+    if os.path.exists(config_file):
+        try:
+            import json
+            with open(config_file, "r") as f:
+                cfg = json.load(f)
+                if "_Metadata" in cfg and "sub_h" in cfg["_Metadata"]:
+                    sub_h_mm = float(cfg["_Metadata"]["sub_h"])
+        except Exception as e:
+            print(f"Nelze načíst sub_h z config.json: {e}")
+
+    sub_h_m = sub_h_mm * 1e-3  # Přepočet mm na metry
     slice_patch = Slice(registrationName='Slice_Patch', Input=driven_vtu)
     slice_patch.SliceType = 'Plane'
     slice_patch.SliceOffsetValues = [0.0]
     
-    # Normála kolmo nahoru, výška na hranici FR4 v metrech (1.52 mm = 0.00152 m)
-    slice_patch.SliceType.Origin = [0.0, 0.0, 0.00152]
+    # Normála kolmo nahoru, výška na hranici FR4 v metrech
+    slice_patch.SliceType.Origin = [0.0, 0.0, sub_h_m]
     slice_patch.SliceType.Normal = [0.0, 0.0, 1.0]
     
     display_slice = Show(slice_patch, renderView1, 'GeometryRepresentation')
@@ -68,7 +81,7 @@ def setup_scene():
     print("==================================================")
     print("Scéna byla úspěšně připravena!")
     print("- Byla načtena síť.")
-    print("- Byl vytvořen řez (Slice) na z=1.52 (Substrát).")
+    print(f"- Byl vytvořen řez (Slice) na z={sub_h_mm} mm (Substrát).")
     print("- Pole E_real bylo obarveno 'Cool to Warm'.")
     print("- Ve stromečku máte připravené vektory (Glyph) ke skrytému zobrazení.")
     print("==================================================")
