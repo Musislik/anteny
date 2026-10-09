@@ -36,7 +36,8 @@ RUN apt-get update && apt-get install -y \
     libopenblas0-pthread \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /opt/palace_install /usr/local
+# Zkopírujeme přímo výslednou binárku místo instalace
+COPY --from=builder /opt/palace/build/bin/palace /usr/local/bin/palace
 
 WORKDIR /workspace
 ENTRYPOINT ["palace"]
