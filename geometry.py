@@ -35,26 +35,31 @@ def build_model(params):
     lambda_g_4 = calc_quarter_wave_length(f_design, eps_eff_feed)
     
     # Port je dole na y = -L_sub/2, x = x_T
+    # Port a poloha T-uzlu
     x_T = -25.4
     y_T = -L/2 - 15.0
-    x_L = x_T - (lambda_g_4 / 2.0)  # Tím docílíme celkového rozdílu dráhy lambda_g / 4 pro LHCP
     
+    # Pro LHCP dle IEEE standardu musí spodní větev (Ey) mít fázové zpoždění -90 deg
+    # oproti levé větvi (Ex). Čtvrtvlnné zpoždění lambda_g/4 náleží spodní větvi.
+    delay_offset = lambda_g_4 / 4.0  # svislé snížení spodního vedení pro celkové prodloužení lambda_g_4
+    y_delay = y_T - delay_offset
+
     # Hlavní přívod (od portu nahoru k T-uzlu)
     feed_main = gmsh.model.occ.addRectangle(x_T - feed_W/2, -L_sub/2, h, feed_W, L_sub/2 + y_T + feed_W/2)
     
-    # Pravá větev (k bottom edge, fáze 0 deg)
-    # Horizontální část z T-uzlu doprava k x=0
-    f_r_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_T - feed_W/2, h, abs(x_T) + feed_W, feed_W)
-    # Vertikální část nahoru k patchi
-    f_r_v = gmsh.model.occ.addRectangle(-feed_W/2, y_T - feed_W/2, h, feed_W, abs(y_T) - L/2)
-    
-    # Levá větev (k levé edge, fáze -90 deg)
-    # Horizontální část zlevnění (do x_L)
-    f_l_h1 = gmsh.model.occ.addRectangle(x_L - feed_W/2, y_T - feed_W/2, h, (x_T - x_L) + feed_W, feed_W)
-    # Vertikální část nahoru (až k y=0)
-    f_l_v = gmsh.model.occ.addRectangle(x_L - feed_W/2, y_T - feed_W/2, h, feed_W, abs(y_T) + feed_W/2)
+    # Levá větev (k levé hraně x = -W/2, fáze 0 deg - referenční přímá větev)
+    # Vertikální část nahoru k y=0
+    f_l_v = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_T - feed_W/2, h, feed_W, abs(y_T) + feed_W/2)
     # Horizontální část doprava k patchi
-    f_l_h2 = gmsh.model.occ.addRectangle(x_L - feed_W/2, -feed_W/2, h, abs(x_L) - W/2, feed_W)
+    f_l_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, -feed_W/2, h, abs(x_T) - W/2, feed_W)
+    
+    # Spodní větev (k dolní hraně y = -L/2, fáze -90 deg - zpožděná o lambda_g/4)
+    # Vertikální sestup z T-uzlu na zpožďovací úroveň y_delay
+    f_r_v_down = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_delay - feed_W/2, h, feed_W, delay_offset + feed_W)
+    # Horizontální část doprava k x=0 na úrovni y_delay
+    f_r_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_delay - feed_W/2, h, abs(x_T) + feed_W, feed_W)
+    # Vertikální část nahoru z y_delay k dolní hraně patche (y = -L/2)
+    f_r_v_up = gmsh.model.occ.addRectangle(-feed_W/2, y_delay - feed_W/2, h, feed_W, abs(y_delay) - L/2)
     
     gmsh.model.occ.synchronize()
     
