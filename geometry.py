@@ -25,16 +25,25 @@ def build_model(params):
     # Patch
     patch_tag = gmsh.model.occ.addRectangle(-W/2, -L/2, h, W, L)
     
-    # Napájecí dělič - zjednodušená topologie (křížové napájení zleva a zezdola)
-    # Větev k levé hraně (fáze -90 deg, delší o lambda/4)
-    feed_left = gmsh.model.occ.addRectangle(-W_sub/2, -feed_W/2, h, W_sub/2 - W/2, feed_W)
+    # Napájecí dělič - T-uzel a fázovací vedení pro LHCP
+    # Port je na x = -W_sub/2, y = 0
+    feed_main = gmsh.model.occ.addRectangle(-W_sub/2, -feed_W/2, h, W_sub/2 - W/2 - 15, feed_W)
     
-    # Větev ke spodní hraně (fáze 0 deg, kratší)
-    feed_bottom = gmsh.model.occ.addRectangle(-feed_W/2, -L_sub/2, h, feed_W, L_sub/2 - L/2)
+    split_x = -W/2 - 15
+    # Levá větev (delší o cca lambda_g/4 pro LHCP fázování -90 deg)
+    # Meandr: Nahoru, doprava, dolů, k patchi
+    f_l1 = gmsh.model.occ.addRectangle(split_x, feed_W/2, h, feed_W, 20)
+    f_l2 = gmsh.model.occ.addRectangle(split_x, 20 + feed_W/2, h, 15, feed_W)
+    f_l3 = gmsh.model.occ.addRectangle(split_x + 15 - feed_W, -feed_W/2, h, feed_W, 20 + feed_W)
+    f_l4 = gmsh.model.occ.addRectangle(split_x + 15 - feed_W, -feed_W/2, h, feed_W + 5, feed_W) # připojení k -W/2
     
-    # Budicí port na okraji substrátu (např. připojíme na konec feed_left pro zjednodušení,
-    # i když plnohodnotný dělič by měl T-uzel, pro demonstraci "prostředí" stačí jakýkoliv port)
-    # Abychom simulovali celé prostředí, vytvoříme na kraji feed_left lumped port.
+    # Spodní větev (kratší, fáze 0 deg)
+    # Dolů, doprava, nahoru k patchi
+    f_b1 = gmsh.model.occ.addRectangle(split_x, -L/2 - 10, h, feed_W, L/2 + 10 - feed_W/2)
+    f_b2 = gmsh.model.occ.addRectangle(split_x, -L/2 - 10, h, W/2 + 15 + feed_W/2, feed_W)
+    f_b3 = gmsh.model.occ.addRectangle(-feed_W/2, -L/2 - 10, h, feed_W, 10)
+    
+    # Abychom simulovali celé prostředí, vytvoříme na kraji feed_main lumped port.
     # Port plocha mezi zemí (z=0) a napáječem (z=h) na okraji x = -W_sub/2
     
     gmsh.model.occ.synchronize()
