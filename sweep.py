@@ -1,9 +1,25 @@
 import time
+import numpy as np
 from main import main
+from rf_calc import synth_square_patch_size, DESIGN_FREQ_GHZ
 
-def run_sweep():
-    # Zvolené hodnoty délky patche pro parametrický sweep
-    patch_lengths = [30.0, 30.4, 30.8, 31.2, 31.6]
+# Výchozí parametry substrátu pro analytický odhad rezonance
+DEFAULT_SUB_H = 1.52
+DEFAULT_EPS_R = 4.3
+
+def generate_sweep_patch_lengths(center_freq=DESIGN_FREQ_GHZ, h=DEFAULT_SUB_H, eps_r=DEFAULT_EPS_R, span_mm=1.6, num_points=5):
+    """
+    Dynamicky generuje pole rozměrů flíčku symetricky kolem analytické rezonance L0 +/- delta_L.
+    """
+    l0 = synth_square_patch_size(center_freq, h, eps_r)
+    half_span = span_mm / 2.0
+    lengths = np.linspace(l0 - half_span, l0 + half_span, num_points)
+    return [float(np.round(l, 2)) for l in lengths]
+
+def run_sweep(patch_lengths=None):
+    # Dynamicky generované hodnoty délky patche kolem analytické rezonance L0
+    if patch_lengths is None:
+        patch_lengths = generate_sweep_patch_lengths()
     
     print("==================================================")
     print("Zahajuji parametrický sweep pro patch_L")

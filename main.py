@@ -32,8 +32,8 @@ def main(custom_params=None):
     
     # Geometrie flíčku syntetizovaná z analytické rezonance pro střed pásma SDARS
     patch_size = float(np.round(synth_square_patch_size(DESIGN_FREQ_GHZ, sub_h, eps_r), 2))
-    patch_l = patch_size
-    patch_w = patch_size
+    patch_l = custom_params.get('patch_L', patch_size) if custom_params else patch_size
+    patch_w = custom_params.get('patch_W', patch_size) if custom_params else patch_size
     
     # Rozměry napájecí sítě a substrátu odvozené z analytického modelu bez magických čísel
     from rf_calc import calc_feed_network_dimensions
