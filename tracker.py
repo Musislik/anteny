@@ -17,10 +17,10 @@ def analyze_and_log_run(params, s1p_filepath):
         print(f"MLflow Tracker: Soubor {s1p_filepath} nenalezen, nelze zalogovat.")
         return
 
-    # Načtení dat pomocí scikit-rf
-    ntwk = rf.Network(s1p_filepath)
-    freqs = ntwk.f / 1e9  # frekvence v GHz
-    s11_db = ntwk.s_db[:, 0, 0]
+    # Načtení dat z CSV (Palace formát)
+    data = np.loadtxt(s1p_filepath, delimiter=',', skiprows=1)
+    freqs = data[:, 0]
+    s11_db = data[:, 1]
 
     # Výpočet metrik
     min_idx = np.argmin(s11_db)

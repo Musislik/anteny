@@ -2,6 +2,10 @@ import json
 
 def build_palace_config(params):
     config = {
+        "_Metadata": {
+            "patch_L": params.get('patch_L', 30.0),
+            "patch_W": params.get('patch_W', 40.0)
+        },
         "Problem": {
             "Type": "Driven",
             "Verbose": 2,
@@ -43,7 +47,8 @@ def build_palace_config(params):
                     "Index": 1,
                     "Attributes": ["Port"],
                     "Direction": [0.0, 0.0, 1.0], # Integrační čára od z=0 do z=h
-                    "R": 50.0
+                    "R": 50.0,
+                    "Excitation": True
                 }
             ]
         },
