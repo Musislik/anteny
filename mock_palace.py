@@ -3,6 +3,11 @@ import os
 import json
 import numpy as np
 
+# Fyzikální a modelové konstanty
+C_0_MM_GHZ = 299.792458  # Rychlost světla v mm * GHz
+DEFAULT_Q = 50.0         # Typický činitel jakosti mikropáskového flíčku
+S11_FLOOR_LINEAR = 0.05  # Minimální hodnota odrazu (-26 dB dno)
+
 def generate_mock_touchstone(config_path):
     print(f"Mock Palace Solver: Načítám {config_path}")
     
@@ -20,8 +25,9 @@ def generate_mock_touchstone(config_path):
     
     freqs = np.arange(freq_min, freq_max + freq_step/2, freq_step)
     
-    # Generování simulovaného S11 - rezonance na 2.33 GHz
-    Q = 50.0
+    # Generování simulovaného S11
+    Q = config.get("_Metadata", {}).get("Q", DEFAULT_Q)
+    f_res = 2.3325  # Výchozí rezonanční frekvence (GHz)
     if "_Metadata" in config:
         patch_L = config["_Metadata"].get("patch_L", 30.0)
         patch_W = config["_Metadata"].get("patch_W", 30.0)
@@ -31,19 +37,20 @@ def generate_mock_touchstone(config_path):
         eps_eff = (eps_r + 1) / 2 + (eps_r - 1) / 2 / np.sqrt(1 + 12 * h / patch_W)
         delta_L = 0.412 * h * (eps_eff + 0.3) * (patch_W/h + 0.264) / ((eps_eff - 0.258) * (patch_W/h + 0.8))
         L_eff = patch_L + 2 * delta_L
-        f_res = 299.792 / (2.0 * L_eff * np.sqrt(eps_eff))
+        f_res = C_0_MM_GHZ / (2.0 * L_eff * np.sqrt(eps_eff))
     
     with open(out_file, 'w') as f:
         f.write("f (GHz), |S[1][1]| (dB), arg(S[1][1]) (deg)\n")
         
         for freq in freqs:
-            # Model of a simple series RLC resonance
+            # Model paralelního RLC rezonátoru zatíženého impedancí Z0:
+            # Y = G + j * 2*Q*G*delta => Gamma = -j*Q*delta / (1 + j*Q*delta)
             delta = (freq - f_res) / f_res
-            S11 = (1j * 2 * Q * delta) / (1 + 1j * 2 * Q * delta)
+            S11 = (-1j * Q * delta) / (1.0 + 1j * Q * delta)
             gamma_mag = np.abs(S11)
             gamma_ang = np.angle(S11, deg=True)
             
-            gamma_mag = max(gamma_mag, 0.05) # max -26 dB
+            gamma_mag = max(gamma_mag, S11_FLOOR_LINEAR)
             gamma_db = 20 * np.log10(gamma_mag)
             
             f.write(f"{freq:.6e}, {gamma_db:.6e}, {gamma_ang:.6e}\n")
