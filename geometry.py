@@ -1,6 +1,10 @@
 import gmsh
 import numpy as np
 
+# Technické konstanty geometrie
+FEED_OFFSET_X = 10.0  # Odsazení T-uzlu vlevo od levé hrany flíčku [mm]
+FEED_OFFSET_Y = 15.0  # Odsazení T-uzlu pod spodní hranu flíčku [mm]
+
 def build_model(params):
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 1)
@@ -58,14 +62,19 @@ def build_model(params):
     eps_eff_p_trans = calc_microstrip_eps_eff(w_p_trans, h, eps_r)
     lambda_p_trans_4 = calc_quarter_wave_length(f_design, eps_eff_p_trans)
 
-    # Port a poloha T-uzlu
-    x_T = -25.4
-    y_T = -L/2 - 15.0
+    # Port a poloha T-uzlu (odvozeno dynamicky)
+    x_T = params.get('feed_x_T', -W/2 - FEED_OFFSET_X)
+    y_T = params.get('feed_y_T', -L/2 - FEED_OFFSET_Y)
+    params['port_x'] = x_T
+    params['feed_x_T'] = x_T
+    params['feed_y_T'] = y_T
     
     # Pro LHCP dle IEEE standardu musí spodní větev (Ey) mít fázové zpoždění -90 deg
     # oproti levé větvi (Ex). Čtvrtvlnné zpoždění lambda_g/4 náleží spodní větvi.
     delay_offset = lambda_g_4 / 4.0  # svislé snížení spodního vedení pro celkové prodloužení lambda_g_4
     y_delay = y_T - delay_offset
+
+    metal_surfs = [patch_tag]
 
     # Hlavní přívod (od portu nahoru k T-uzlu): 50 Ohm úsek + čtvrtvlnný transformátor Z_trans ~ 35.35 Ohm
     y_trans_start = y_T - lambda_t_trans_4
@@ -74,33 +83,41 @@ def build_model(params):
         f_port = gmsh.model.occ.addRectangle(x_T - feed_W/2, -L_sub/2, h, feed_W, y_trans_start - (-L_sub/2) + feed_W/2)
         # 35.35 Ohm čtvrtvlnný transformátor k T-uzlu
         f_trans = gmsh.model.occ.addRectangle(x_T - w_t_trans/2, y_trans_start, h, w_t_trans, lambda_t_trans_4 + feed_W/2)
+        metal_surfs.extend([f_port, f_trans])
     else:
         # Pokud je substrát kompaktní, přechází přímo transformátor
         f_trans = gmsh.model.occ.addRectangle(x_T - w_t_trans/2, -L_sub/2, h, w_t_trans, L_sub/2 + y_T + feed_W/2)
+        metal_surfs.append(f_trans)
     
     # Levá větev (k levé hraně x = -W/2, fáze 0 deg)
     # Vertikální část nahoru k y=0
     f_l_v = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_T - feed_W/2, h, feed_W, abs(y_T) + feed_W/2)
+    metal_surfs.append(f_l_v)
     # Přizpůsobovací transformátor k flíčku (šířka w_p_trans ~ 0.7 mm, délka lambda_p_trans_4)
     x_p_trans_l = -W/2 - min(lambda_p_trans_4, abs(x_T - (-W/2)))
     if x_p_trans_l > x_T:
         f_l_h50 = gmsh.model.occ.addRectangle(x_T - feed_W/2, -feed_W/2, h, x_p_trans_l - x_T + feed_W/2, feed_W)
         f_l_trans = gmsh.model.occ.addRectangle(x_p_trans_l, -w_p_trans/2, h, abs(x_p_trans_l) - W/2 + feed_W/2, w_p_trans)
+        metal_surfs.extend([f_l_h50, f_l_trans])
     else:
         f_l_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, -feed_W/2, h, abs(x_T) - W/2 + feed_W, feed_W)
+        metal_surfs.append(f_l_h)
     
     # Spodní větev (k dolní hraně y = -L/2, fáze -90 deg - zpožděná o lambda_g/4)
     # Vertikální sestup z T-uzlu na zpožďovací úroveň y_delay
     f_r_v_down = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_delay - feed_W/2, h, feed_W, delay_offset + feed_W)
     # Horizontální část doprava k x=0 na úrovni y_delay
     f_r_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_delay - feed_W/2, h, abs(x_T) + feed_W, feed_W)
+    metal_surfs.extend([f_r_v_down, f_r_h])
     # Vertikální výstup k dolní hraně patche s přizpůsobovacím transformátorem
     y_p_trans_b = -L/2 - min(lambda_p_trans_4, abs(y_delay - (-L/2)))
     if y_p_trans_b > y_delay:
         f_r_v50 = gmsh.model.occ.addRectangle(-feed_W/2, y_delay - feed_W/2, h, feed_W, y_p_trans_b - y_delay + feed_W/2)
         f_r_trans = gmsh.model.occ.addRectangle(-w_p_trans/2, y_p_trans_b, h, w_p_trans, abs(y_p_trans_b) - L/2 + feed_W/2)
+        metal_surfs.extend([f_r_v50, f_r_trans])
     else:
         f_r_v_up = gmsh.model.occ.addRectangle(-feed_W/2, y_delay - feed_W/2, h, feed_W, abs(y_delay) - L/2 + feed_W)
+        metal_surfs.append(f_r_v_up)
     
     gmsh.model.occ.synchronize()
     
@@ -124,9 +141,21 @@ def build_model(params):
     # 4. Topologická fúze (Boolean Fragments)
     # Sloučíme všechny objemy a plochy dohromady, aby na sebe navazovaly v síti
     vols = gmsh.model.occ.getEntities(3)
-    surfs = gmsh.model.occ.getEntities(2)
+    input_surfs = [(2, s) for s in metal_surfs] + [(2, gnd_tag), (2, port_tag)]
     
-    gmsh.model.occ.fragment(vols, surfs)
+    _, out_map = gmsh.model.occ.fragment(vols, input_surfs)
     gmsh.model.occ.synchronize()
+    
+    # Přesná evidence fragmentů pro fyzikální skupiny
+    pec_tags = []
+    for idx, (dim, s_tag) in enumerate(input_surfs):
+        frag_entities = out_map[len(vols) + idx]
+        frag_tags = [tag for d, tag in frag_entities if d == 2]
+        if s_tag == port_tag:
+            params['port_tags'] = frag_tags
+        else:
+            pec_tags.extend(frag_tags)
+            
+    params['pec_tags'] = list(set(pec_tags))
     
     return sub_tag, air_tag

@@ -1,6 +1,10 @@
 import gmsh
 import numpy as np
 
+# Konstanty geometrické přesnosti a tolerancí
+GEOM_TOL = 1e-6
+EDGE_CLEARANCE_TOL = 1e-3
+
 def assign_physical_groups_and_mesh(params):
     vols = gmsh.model.getEntities(3)
     surfs = gmsh.model.getEntities(2)
@@ -14,7 +18,7 @@ def assign_physical_groups_and_mesh(params):
     # 1. Klasifikace objemů podle těžiště a bounding boxu
     for dim, tag in vols:
         bbox = gmsh.model.getBoundingBox(dim, tag)
-        if abs(bbox[2]) < 1e-6 and abs(bbox[5] - h) < 1e-6:
+        if abs(bbox[2]) < GEOM_TOL and abs(bbox[5] - h) < GEOM_TOL:
             sub_vols.append(tag)
         else:
             air_vols.append(tag)
@@ -27,47 +31,51 @@ def assign_physical_groups_and_mesh(params):
     port_surfs = []
     absorbing_surfs = []
     
+    # Pokud geometry.py předala přesné tagy z Boolean Fragment operace, použijeme je přednostně
+    if params.get('pec_tags'):
+        pec_surfs = list(params['pec_tags'])
+    if params.get('port_tags'):
+        port_surfs = list(params['port_tags'])
+        
+    port_x = params.get('port_x', params.get('feed_x_T', -params['patch_W']/2 - 10.0))
+    feed_w = params.get('feed_W', 3.0)
+
     for dim, tag in surfs:
         bbox = gmsh.model.getBoundingBox(dim, tag)
-        com = gmsh.model.occ.getCenterOfMass(dim, tag)
         xmin, ymin, zmin, xmax, ymax, zmax = bbox
         
-        # Zemnící plocha (z = 0)
-        if abs(zmin) < 1e-6 and abs(zmax) < 1e-6:
-            # Nechceme zahrnout hranici portu jako PEC, port je na kraji substrátu, ale má zmin=0 a zmax=h
-            # Takže PEC GND je pouze to, co má zmax = 0. Ale moment, bounding box portu je zmin=0, zmax=h.
-            pass # řešíme níže
-            
-        # Je to plocha ležící plně v z=0 (GND)
-        if abs(zmax) < 1e-6:
-            pec_surfs.append(tag)
-            continue
-            
-        # Je to plocha ležící plně v z=h (Patch + Feed)
-        if abs(zmin - h) < 1e-6 and abs(zmax - h) < 1e-6:
-            # Metal nedosahuje na pravý, horní, ani levý okraj substrátu
-            if xmax < params['sub_W']/2 - 1e-3 and ymax < params['sub_L']/2 - 1e-3 and xmin > -params['sub_W']/2 + 1e-3:
-                pec_surfs.append(tag)
-            continue
-            
-        # Port (XZ rovina na spodním kraji substrátu y = -L_sub/2)
-        if abs(ymin - (-params['sub_L']/2)) < 1e-6 and abs(ymax - (-params['sub_L']/2)) < 1e-6 and abs(zmax - h) < 1e-6 and abs(zmin) < 1e-6:
-            x_T = -25.4
-            if xmin >= x_T - params['feed_W']/2 - 1e-3 and xmax <= x_T + params['feed_W']/2 + 1e-3:
-                port_surfs.append(tag)
-            continue
-            
         # Absorpční stěny (vnější hranice vzduchového boxu)
-        if abs(zmax - (h + margin)) < 1e-6 or abs(zmin - (-margin)) < 1e-6 or \
-           abs(xmax - (params['sub_W']/2 + margin)) < 1e-6 or abs(xmin - (-params['sub_W']/2 - margin)) < 1e-6 or \
-           abs(ymax - (params['sub_L']/2 + margin)) < 1e-6 or abs(ymin - (-params['sub_L']/2 - margin)) < 1e-6:
+        if abs(zmax - (h + margin)) < GEOM_TOL or abs(zmin - (-margin)) < GEOM_TOL or \
+           abs(xmax - (params['sub_W']/2 + margin)) < GEOM_TOL or abs(xmin - (-params['sub_W']/2 - margin)) < GEOM_TOL or \
+           abs(ymax - (params['sub_L']/2 + margin)) < GEOM_TOL or abs(ymin - (-params['sub_L']/2 - margin)) < GEOM_TOL:
             absorbing_surfs.append(tag)
             continue
+            
+        # Fallback detekce PEC a Portu, pokud by nebyly předány z geometry.py
+        if not params.get('pec_tags'):
+            # GND na z = 0
+            if abs(zmax) < GEOM_TOL and abs(zmin) < GEOM_TOL:
+                pec_surfs.append(tag)
+            # Patch a přívody na z = h (testujeme, zda plocha neleží vně kovových obrysů)
+            elif abs(zmin - h) < GEOM_TOL and abs(zmax - h) < GEOM_TOL:
+                com = gmsh.model.occ.getCenterOfMass(dim, tag)
+                # Uvnitř patche nebo v zóně přívodu
+                in_patch = (abs(com[0]) <= params['patch_W']/2 + GEOM_TOL and abs(com[1]) <= params['patch_L']/2 + GEOM_TOL)
+                in_feed_zone = (com[0] <= max(0.0, port_x + feed_w) and com[1] <= params['patch_L']/2 + GEOM_TOL)
+                if in_patch or in_feed_zone:
+                    pec_surfs.append(tag)
+                    
+        if not params.get('port_tags'):
+            # Port (XZ rovina na spodním kraji substrátu y = -L_sub/2)
+            if abs(ymin - (-params['sub_L']/2)) < GEOM_TOL and abs(ymax - (-params['sub_L']/2)) < GEOM_TOL and \
+               abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
+                if xmin >= port_x - feed_w/2 - EDGE_CLEARANCE_TOL and xmax <= port_x + feed_w/2 + EDGE_CLEARANCE_TOL:
+                    port_surfs.append(tag)
 
-    gmsh.model.addPhysicalGroup(2, pec_surfs, name="PEC")
+    gmsh.model.addPhysicalGroup(2, list(set(pec_surfs)), name="PEC")
     if port_surfs:
-        gmsh.model.addPhysicalGroup(2, port_surfs, name="Port")
-    gmsh.model.addPhysicalGroup(2, absorbing_surfs, name="Absorbing")
+        gmsh.model.addPhysicalGroup(2, list(set(port_surfs)), name="Port")
+    gmsh.model.addPhysicalGroup(2, list(set(absorbing_surfs)), name="Absorbing")
     
     # 3. Nastavení sítě a generování
     gmsh.option.setNumber("Mesh.MeshSizeMax", params['mesh_size_max'])
