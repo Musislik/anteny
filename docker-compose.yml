@@ -7,7 +7,9 @@ services:
       context: .
       dockerfile: Dockerfile.palace
     volumes:
-      - .:/workspace
+      - ${CONF_DIR:-.}:/workspace
+      - ${DATA_DIR:-./data}:/workspace/data
+      - ${DATA_DIR:-./data}/postpro:/workspace/postpro
     working_dir: /workspace
     profiles: ["worker"]
 
@@ -19,10 +21,13 @@ services:
       dockerfile: Dockerfile.pipeline
     ports:
       - "5000:5000"
+    environment:
+      - MLFLOW_TRACKING_URI=sqlite:////workspace/data/mlflow.db
     volumes:
-      - .:/workspace
+      - ${CONF_DIR:-.}:/workspace
+      - ${DATA_DIR:-./data}:/workspace/data
     working_dir: /workspace
-    command: mlflow ui --host 0.0.0.0 --port 5000
+    command: mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////workspace/data/mlflow.db --default-artifact-root /workspace/data/mlruns
 
   # 3. Nástroj pro orchestraci simulací a generování sítě
   # Spuštění: docker compose run --rm pipeline
@@ -30,8 +35,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.pipeline
+    environment:
+      - MLFLOW_TRACKING_URI=sqlite:////workspace/data/mlflow.db
     volumes:
-      - .:/workspace
+      - ${CONF_DIR:-.}:/workspace
+      - ${DATA_DIR:-./data}:/workspace/data
+      - ${DATA_DIR:-./data}/postpro:/workspace/postpro
       - /var/run/docker.sock:/var/run/docker.sock
     working_dir: /workspace
     profiles: ["worker"]
