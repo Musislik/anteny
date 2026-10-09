@@ -100,6 +100,32 @@ def calc_patch_resonance(patch_w, patch_l, h, eps_r):
     f_res = C_0_MM_GHZ / (2.0 * l_eff * np.sqrt(eps_eff))
     return float(f_res), float(l_eff), float(eps_eff)
 
+def synth_square_patch_size(freq_ghz, h, eps_r):
+    """
+    Syntetizuje rozměr čtvercového mikropáskového flíčku L = W pro požadovanou rezonanční frekvenci.
+    Využívá analytický model rozptylu a Newtonovu iterační metodu.
+    """
+    l = C_0_MM_GHZ / (2.0 * freq_ghz * np.sqrt(eps_r))
+    for _ in range(20):
+        f_cur, _, _ = calc_patch_resonance(l, l, h, eps_r)
+        diff = f_cur - freq_ghz
+        if abs(diff) < 1e-6:
+            break
+        dl = 1e-3
+        f_plus, _, _ = calc_patch_resonance(l + dl, l + dl, h, eps_r)
+        df_dl = (f_plus - f_cur) / dl
+        l -= diff / df_dl
+    return float(l)
+
+def synth_patch_length(freq_ghz, patch_w, h, eps_r):
+    """
+    Syntetizuje rezonanční délku flíčku L pro zadanou šířku patch_w.
+    """
+    delta_l, eps_eff = calc_patch_fringing(patch_w, h, eps_r)
+    l_eff = C_0_MM_GHZ / (2.0 * freq_ghz * np.sqrt(eps_eff))
+    l = l_eff - 2.0 * delta_l
+    return float(l)
+
 def calc_patch_edge_impedance(patch_w, patch_l, h, eps_r):
     """
     Orientační vstupní odpor na okraji mikropáskového flíčku (Bahl & Bhartia).

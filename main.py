@@ -13,6 +13,7 @@ from tracker import analyze_and_log_run
 
 from rf_calc import (
     synth_microstrip_w,
+    synth_square_patch_size,
     C_0_MM_GHZ,
     DESIGN_FREQ_GHZ,
     PORT_Z0
@@ -29,9 +30,10 @@ def main(custom_params=None):
     freq_max = 2.6
     freq_step = 0.001
     
-    # Geometrie flíčku
-    patch_l = 30.8
-    patch_w = 30.8
+    # Geometrie flíčku syntetizovaná z analytické rezonance pro střed pásma SDARS
+    patch_size = float(np.round(synth_square_patch_size(DESIGN_FREQ_GHZ, sub_h, eps_r), 2))
+    patch_l = patch_size
+    patch_w = patch_size
     
     # Šířka 50 Ohm přívodního mikropásku syntetizovaná z parametrů substrátu
     feed_w = float(np.round(synth_microstrip_w(PORT_Z0, sub_h, eps_r), 2))
