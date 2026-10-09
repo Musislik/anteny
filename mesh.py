@@ -23,8 +23,8 @@ def assign_physical_groups_and_mesh(params):
         else:
             air_vols.append(tag)
             
-    gmsh.model.addPhysicalGroup(3, sub_vols, name="Substrate")
-    gmsh.model.addPhysicalGroup(3, air_vols, name="Air")
+    gmsh.model.addPhysicalGroup(3, sub_vols, tag=1, name="Substrate")
+    gmsh.model.addPhysicalGroup(3, air_vols, tag=2, name="Air")
     
     # 2. Klasifikace ploch (PEC, Port, Absorbing)
     pec_surfs = []
@@ -72,14 +72,17 @@ def assign_physical_groups_and_mesh(params):
                 if xmin >= port_x - feed_w/2 - EDGE_CLEARANCE_TOL and xmax <= port_x + feed_w/2 + EDGE_CLEARANCE_TOL:
                     port_surfs.append(tag)
 
-    gmsh.model.addPhysicalGroup(2, list(set(pec_surfs)), name="PEC")
+    # 2. Klasifikace ploch (3: PEC, 4: Port, 5: Absorbing)
+    gmsh.model.addPhysicalGroup(2, list(set(pec_surfs)), tag=3, name="PEC")
     if port_surfs:
-        gmsh.model.addPhysicalGroup(2, list(set(port_surfs)), name="Port")
-    gmsh.model.addPhysicalGroup(2, list(set(absorbing_surfs)), name="Absorbing")
+        gmsh.model.addPhysicalGroup(2, list(set(port_surfs)), tag=4, name="Port")
+    gmsh.model.addPhysicalGroup(2, list(set(absorbing_surfs)), tag=5, name="Absorbing")
     
-    # 3. Nastavení sítě a generování
+    # 3. Nastavení sítě a kompatibilní export pro MFEM / Palace (MSH 2.2)
     gmsh.option.setNumber("Mesh.MeshSizeMax", params['mesh_size_max'])
     gmsh.option.setNumber("Mesh.MeshSizeMin", params['mesh_size_min'])
+    gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)
+    gmsh.option.setNumber("Mesh.Binary", 0)
     
     gmsh.model.mesh.generate(3)
     gmsh.write("mesh.msh")

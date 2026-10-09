@@ -38,13 +38,8 @@ def setup_scene():
 
     print(f"Nacitam data: {vtu_file}")
     
-    # 1. Odstranime predchozi objekty pokud jiz ve scene existuji
-    for src in list(GetSources().values()):
-        try:
-            Delete(src)
-        except Exception:
-            pass
-            
+    # 1. Kompletni reset ParaView session (vymaze pamet, starou pipeline a uvolni cache pro nacteni novych dat)
+    ResetSession()
     renderView1 = GetActiveViewOrCreate('RenderView')
     
     # 2. Nacteni pole z Palace / simulace

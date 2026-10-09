@@ -30,13 +30,13 @@ def build_palace_config(params):
         "Domains": {
             "Materials": [
                 {
-                    "Attributes": ["Substrate"],
+                    "Attributes": [1],  # 1: Substrate
                     "Permittivity": params['eps_r'],
                     "Permeability": 1.0,
                     "LossTan": params['tan_delta']
                 },
                 {
-                    "Attributes": ["Air"],
+                    "Attributes": [2],  # 2: Air
                     "Permittivity": 1.0,
                     "Permeability": 1.0
                 }
@@ -44,17 +44,17 @@ def build_palace_config(params):
         },
         "Boundaries": {
             "PEC": {
-                "Attributes": ["PEC"]
+                "Attributes": [3]  # 3: PEC
             },
             "Absorbing": {
-                "Attributes": ["Absorbing"],
+                "Attributes": [5],  # 5: Absorbing outer boundary
                 "Order": 1
             },
             "LumpedPort": [
                 {
                     "Index": 1,
-                    "Attributes": ["Port"],
-                    "Direction": [0.0, 0.0, 1.0], # Integrační čára od z=0 do z=h
+                    "Attributes": [4],  # 4: Port
+                    "Direction": "+Z",  # Vektor excitace od z=0 do z=h
                     "R": port_r,
                     "Excitation": True
                 }
@@ -66,7 +66,7 @@ def build_palace_config(params):
                 "MinFreq": params['freq_min'],
                 "MaxFreq": params['freq_max'],
                 "FreqStep": params['freq_step'],
-                "SaveStep": params['freq_step']
+                "SaveStep": max(1, int(params.get('save_step', 1)))
             },
             "Linear": {
                 "Type": "SuperLU",

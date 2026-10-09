@@ -1,4 +1,43 @@
-FROM python:3.11-slim
-RUN pip install numpy meshio
-WORKDIR /workspace
+# Multi-stage sestavení reálného FEM řešiče Palace ze zdrojových kódů (AWS Labs)
+FROM ubuntu:24.04 AS builder
 
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    gfortran \
+    libopenmpi-dev \
+    openmpi-bin \
+    libopenblas-dev \
+    pkg-config \
+    python3 \
+    ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+RUN git clone --depth 1 https://github.com/awslabs/palace.git
+
+WORKDIR /opt/palace/build
+RUN cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DPALACE_WITH_SUPERLU=ON \
+    -DPALACE_BUILD_EXTERNAL_DEPS=ON
+
+RUN cmake --build . -j$(nproc) && cmake --install . --prefix /opt/palace_install
+
+# Minimální finální runtime obraz
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y \
+    openmpi-bin \
+    libgomp1 \
+    libgfortran5 \
+    libopenblas0-pthread \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/palace_install /usr/local
+
+WORKDIR /workspace
+ENTRYPOINT ["palace"]
+CMD ["-np", "4", "/workspace/config.json"]
