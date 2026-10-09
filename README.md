@@ -58,9 +58,9 @@ Projekt je navržen tak, aby se o výsledky staraly 3 specializované nástroje:
 Simulátor generuje `.vtu` soubory prostorových polí do složky `postpro/paraview/driven/`. Pro usnadnění práce byl připraven makro-skript, který jedním kliknutím nastaví hezkou vizuální scénu (řezy a barvy).
 
 1. Otevřete 3D výsledky ve Windows přes **ParaView**.
-2. V horním menu vyberte **Tools -> Python Shell**.
-3. Klikněte na **Run Script** a vyberte soubor `paraview_macro.py` (nachází se ve složce projektu).
-4. Skript automaticky aplikuje řezy v rovině patche, zprůhlední vzduchový box a obarví elektrické pole (`E_real`) paletou *Cool to Warm*.
+2. Skript můžete spustit přes **Tools -> Python Shell -> Run Script** (vyberte [paraview_macro.py](file:///d:/code/anteny/paraview_macro.py)), nebo si jej přidat do lišty přes **Macros -> Add new macro...**.
+3. Cesta k projektu je v souboru definována proměnnou `PROJECT_DIR = r"D:\code\anteny"`, kterou skript při spuštění nastaví jako aktuální pracovní adresář (`os.chdir`).
+4. Skript automaticky načte `.vtu` soubor, aplikuje řezy v rovině patche, zprůhlední vzduchový box a obarví elektrické pole (`E_real`) paletou *Cool to Warm*.
 
 ---
 
