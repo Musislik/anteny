@@ -11,32 +11,65 @@ from runner import run_palace
 
 from tracker import analyze_and_log_run
 
+from rf_calc import (
+    synth_microstrip_w,
+    C_0_MM_GHZ,
+    DESIGN_FREQ_GHZ,
+    PORT_Z0
+)
+
 def main(custom_params=None):
-    # 1. Definice parametrů
+    # 1. Analytická definice parametrů bez magických čísel
+    sub_h = 1.52
+    eps_r = 4.3
+    tan_delta = 0.02
+    
+    # Kmitočtové pásmo sweepu (GHz)
+    freq_min = 2.1
+    freq_max = 2.6
+    freq_step = 0.001
+    
+    # Geometrie flíčku
+    patch_l = 30.8
+    patch_w = 30.8
+    
+    # Šířka 50 Ohm přívodního mikropásku syntetizovaná z parametrů substrátu
+    feed_w = float(np.round(synth_microstrip_w(PORT_Z0, sub_h, eps_r), 2))
+    
+    # Rozměry vzduchového boxu: vzdálenost stěn >= lambda_0 / 4 při nejnižší frekvenci
+    lambda_0_max = C_0_MM_GHZ / freq_min
+    air_margin = float(np.round(lambda_0_max / 4.0, 1))  # cca 35.7 mm
+    
+    # Rozměry substrátu odvozené z velikosti flíčku a manipulačního prostoru napájecí sítě
+    sub_margin_side = 20.0
+    sub_w = float(np.round(patch_w + 2.0 * sub_margin_side, 1))
+    sub_l = float(np.round(patch_l + 2.0 * sub_margin_side, 1))
+
     params = {
         # Geometrie
-        'patch_L': 30.8,
-        'patch_W': 30.8,
-        'sub_h': 1.52,
-        'sub_L': 70.8,
-        'sub_W': 70.8,
-        'feed_W': 3.0,
-        'air_margin': 35.0, # min lambda/4 ~ 32 mm
+        'patch_L': patch_l,
+        'patch_W': patch_w,
+        'sub_h': sub_h,
+        'sub_L': sub_l,
+        'sub_W': sub_w,
+        'feed_W': feed_w,
+        'air_margin': air_margin,
         
         # Materiály
-        'eps_r': 4.3,
-        'tan_delta': 0.02,
+        'eps_r': eps_r,
+        'tan_delta': tan_delta,
         
         # Síť
         'mesh_size_max': 5.0,
         'mesh_size_min': 0.5,
         
-        # Palace solver (frekvence v GHz, Palace čte v GHz defaultně)
-        # Očekávaná rezonance cca 2.33 GHz, nastavíme sweep 2.0 až 2.6 GHz
-        'freq_min': 2.1,
-        'freq_max': 2.6,
-        'freq_step': 0.001,
-        'amr_threshold': 0.3
+        # Palace solver (frekvence v GHz)
+        'freq_min': freq_min,
+        'freq_max': freq_max,
+        'freq_step': freq_step,
+        'amr_threshold': 0.3,
+        'port_impedance': PORT_Z0,
+        'design_freq_ghz': DESIGN_FREQ_GHZ
     }
     
     run_name = None
