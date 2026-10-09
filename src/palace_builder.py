@@ -17,10 +17,10 @@ def build_palace_config(params):
         "Problem": {
             "Type": "Driven",
             "Verbose": 2,
-            "Output": "postpro"
+            "Output": "data/postpro"
         },
         "Model": {
-            "Mesh": "mesh.msh",
+            "Mesh": "data/mesh.msh",
             "L0": SCALE_MM_TO_M, # Gmsh používá mm, L0 to převede na metry
             "Refinement": {
                 "MaxLevels": 2,
@@ -77,5 +77,5 @@ def build_palace_config(params):
         }
     }
     
-    with open("config.json", "w") as f:
+    with open("data/config.json", "w") as f:
         json.dump(config, f, indent=4)

@@ -88,7 +88,8 @@ def analyze_and_log_run(params, csv_filepath, run_name=None):
         mlflow.log_artifact(csv_filepath, "S-Parameters")
         
         # Záchyt obrázku (pokud existuje graf)
-        if os.path.exists("S11_graf.png"):
-            mlflow.log_artifact("S11_graf.png", "Plots")
+        plot_path = "data/S11_graf.png"
+        if os.path.exists(plot_path):
+            mlflow.log_artifact(plot_path, "Plots")
 
     print(f"MLflow Tracker: Běh uložen (f0={f0:.3f} GHz, minS11={s11_min:.1f} dB).")

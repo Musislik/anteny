@@ -40,4 +40,4 @@ COPY --from=builder /opt/palace_install /usr/local
 
 WORKDIR /workspace
 ENTRYPOINT ["palace"]
-CMD ["-np", "4", "/workspace/config.json"]
+CMD ["-np", "4", "/workspace/data/config.json"]

@@ -85,5 +85,5 @@ def assign_physical_groups_and_mesh(params):
     gmsh.option.setNumber("Mesh.Binary", 0)
     
     gmsh.model.mesh.generate(3)
-    gmsh.write("mesh.msh")
+    gmsh.write("data/mesh.msh")
     gmsh.finalize()

@@ -5,7 +5,7 @@ services:
   palace:
     build:
       context: .
-      dockerfile: Dockerfile.palace
+      dockerfile: docker/Dockerfile.palace
     volumes:
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data
@@ -18,7 +18,7 @@ services:
   mlflow:
     build:
       context: .
-      dockerfile: Dockerfile.pipeline
+      dockerfile: docker/Dockerfile.pipeline
     ports:
       - "5000:5000"
     environment:
@@ -34,7 +34,7 @@ services:
   pipeline:
     build:
       context: .
-      dockerfile: Dockerfile.pipeline
+      dockerfile: docker/Dockerfile.pipeline
     environment:
       - MLFLOW_TRACKING_URI=sqlite:////workspace/data/mlflow.db
     volumes:
@@ -44,4 +44,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     working_dir: /workspace
     profiles: ["worker"]
-    command: python sweep.py
+    command: python src/sweep.py

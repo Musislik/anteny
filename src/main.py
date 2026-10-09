@@ -86,7 +86,7 @@ def main(custom_params=None):
     build_model(params)
     
     # Export 3D modelu pro vizualizaci geometrie v CADu
-    step_file = "antenna_model.step"
+    step_file = "data/antenna_model.step"
     gmsh.write(step_file)
     print(f"Geometrie byla exportována do {step_file} pro případné zobrazení v CAD softwaru.")
     
@@ -105,13 +105,13 @@ def main(custom_params=None):
     
     print("--- 5. Zpracování výsledků ---")
     # Palace ukládá S-parametry jako Touchstone soubor do definovaného výstupního adresáře
-    output_dir = "postpro"
+    output_dir = "data/postpro"
     s11_file = os.path.join(output_dir, "port-S.csv") # Palace outputs CSV
     
     if os.path.exists(s11_file):
-        data = np.loadtxt(s11_file, delimiter=',', skiprows=1)
-        freqs = data[:, 0]
-        s11_db = data[:, 1]
+        data_arr = np.loadtxt(s11_file, delimiter=',', skiprows=1)
+        freqs = data_arr[:, 0]
+        s11_db = data_arr[:, 1]
         
         plt.figure(figsize=(8, 6))
         plt.plot(freqs, s11_db, label='S11')
@@ -122,7 +122,7 @@ def main(custom_params=None):
         plt.axhline(-10, color='r', linestyle='--')
         plt.legend()
         
-        plot_path = "S11_graf.png"
+        plot_path = "data/S11_graf.png"
         plt.savefig(plot_path)
         print(f"Graf byl úspěšně uložen do {plot_path}")
         
