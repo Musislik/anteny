@@ -38,3 +38,5 @@ config.json
 *.swp
 D/code/anteny/mlruns/
 mlruns/
+mlflow.db
+mlflow.db-journal

@@ -1,4 +1,5 @@
 import gmsh
+import numpy as np
 
 def build_model(params):
     gmsh.initialize()
@@ -26,10 +27,20 @@ def build_model(params):
     patch_tag = gmsh.model.occ.addRectangle(-W/2, -L/2, h, W, L)
     
     # Napájecí dělič dle obrázku (cross-fed patch)
+    # Spočítáme dynamicky z vlnové délky (pro LHCP)
+    eps_r = params['eps_r']
+    eps_eff = (eps_r + 1) / 2 + (eps_r - 1) / 2 / np.sqrt(1 + 12 * h / W)
+    delta_L = 0.412 * h * (eps_eff + 0.3) * (W/h + 0.264) / ((eps_eff - 0.258) * (W/h + 0.8))
+    L_eff = L + 2 * delta_L
+    
+    # f_res je přibližně c / (2 * L_eff * sqrt(eps_eff)). Z toho plyne, že vlnová délka v substrátu
+    # lambda_g je přesně 2 * L_eff (u půlvlnného flíčku).
+    lambda_g_4 = L_eff / 2.0  # čtvrtka vlnové délky
+    
     # Port je dole na y = -L_sub/2, x = x_T
     x_T = -25.4
     y_T = -L/2 - 15.0
-    x_L = x_T - 8.0  # pro rozdíl délek 16 mm (lambda_g / 4) pro LHCP
+    x_L = x_T - (lambda_g_4 / 2.0)  # Tím docílíme celkového rozdílu dráhy lambda_g / 4 pro LHCP
     
     # Hlavní přívod (od portu nahoru k T-uzlu)
     feed_main = gmsh.model.occ.addRectangle(x_T - feed_W/2, -L_sub/2, h, feed_W, L_sub/2 + y_T + feed_W/2)
