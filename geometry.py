@@ -25,34 +25,36 @@ def build_model(params):
     # Patch
     patch_tag = gmsh.model.occ.addRectangle(-W/2, -L/2, h, W, L)
     
-    # Napájecí dělič - T-uzel a fázovací vedení pro LHCP
-    # Port je na x = -W_sub/2, y = 0
-    feed_main = gmsh.model.occ.addRectangle(-W_sub/2, -feed_W/2, h, W_sub/2 - W/2 - 15, feed_W)
+    # Napájecí dělič dle obrázku (cross-fed patch)
+    # Port je dole na y = -L_sub/2, x = x_T
+    x_T = -25.4
+    y_T = -L/2 - 15.0
+    x_L = x_T - 8.0  # pro rozdíl délek 16 mm (lambda_g / 4) pro LHCP
     
-    split_x = -W/2 - 15
-    # Levá větev (delší o cca lambda_g/4 pro LHCP fázování -90 deg)
-    # Meandr: Nahoru, doprava, dolů, k patchi
-    f_l1 = gmsh.model.occ.addRectangle(split_x, feed_W/2, h, feed_W, 20)
-    f_l2 = gmsh.model.occ.addRectangle(split_x, 20 + feed_W/2, h, 15, feed_W)
-    f_l3 = gmsh.model.occ.addRectangle(split_x + 15 - feed_W, -feed_W/2, h, feed_W, 20 + feed_W)
-    f_l4 = gmsh.model.occ.addRectangle(split_x + 15 - feed_W, -feed_W/2, h, feed_W + 5, feed_W) # připojení k -W/2
+    # Hlavní přívod (od portu nahoru k T-uzlu)
+    feed_main = gmsh.model.occ.addRectangle(x_T - feed_W/2, -L_sub/2, h, feed_W, L_sub/2 + y_T + feed_W/2)
     
-    # Spodní větev (kratší, fáze 0 deg)
-    # Dolů, doprava, nahoru k patchi
-    f_b1 = gmsh.model.occ.addRectangle(split_x, -L/2 - 10, h, feed_W, L/2 + 10 - feed_W/2)
-    f_b2 = gmsh.model.occ.addRectangle(split_x, -L/2 - 10, h, W/2 + 15 + feed_W/2, feed_W)
-    f_b3 = gmsh.model.occ.addRectangle(-feed_W/2, -L/2 - 10, h, feed_W, 10)
+    # Pravá větev (k bottom edge, fáze 0 deg)
+    # Horizontální část z T-uzlu doprava k x=0
+    f_r_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_T - feed_W/2, h, abs(x_T) + feed_W, feed_W)
+    # Vertikální část nahoru k patchi
+    f_r_v = gmsh.model.occ.addRectangle(-feed_W/2, y_T - feed_W/2, h, feed_W, abs(y_T) - L/2)
     
-    # Abychom simulovali celé prostředí, vytvoříme na kraji feed_main lumped port.
-    # Port plocha mezi zemí (z=0) a napáječem (z=h) na okraji x = -W_sub/2
+    # Levá větev (k levé edge, fáze -90 deg)
+    # Horizontální část zlevnění (do x_L)
+    f_l_h1 = gmsh.model.occ.addRectangle(x_L - feed_W/2, y_T - feed_W/2, h, (x_T - x_L) + feed_W, feed_W)
+    # Vertikální část nahoru (až k y=0)
+    f_l_v = gmsh.model.occ.addRectangle(x_L - feed_W/2, y_T - feed_W/2, h, feed_W, abs(y_T) + feed_W/2)
+    # Horizontální část doprava k patchi
+    f_l_h2 = gmsh.model.occ.addRectangle(x_L - feed_W/2, -feed_W/2, h, abs(x_L) - W/2, feed_W)
     
     gmsh.model.occ.synchronize()
     
-    # Vytvoření portové plochy přes addSurfaceFilling nebo přidáním bodů/čar.
-    p1 = gmsh.model.occ.addPoint(-W_sub/2, -feed_W/2, 0)
-    p2 = gmsh.model.occ.addPoint(-W_sub/2, feed_W/2, 0)
-    p3 = gmsh.model.occ.addPoint(-W_sub/2, feed_W/2, h)
-    p4 = gmsh.model.occ.addPoint(-W_sub/2, -feed_W/2, h)
+    # Vytvoření portové plochy (XZ rovina na kraji substrátu y = -L_sub/2)
+    p1 = gmsh.model.occ.addPoint(x_T - feed_W/2, -L_sub/2, 0)
+    p2 = gmsh.model.occ.addPoint(x_T + feed_W/2, -L_sub/2, 0)
+    p3 = gmsh.model.occ.addPoint(x_T + feed_W/2, -L_sub/2, h)
+    p4 = gmsh.model.occ.addPoint(x_T - feed_W/2, -L_sub/2, h)
     l1 = gmsh.model.occ.addLine(p1, p2)
     l2 = gmsh.model.occ.addLine(p2, p3)
     l3 = gmsh.model.occ.addLine(p3, p4)

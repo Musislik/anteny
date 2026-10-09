@@ -45,17 +45,15 @@ def assign_physical_groups_and_mesh(params):
             
         # Je to plocha ležící plně v z=h (Patch + Feed)
         if abs(zmin - h) < 1e-6 and abs(zmax - h) < 1e-6:
-            cx, cy, cz = com
-            in_patch = (abs(cx) <= params['patch_W']/2 + 1e-3 and abs(cy) <= params['patch_L']/2 + 1e-3)
-            in_left = (cx <= -params['patch_W']/2 + 1e-3 and cx >= -params['sub_W']/2 - 1e-3 and abs(cy) <= params['feed_W']/2 + 1e-3)
-            in_bot = (abs(cx) <= params['feed_W']/2 + 1e-3 and cy <= -params['patch_L']/2 + 1e-3 and cy >= -params['sub_L']/2 - 1e-3)
-            if in_patch or in_left or in_bot:
+            # Metal nedosahuje na pravý, horní, ani levý okraj substrátu
+            if xmax < params['sub_W']/2 - 1e-3 and ymax < params['sub_L']/2 - 1e-3 and xmin > -params['sub_W']/2 + 1e-3:
                 pec_surfs.append(tag)
             continue
             
-        # Port (YZ rovina na kraji substrátu x = -W_sub/2)
-        if abs(xmin - (-params['sub_W']/2)) < 1e-6 and abs(xmax - (-params['sub_W']/2)) < 1e-6 and abs(zmax - h) < 1e-6 and abs(zmin) < 1e-6:
-            if ymin >= -params['feed_W']/2 - 1e-3 and ymax <= params['feed_W']/2 + 1e-3:
+        # Port (XZ rovina na spodním kraji substrátu y = -L_sub/2)
+        if abs(ymin - (-params['sub_L']/2)) < 1e-6 and abs(ymax - (-params['sub_L']/2)) < 1e-6 and abs(zmax - h) < 1e-6 and abs(zmin) < 1e-6:
+            x_T = -25.4
+            if xmin >= x_T - params['feed_W']/2 - 1e-3 and xmax <= x_T + params['feed_W']/2 + 1e-3:
                 port_surfs.append(tag)
             continue
             
