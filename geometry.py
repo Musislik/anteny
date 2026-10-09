@@ -50,16 +50,16 @@ def build_model(params):
     # Levá větev (k levé hraně x = -W/2, fáze 0 deg - referenční přímá větev)
     # Vertikální část nahoru k y=0
     f_l_v = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_T - feed_W/2, h, feed_W, abs(y_T) + feed_W/2)
-    # Horizontální část doprava k patchi
-    f_l_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, -feed_W/2, h, abs(x_T) - W/2, feed_W)
+    # Horizontální část doprava k patchi - opraveno: prodlouženo o feed_W pro spolehlivý kontakt bez mezery
+    f_l_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, -feed_W/2, h, abs(x_T) - W/2 + feed_W, feed_W)
     
     # Spodní větev (k dolní hraně y = -L/2, fáze -90 deg - zpožděná o lambda_g/4)
     # Vertikální sestup z T-uzlu na zpožďovací úroveň y_delay
     f_r_v_down = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_delay - feed_W/2, h, feed_W, delay_offset + feed_W)
     # Horizontální část doprava k x=0 na úrovni y_delay
     f_r_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_delay - feed_W/2, h, abs(x_T) + feed_W, feed_W)
-    # Vertikální část nahoru z y_delay k dolní hraně patche (y = -L/2)
-    f_r_v_up = gmsh.model.occ.addRectangle(-feed_W/2, y_delay - feed_W/2, h, feed_W, abs(y_delay) - L/2)
+    # Vertikální část nahoru z y_delay k dolní hraně patche (y = -L/2) - opraveno: prodlouženo o feed_W bez mezery
+    f_r_v_up = gmsh.model.occ.addRectangle(-feed_W/2, y_delay - feed_W/2, h, feed_W, abs(y_delay) - L/2 + feed_W)
     
     gmsh.model.occ.synchronize()
     
