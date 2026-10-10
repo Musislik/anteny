@@ -10,6 +10,9 @@ services:
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data
       - ${DATA_DIR:-./data}/postpro:/workspace/postpro
+    environment:
+      - OMPI_ALLOW_RUN_AS_ROOT=1
+      - OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
     working_dir: /workspace
     profiles: ["worker"]
 
@@ -23,6 +26,8 @@ services:
       - "5000:5000"
     environment:
       - MLFLOW_TRACKING_URI=sqlite:////workspace/data/mlflow.db
+      - "MLFLOW_SERVER_ALLOWED_HOSTS=*"
+      - "MLFLOW_SERVER_CORS_ALLOWED_ORIGINS=http://testudines-vm:5000"
     volumes:
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data

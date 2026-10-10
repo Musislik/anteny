@@ -1,19 +1,13 @@
 import json
 
-# Fyzikální a konfigurační konstanty
-SCALE_MM_TO_M = 1e-3  # Měřítko délky ze sítě (mm) na metry pro Palace solver
+# Fyzikalni a konfiguracni konstanty
+SCALE_MM_TO_M = 1e-3
 DEFAULT_PORT_IMPEDANCE = 50.0
 
 def build_palace_config(params):
     port_r = params.get('port_impedance', DEFAULT_PORT_IMPEDANCE)
     
     config = {
-        "_Metadata": {
-            "patch_L": params.get('patch_L', 30.0),
-            "patch_W": params.get('patch_W', 30.0),
-            "sub_h": params.get('sub_h', 1.52),
-            "port_impedance": port_r
-        },
         "Problem": {
             "Type": "Driven",
             "Verbose": 2,
@@ -21,11 +15,7 @@ def build_palace_config(params):
         },
         "Model": {
             "Mesh": "data/mesh.msh",
-            "L0": SCALE_MM_TO_M, # Gmsh používá mm, L0 to převede na metry
-            "Refinement": {
-                "MaxLevels": 2,
-                "Tolerance": params.get('amr_threshold', 0.3)
-            }
+            "L0": SCALE_MM_TO_M
         },
         "Domains": {
             "Materials": [
@@ -66,7 +56,8 @@ def build_palace_config(params):
                 "MinFreq": params['freq_min'],
                 "MaxFreq": params['freq_max'],
                 "FreqStep": params['freq_step'],
-                "SaveStep": max(1, int(params.get('save_step', 1)))
+                "SaveStep": max(1, int(params.get('save_step', 1))),
+                "AdaptiveTol": 1e-4
             },
             "Linear": {
                 "Type": "SuperLU",

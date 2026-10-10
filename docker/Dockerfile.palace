@@ -27,6 +27,9 @@ RUN cmake .. \
 
 RUN cmake --build . -j$(nproc) && cmake --install . --prefix /opt/palace_install
 
+# Nyní bezpečně posbíráme všechny postavené knihovny, ať už jsou kdekoliv v adresáři build
+RUN mkdir -p /opt/palace_libs && find /opt/palace/build -name "*.so*" -exec cp {} /opt/palace_libs/ \;
+
 # Minimální finální runtime obraz
 FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y \
@@ -34,10 +37,14 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     libgfortran5 \
     libopenblas0-pthread \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Zkopírujeme přímo výslednou binárku místo instalace
-COPY --from=builder /opt/palace/build/bin/palace /usr/local/bin/palace
+# Zkopírujeme přímo výslednou binárku a wrapper skripty
+COPY --from=builder /opt/palace/build/bin/* /usr/local/bin/
+# Zkopírujeme všechny posbírané sdílené knihovny
+COPY --from=builder /opt/palace_libs/ /usr/local/lib/
+RUN ldconfig
 
 WORKDIR /workspace
 ENTRYPOINT ["palace"]
