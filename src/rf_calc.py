@@ -4,6 +4,7 @@ Založeno na standardních modelech (Hammerstad & Jensen, Wheeler, Bahl & Bharti
 """
 
 import numpy as np
+import warnings
 
 # Základní fyzikální a technické konstanty
 C_0_MM_GHZ = 299.792458       # Rychlost světla ve vakuu [mm * GHz]
@@ -138,35 +139,78 @@ def calc_patch_edge_impedance(patch_w, patch_l, h, eps_r):
     # Zastropujeme do fyzikálně realistického rozsahu
     return float(np.clip(r_in, 150.0, 300.0))
 
-def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0):
+def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3):
     """
-    Vypočte veškeré rozměry napájecí sítě (vedení, čtvrtvlnné transformátory, zpožďovací linku,
-    odsazení T-uzlu a doporučené rozměry substrátu).
+    Uživatelská funkce pro výpočet jednotlivých délek mikropáskového vedení l1 až l8
+    napájecí sítě cross-fed patch antény (kruhová polarizace LHCP dle napajeni.png).
+
+    Přiřazení a definice délek l1 až l8:
+    -----------------------------------
+    1. Vstupní přívod (šířka w1 = 50 Ohm, budicí port -> T-uzel):
+       - l1: Délka přívodního vedení od budicího portu na okraji substrátu (y = -L_sub/2)
+             k T-uzlu děliče (x_T, y_T).
+
+    2. Spodní referenční větev (fáze 0°, buzení pole Ey, spodní hrana flíčku):
+       - l2: Horizontální úsek z T-uzlu doprava ke skoku šířky (šířka w2 = 100 Ohm, délka Delta).
+       - l3: Horizontální úsek od skoku šířky k rohovému ohybu (šířka w3, přechod k ose flíčku x = 0).
+       - l4: Vertikální úsek od rohového ohybu nahoru k dolní hraně flíčku (šířka w3, y = -L/2).
+
+    3. Levá zpožďovací větev (fáze -90°, buzení pole Ex, levá hrana flíčku):
+       - l5: Horizontální úsek z T-uzlu doleva k rohovému ohybu (šířka w2 = 100 Ohm, vybočení jog).
+       - l6: Vertikální úsek od ohybu nahoru ke skoku šířky (šířka w2 = 100 Ohm, délka Delta + lambda_g/4).
+       - l7: Vertikální úsek od skoku šířky k hornímu rohovému ohybu (šířka w3, k úrovni y = 0).
+       - l8: Horizontální úsek od horního ohybu doprava k levé hraně flíčku (šířka w3, x = -W/2).
+
+    Vstupní parametry:
+        L (float): délka rezonančního flíčku [mm]
+        W (float): šířka rezonančního flíčku [mm]
+        h (float): výška dielektrického substrátu [mm]
+        lambda_g (float): efektivní vlnová délka mikropásku v 100 Ohm větvi [mm]
+                          (lambda_g = c_0 / (f_c * sqrt(eps_eff_w2)))
+        w1 (float): šířka hlavního 50 Ohm přívodu [mm]
+        w2 (float): šířka 100 Ohm ramen děliče výkonu [mm]
+        w3 (float): šířka propojovacího vedení k anténě [mm]
+
+    Návratová hodnota:
+        dict: {'l1': float, 'l2': float, ..., 'l8': float} (všechny rozměry v mm)
     """
-    feed_w = synth_microstrip_w(port_z0, h, eps_r)
-    eps_eff_feed = calc_microstrip_eps_eff(feed_w, h, eps_r)
-    lambda_g_4 = calc_quarter_wave_length(freq_ghz, eps_eff_feed)
-    delay_offset = lambda_g_4 / 2.0
 
-    r_edge = calc_patch_edge_impedance(patch_w, patch_l, h, eps_r)
-    z_p_trans = calc_quarter_wave_transformer_z(port_z0, r_edge)
-    w_p_trans = synth_microstrip_w(z_p_trans, h, eps_r)
-    eps_eff_p_trans = calc_microstrip_eps_eff(w_p_trans, h, eps_r)
-    lambda_p_trans_4 = calc_quarter_wave_length(freq_ghz, eps_eff_p_trans)
+    l1 = 5*h + w2/2
+    l2 = 5*h + w1/2
+    l3 = W/4 + lambda_g/8 - 5*h - w1/2
+    l4 = 5*h + w1/2 + lambda_g/8 - W/4
+    l5 = 5*h + w1/2
+    l6 = lambda_g
+    l7 = W/4 + lambda_g/8 - 5*h - w1/2
+    l8 = 5*h + w1/2 + lambda_g/8 - W/4
 
-    z_t_node = port_z0 / 2.0
-    z_t_trans = calc_quarter_wave_transformer_z(port_z0, z_t_node)
-    w_t_trans = synth_microstrip_w(z_t_trans, h, eps_r)
-    eps_eff_t_trans = calc_microstrip_eps_eff(w_t_trans, h, eps_r)
-    lambda_t_trans_4 = calc_quarter_wave_length(freq_ghz, eps_eff_t_trans)
+    lengths = {
+        'l1': float(np.round(l1, 3)),
+        'l2': float(np.round(l2, 3)),
+        'l3': float(np.round(l3, 3)),
+        'l4': float(np.round(l4, 3)),
+        'l5': float(np.round(l5, 3)),
+        'l6': float(np.round(l6, 3)),
+        'l7': float(np.round(l7, 3)),
+        'l8': float(np.round(l8, 3)),
+    }
 
-    feed_offset_x = float(np.round(lambda_p_trans_4 + 6.0, 1))
-    feed_offset_y = float(np.round(lambda_p_trans_4 + 6.0, 1))
+    # 1. Vyhodnocení chyby: nulový nebo záporný rozměr
+    for name, val in lengths.items():
+        if val <= 0.0:
+            raise ValueError(f"Chyba návrhu napájecího obvodu: Rozměr {name} nesmí být nulový ani záporný ({name} = {val:.3f} mm)!")
 
-    # Potřebný prostor v ose Y pod flíčkem: polovina flíčku + FEED_OFFSET_Y + delay_offset + lambda_t_trans_4 + vstupní rezerva
-    y_needed = (patch_l / 2.0) + feed_offset_y + delay_offset + lambda_t_trans_4 + 10.0
-    sub_l = float(np.round(2.0 * y_needed, 1))
-    sub_w = float(np.round(patch_w + 2.0 * (feed_offset_x + 15.0), 1))
+    # 2. Vyhodnocení upozornění: nedodržení minimálního odstupu 5*h + w3/2
+    limit = 5.0 * h + (w3 / 2.0)
+    if l8 < limit:
+        msg = f"Nedodržena podmínka odstupu l8: l8 ({l8:.3f} mm) < 5*h + w3/2 ({limit:.3f} mm). Hrozí parazitní vazba flíčku s napájecím vedením!"
+        warnings.warn(msg, UserWarning, stacklevel=2)
+        print(f"[VAROVÁNÍ] {msg}")
+    if l4 < limit:
+        msg = f"Nedodržena podmínka odstupu l4: l4 ({l4:.3f} mm) < 5*h + w3/2 ({limit:.3f} mm). Hrozí parazitní vazba flíčku s napájecím vedením!"
+        warnings.warn(msg, UserWarning, stacklevel=2)
+        print(f"[VAROVÁNÍ] {msg}")
+    return lengths
 
     return {
         'feed_w': float(np.round(feed_w, 2)),
