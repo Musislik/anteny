@@ -175,13 +175,13 @@ def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3):
         dict: {'l1': float, 'l2': float, ..., 'l8': float} (všechny rozměry v mm)
     """
 
-    l1 = 5*h + w2/2
+    l1 = 10*h + w2/2
     l2 = 5*h + w1/2
     l3 = W/4 + lambda_g/8 - 5*h - w1/2
     l4 = 5*h + w1/2 + lambda_g/8 - L/4
     l5 = 5*h + w1/2
     l6 = lambda_g/4
-    l7 = L/4 + lambda_g/8 - 5*h - w1/2
+    l7 = L/4 + 5*h + w1/2 - lambda_g/8
     l8 = 5*h + w1/2 + lambda_g/8 - W/4
 
     lengths = {
