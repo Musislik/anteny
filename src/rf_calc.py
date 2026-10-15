@@ -212,7 +212,7 @@ def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3):
         print(f"[VAROVÁNÍ] {msg}")
     return lengths
 
-def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0, w3=None):
+def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0, w3=None, sub_margin=None):
     """
     Vypočte rozměry napájecí sítě dle specifikace v docs/abstrakce_zadani.md:
     1. w1: Hlavní vstupní vedení (50 Ohm, přirozeně přizpůsobeno T-uzlu 100 || 100 = 50 Ohm).
@@ -261,14 +261,18 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
     feed_offset_x = float(np.round(abs(x_T) - (patch_w / 2.0), 1))
     feed_offset_y = float(np.round(abs(y_T) - (patch_l / 2.0), 1))
 
-    # Rozměry substrátu odvozené z reálného dosahu vedení l1 až l8
-    # V ose Y: od portu (y_T - l1) k horní hraně patche + rezerva
-    y_needed = max(abs(y_T - l1), (patch_l / 2.0) + 15.0)
-    sub_l = float(np.round(2.0 * (y_needed + 5.0), 1))
+    # Fyzikální rezerva dielektrika substrátu za kovem (standardní odstup 5*h pro doznění rozptylových polí)
+    if sub_margin is None:
+        sub_margin = 5.0 * h
 
-    # V ose X: levý ohyb je na x_T - l5, pravý okraj flíčku na +W/2
-    x_needed = max(abs(x_T - l5), (patch_w / 2.0))
-    sub_w = float(np.round(2.0 * (x_needed + 15.0), 1))
+    # Rozměry substrátu odvozené z reálného dosahu vedení l1 až l8 a šířek w1, w2, w3:
+    # V ose Y: od portu (y_T - l1) k horní hraně patche (+L/2) s rezervou sub_margin
+    y_needed = max(abs(y_T - l1), (patch_l / 2.0) + sub_margin)
+    sub_l = float(np.round(2.0 * y_needed, 1))
+
+    # V ose X: od levého okraje vedení (x_T - l5 - w2/2) k pravé hraně patche (+W/2) s rezervou sub_margin
+    x_needed = max(abs(x_T - l5) + (w2 / 2.0), (patch_w / 2.0)) + sub_margin
+    sub_w = float(np.round(2.0 * x_needed, 1))
 
     res = {
         'w1': float(np.round(w1, 2)),

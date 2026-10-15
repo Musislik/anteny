@@ -1,11 +1,6 @@
 import gmsh
 import numpy as np
 
-# Technické konstanty geometrie
-FEED_OFFSET_MARGIN = 6.0  # Přídavná rezerva pro připojovací 50 Ohm vedení k transformátorům [mm]
-FEED_OFFSET_X = 24.5      # Základní orientační odsazení T-uzlu [mm]
-FEED_OFFSET_Y = 24.5      # Základní orientační odsazení T-uzlu [mm]
-
 def build_model(params):
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 1)
