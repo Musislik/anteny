@@ -72,6 +72,7 @@ def main(custom_params=None):
         'freq_min': freq_min,
         'freq_max': freq_max,
         'freq_step': freq_step,
+        'amr_max_its': 2,
         'amr_threshold': 0.3,
         'port_impedance': PORT_Z0,
         'design_freq_ghz': DESIGN_FREQ_GHZ

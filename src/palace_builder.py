@@ -6,17 +6,26 @@ DEFAULT_PORT_IMPEDANCE = 50.0
 
 def build_palace_config(params):
     port_r = params.get('port_impedance', DEFAULT_PORT_IMPEDANCE)
+    amr_max_its = int(params.get('amr_max_its', 2))
     
+    model_config = {
+        "Mesh": "data/mesh.msh",
+        "L0": SCALE_MM_TO_M
+    }
+    if amr_max_its > 0:
+        model_config["Refinement"] = {
+            "MaxIts": amr_max_its,
+            "SaveAdaptMesh": True,
+            "SaveAdaptIterations": True
+        }
+
     config = {
         "Problem": {
             "Type": "Driven",
             "Verbose": 2,
             "Output": "data/postpro"
         },
-        "Model": {
-            "Mesh": "data/mesh.msh",
-            "L0": SCALE_MM_TO_M
-        },
+        "Model": model_config,
         "Domains": {
             "Materials": [
                 {
