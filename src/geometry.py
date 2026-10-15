@@ -12,7 +12,6 @@ def build_model(params):
     L_sub = params.get('sub_L', params.get('sub_l', 100.0))
     W_sub = params.get('sub_W', params.get('sub_w', 100.0))
     margin = params['air_margin']
-    feed_W = params.get('feed_W', params.get('w1', 2.98))
     
     # 1. Objemová tělesa
     # Substrát
@@ -31,27 +30,10 @@ def build_model(params):
     # 1. w1: 50 Ohm hlavní přívod od portu k T-uzlu (přirozené přizpůsobení, bez transformátoru)
     # 2. w2: 100 Ohm větve fázovacího děliče (referenční spodní větev Ey, zpožďovací levá větev Ex s délkou + lambda_g/4)
     # 3. w3: vodič k samotné anténě (stupeň volnosti, w3 >= w2)
-    from rf_calc import (
-        calc_microstrip_eps_eff,
-        calc_quarter_wave_length,
-        synth_microstrip_w,
-        DESIGN_FREQ_GHZ,
-        PORT_Z0,
-    )
-    eps_r = params['eps_r']
-    f_design = params.get('design_freq_ghz', DESIGN_FREQ_GHZ)
-    port_z0 = params.get('port_impedance', PORT_Z0)
 
-    w1 = params.get('w1', params.get('feed_W', synth_microstrip_w(port_z0, h, eps_r)))
-    w2 = params.get('w2', synth_microstrip_w(2.0 * port_z0, h, eps_r))
-    w3 = params.get('w3', w2)
-    w3 = max(float(w3), float(w2))
-
-    eps_eff_w2 = calc_microstrip_eps_eff(w2, h, eps_r)
-    lambda_g2_4 = calc_quarter_wave_length(f_design, eps_eff_w2)
-
-    eps_eff_w3 = calc_microstrip_eps_eff(w3, h, eps_r)
-    lambda_g3_4 = calc_quarter_wave_length(f_design, eps_eff_w3)
+    w1 = params.get('w1')
+    w2 = params.get('w2')
+    w3 = params.get('w3')
 
     # Získání délek vedení l1 až l8 (musí být definovány v params)
     l1 = float(params['l1'])
@@ -65,9 +47,9 @@ def build_model(params):
 
     # Poloha T-uzlu (x_T, y_T) odvozená z délek l2, l3, l4
     # Spodní větev vede z T-uzlu doprava na osu flíčku x = 0 (l2 + l3 = |x_T|)
-    x_T = float(params.get('feed_x_T', -(l2 + l3)))
+    x_T = float(params.get('feed_x_T'))
     # Vertikální úsek l4 vede od y_T k dolní hraně flíčku y = -L/2
-    y_T = float(params.get('feed_y_T', -L/2 - l4))
+    y_T = float(params.get('feed_y_T'))
 
     params['port_x'] = x_T
     params['feed_x_T'] = x_T
