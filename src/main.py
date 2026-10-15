@@ -76,6 +76,8 @@ def main(custom_params=None):
         'port_impedance': PORT_Z0,
         'design_freq_ghz': DESIGN_FREQ_GHZ
     }
+    # Zahrnutí všech parametrů napájecí sítě (w1, w2, w3, délky l1-l8)
+    params.update(feed_net)
     
     run_name = None
     if custom_params:

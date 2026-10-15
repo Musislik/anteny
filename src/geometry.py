@@ -14,10 +14,10 @@ def build_model(params):
     L = params['patch_L']
     W = params['patch_W']
     h = params['sub_h']
-    L_sub = params['sub_L']
-    W_sub = params['sub_W']
+    L_sub = params.get('sub_L', params.get('sub_l', 100.0))
+    W_sub = params.get('sub_W', params.get('sub_w', 100.0))
     margin = params['air_margin']
-    feed_W = params['feed_W']
+    feed_W = params.get('feed_W', params.get('w1', 2.98))
     
     # 1. Objemová tělesa
     # Substrát
@@ -31,107 +31,92 @@ def build_model(params):
     # Patch
     patch_tag = gmsh.model.occ.addRectangle(-W/2, -L/2, h, W, L)
     
-    # Napájecí dělič dle obrázku (cross-fed patch)
-    # Výpočet efektivní permitivity a čtvrtvlnné délky z parametrů mikropásku při návrhové frekvenci fc
+    # Napájecí dělič dle specifikace v docs/abstrakce_zadani.md (Cross-fed patch dle napajeni.png)
+    # Tři šířky spojů:
+    # 1. w1: 50 Ohm hlavní přívod od portu k T-uzlu (přirozené přizpůsobení, bez transformátoru)
+    # 2. w2: 100 Ohm větve fázovacího děliče (referenční spodní větev Ey, zpožďovací levá větev Ex s délkou + lambda_g/4)
+    # 3. w3: vodič k samotné anténě (stupeň volnosti, w3 >= w2)
     from rf_calc import (
         calc_microstrip_eps_eff,
         calc_quarter_wave_length,
-        calc_quarter_wave_transformer_z,
         synth_microstrip_w,
-        calc_patch_edge_impedance,
         DESIGN_FREQ_GHZ,
         PORT_Z0,
     )
     eps_r = params['eps_r']
     f_design = params.get('design_freq_ghz', DESIGN_FREQ_GHZ)
     port_z0 = params.get('port_impedance', PORT_Z0)
-    eps_eff_feed = calc_microstrip_eps_eff(feed_W, h, eps_r)
-    lambda_g_4 = calc_quarter_wave_length(f_design, eps_eff_feed)
-    
-    # 1. Návrh impedančních transformátorů dle napajeni.png
-    # Transformátor hlavního přívodu (T-junction matching: 50 Ohm -> 25 Ohm)
-    z_t_node = port_z0 / 2.0  # dvě paralelní 50 Ohm větve
-    z_t_trans = calc_quarter_wave_transformer_z(port_z0, z_t_node)
-    w_t_trans = synth_microstrip_w(z_t_trans, h, eps_r)
-    eps_eff_t_trans = calc_microstrip_eps_eff(w_t_trans, h, eps_r)
-    lambda_t_trans_4 = calc_quarter_wave_length(f_design, eps_eff_t_trans)
 
-    # Transformátory na vstupech flíčku (Patch edge matching: 50 Ohm -> R_edge)
-    r_edge = calc_patch_edge_impedance(W, L, h, eps_r)
-    z_p_trans = calc_quarter_wave_transformer_z(port_z0, r_edge)
-    w_p_trans = synth_microstrip_w(z_p_trans, h, eps_r)
-    eps_eff_p_trans = calc_microstrip_eps_eff(w_p_trans, h, eps_r)
-    lambda_p_trans_4 = calc_quarter_wave_length(f_design, eps_eff_p_trans)
+    w1 = params.get('w1', params.get('feed_W', synth_microstrip_w(port_z0, h, eps_r)))
+    w2 = params.get('w2', synth_microstrip_w(2.0 * port_z0, h, eps_r))
+    w3 = params.get('w3', w2)
+    w3 = max(float(w3), float(w2))
 
-    # Port a poloha T-uzlu (odvozeno dynamicky z délek transformátorů)
-    default_feed_offset = float(np.round(lambda_p_trans_4 + FEED_OFFSET_MARGIN, 1))
-    feed_offset_x = params.get('feed_offset_x', default_feed_offset)
-    feed_offset_y = params.get('feed_offset_y', default_feed_offset)
-    x_T = params.get('feed_x_T', -W/2 - feed_offset_x)
-    y_T = params.get('feed_y_T', -L/2 - feed_offset_y)
+    eps_eff_w2 = calc_microstrip_eps_eff(w2, h, eps_r)
+    lambda_g2_4 = calc_quarter_wave_length(f_design, eps_eff_w2)
+
+    eps_eff_w3 = calc_microstrip_eps_eff(w3, h, eps_r)
+    lambda_g3_4 = calc_quarter_wave_length(f_design, eps_eff_w3)
+
+    # Získání délek vedení l1 až l8 (musí být definovány v params)
+    l1 = float(params['l1'])
+    l2 = float(params['l2'])
+    l3 = float(params['l3'])
+    l4 = float(params['l4'])
+    l5 = float(params['l5'])
+    l6 = float(params['l6'])
+    l7 = float(params['l7'])
+    l8 = float(params['l8'])
+
+    # Poloha T-uzlu (x_T, y_T) odvozená z délek l2, l3, l4
+    # Spodní větev vede z T-uzlu doprava na osu flíčku x = 0 (l2 + l3 = |x_T|)
+    x_T = float(params.get('feed_x_T', -(l2 + l3)))
+    # Vertikální úsek l4 vede od y_T k dolní hraně flíčku y = -L/2
+    y_T = float(params.get('feed_y_T', -L/2 - l4))
+
     params['port_x'] = x_T
     params['feed_x_T'] = x_T
     params['feed_y_T'] = y_T
-    
-    # Pro LHCP dle IEEE standardu musí spodní větev (Ey) mít fázové zpoždění -90 deg
-    # oproti levé větvi (Ex). Celkové prodloužení dráhy je 2 * delay_offset = lambda_g_4 (fázový posun 90 deg).
-    delay_offset = lambda_g_4 / 2.0
-    y_delay = y_T - delay_offset
+    params['w1'] = w1
+    params['w2'] = w2
+    params['w3'] = w3
 
     metal_surfs = [patch_tag]
 
-    # Hlavní přívod (od portu nahoru k T-uzlu): 50 Ohm úsek + čtvrtvlnný transformátor Z_trans ~ 35.35 Ohm
-    y_trans_start = y_T - lambda_t_trans_4
-    if y_trans_start > -L_sub/2:
-        # Vstupní 50 Ohm vedení od portu
-        f_port = gmsh.model.occ.addRectangle(x_T - feed_W/2, -L_sub/2, h, feed_W, y_trans_start - (-L_sub/2) + feed_W/2)
-        # 35.35 Ohm čtvrtvlnný transformátor k T-uzlu
-        f_trans = gmsh.model.occ.addRectangle(x_T - w_t_trans/2, y_trans_start, h, w_t_trans, lambda_t_trans_4 + feed_W/2)
-        metal_surfs.extend([f_port, f_trans])
-    else:
-        # Pokud je substrát kompaktní, přechází přímo transformátor
-        f_trans = gmsh.model.occ.addRectangle(x_T - w_t_trans/2, -L_sub/2, h, w_t_trans, L_sub/2 + y_T + feed_W/2)
-        metal_surfs.append(f_trans)
-    
-    # Levá větev (k levé hraně x = -W/2, fáze 0 deg)
-    # Vertikální část nahoru k y=0
-    f_l_v = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_T - feed_W/2, h, feed_W, abs(y_T) + feed_W/2)
-    metal_surfs.append(f_l_v)
-    # Přizpůsobovací transformátor k flíčku (šířka w_p_trans ~ 0.7 mm, délka lambda_p_trans_4)
-    x_p_trans_l = -W/2 - min(lambda_p_trans_4, abs(x_T - (-W/2)))
-    if x_p_trans_l > x_T:
-        f_l_h50 = gmsh.model.occ.addRectangle(x_T - feed_W/2, -feed_W/2, h, x_p_trans_l - x_T + feed_W/2, feed_W)
-        f_l_trans = gmsh.model.occ.addRectangle(x_p_trans_l, -w_p_trans/2, h, abs(x_p_trans_l) - W/2 + feed_W/2, w_p_trans)
-        metal_surfs.extend([f_l_h50, f_l_trans])
-    else:
-        f_l_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, -feed_W/2, h, abs(x_T) - W/2 + feed_W, feed_W)
-        metal_surfs.append(f_l_h)
-    
-    # Spodní větev (k dolní hraně y = -L/2, fáze -90 deg - zpožděná o lambda_g/4)
-    # Vertikální sestup z T-uzlu na zpožďovací úroveň y_delay
-    f_r_v_down = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_delay - feed_W/2, h, feed_W, delay_offset + feed_W)
-    # Horizontální část doprava k x=0 na úrovni y_delay
-    f_r_h = gmsh.model.occ.addRectangle(x_T - feed_W/2, y_delay - feed_W/2, h, abs(x_T) + feed_W, feed_W)
-    metal_surfs.extend([f_r_v_down, f_r_h])
-    # Vertikální výstup k dolní hraně patche s přizpůsobovacím transformátorem
-    y_p_trans_b = -L/2 - min(lambda_p_trans_4, abs(y_delay - (-L/2)))
-    if y_p_trans_b > y_delay:
-        f_r_v50 = gmsh.model.occ.addRectangle(-feed_W/2, y_delay - feed_W/2, h, feed_W, y_p_trans_b - y_delay + feed_W/2)
-        f_r_trans = gmsh.model.occ.addRectangle(-w_p_trans/2, y_p_trans_b, h, w_p_trans, abs(y_p_trans_b) - L/2 + feed_W/2)
-        metal_surfs.extend([f_r_v50, f_r_trans])
-    else:
-        f_r_v_up = gmsh.model.occ.addRectangle(-feed_W/2, y_delay - feed_W/2, h, feed_W, abs(y_delay) - L/2 + feed_W)
-        metal_surfs.append(f_r_v_up)
-    
+    # 1. Hlavní přívod (50 Ohm, šířka w1): úsek l1 od vstupního portu k T-uzlu
+    y_port = -L_sub / 2.0
+    f_main = gmsh.model.occ.addRectangle(x_T - w1/2, y_port, h, w1, abs(y_T - y_port) + w2/2)
+    metal_surfs.append(f_main)
+
+    # 2. Spodní referenční větev (fáze 0°, pole Ey):
+    # a) Segment l2 (šířka w2, délka l2): z T-uzlu doprava ke skoku w2 -> w3
+    f_b_l2 = gmsh.model.occ.addRectangle(x_T - w2/2, y_T - w2/2, h, l2 + w2/2, w2)
+    # b) Segment l3 (šířka w3, délka l3): od skoku k ohybu na ose x = 0
+    f_b_l3 = gmsh.model.occ.addRectangle(x_T + l2, y_T - w3/2, h, l3 + w3/2, w3)
+    # c) Segment l4 (šířka w3, délka l4): od ohybu nahoru k dolní hraně flíčku (y = -L/2)
+    f_b_l4 = gmsh.model.occ.addRectangle(-w3/2, y_T - w3/2, h, w3, l4 + w3/2 + 0.1)
+    metal_surfs.extend([f_b_l2, f_b_l3, f_b_l4])
+
+    # 3. Levá zpožďovací větev (fáze -90°, pole Ex, zpoždění o lambda_g/4):
+    # a) Segment l5 (šířka w2, délka l5): z T-uzlu doleva k rohovému ohybu (x = x_T - l5)
+    f_l_l5 = gmsh.model.occ.addRectangle(x_T - l5 - w2/2, y_T - w2/2, h, l5 + w2/2, w2)
+    # b) Segment l6 (šířka w2, délka l6): od ohybu nahoru ke skoku na w3 (y = y_T + l6)
+    f_l_l6 = gmsh.model.occ.addRectangle(x_T - l5 - w2/2, y_T - w2/2, h, w2, l6 + w2/2)
+    # c) Segment l7 (šířka w3, délka l7): od skoku nahoru k hornímu ohybu (y = 0)
+    f_l_l7 = gmsh.model.occ.addRectangle(x_T - l5 - w3/2, y_T + l6, h, w3, l7 + w3/2)
+    # d) Segment l8 (šířka w3, délka l8): od horního ohybu doprava k levé hraně flíčku (x = -W/2)
+    f_l_l8 = gmsh.model.occ.addRectangle(x_T - l5 - w3/2, -w3/2, h, l8 + w3/2 + 0.1, w3)
+    metal_surfs.extend([f_l_l5, f_l_l6, f_l_l7, f_l_l8])
+
     gmsh.model.occ.synchronize()
-    
+
     # Vytvoření portové plochy (XZ rovina na kraji substrátu y = -L_sub/2)
-    w_port_entry = feed_W if y_trans_start > -L_sub/2 else w_t_trans
+    w_port_entry = w1
     params['port_w'] = w_port_entry
-    p1 = gmsh.model.occ.addPoint(x_T - w_port_entry/2, -L_sub/2, 0)
-    p2 = gmsh.model.occ.addPoint(x_T + w_port_entry/2, -L_sub/2, 0)
-    p3 = gmsh.model.occ.addPoint(x_T + w_port_entry/2, -L_sub/2, h)
-    p4 = gmsh.model.occ.addPoint(x_T - w_port_entry/2, -L_sub/2, h)
+    p1 = gmsh.model.occ.addPoint(x_T - w_port_entry/2, y_port, 0)
+    p2 = gmsh.model.occ.addPoint(x_T + w_port_entry/2, y_port, 0)
+    p3 = gmsh.model.occ.addPoint(x_T + w_port_entry/2, y_port, h)
+    p4 = gmsh.model.occ.addPoint(x_T - w_port_entry/2, y_port, h)
     l1 = gmsh.model.occ.addLine(p1, p2)
     l2 = gmsh.model.occ.addLine(p2, p3)
     l3 = gmsh.model.occ.addLine(p3, p4)

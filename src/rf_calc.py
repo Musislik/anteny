@@ -212,16 +212,93 @@ def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3):
         print(f"[VAROVÁNÍ] {msg}")
     return lengths
 
-    return {
-        'feed_w': float(np.round(feed_w, 2)),
-        'lambda_g_4': lambda_g_4,
-        'delay_offset': delay_offset,
-        'w_t_trans': float(np.round(w_t_trans, 2)),
-        'lambda_t_trans_4': lambda_t_trans_4,
-        'w_p_trans': float(np.round(w_p_trans, 2)),
-        'lambda_p_trans_4': lambda_p_trans_4,
+def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0, w3=None):
+    """
+    Vypočte rozměry napájecí sítě dle specifikace v docs/abstrakce_zadani.md:
+    1. w1: Hlavní vstupní vedení (50 Ohm, přirozeně přizpůsobeno T-uzlu 100 || 100 = 50 Ohm).
+    2. w2: Větve děliče výkonu (100 Ohm), ze kterých se počítá fázovací zpoždění lambda_g/4.
+    3. w3: Vodič k samotné anténě (optimalizační stupeň volnosti, w3 >= w2).
+    """
+    # 1. Hlavní přívodní vedení (w1, 50 Ohm)
+    w1 = synth_microstrip_w(port_z0, h, eps_r)
+    eps_eff_w1 = calc_microstrip_eps_eff(w1, h, eps_r)
+
+    # 2. Větve děliče výkonu (w2, 100 Ohm)
+    # Z2 = 2 * Z1 = 100 Ohm -> Z_in,T = 100 || 100 = 50 Ohm (přirozené přizpůsobení, bez transformátoru)
+    z_branch = 2.0 * port_z0
+    w2 = synth_microstrip_w(z_branch, h, eps_r)
+    eps_eff_w2 = calc_microstrip_eps_eff(w2, h, eps_r)
+    lambda_g2_4 = calc_quarter_wave_length(freq_ghz, eps_eff_w2)
+    lambda_g2 = 4.0 * lambda_g2_4
+
+    # 3. Vodič k anténě (w3, stupeň volnosti, mez: w3 >= w2)
+    if w3 is None:
+        w3 = w2
+    else:
+        w3 = max(float(w3), float(w2))
+    eps_eff_w3 = calc_microstrip_eps_eff(w3, h, eps_r)
+    lambda_g3_4 = calc_quarter_wave_length(freq_ghz, eps_eff_w3)
+
+    # Vlnová délka rovinné vlny v dielektriku (TEM)
+    lambda_0 = C_0_MM_GHZ / freq_ghz
+    lambda_sub = lambda_0 / np.sqrt(eps_r)
+
+    # Výpočet délek vedení l1 až l8 uživatelskou funkcí s efektivní vlnovou délkou mikropásku lambda_g2
+    feed_lengths = calc_feed_lengths(L=patch_l, W=patch_w, h=h, lambda_g=lambda_g2, w1=w1, w2=w2, w3=w3)
+
+    l1 = float(feed_lengths['l1'])
+    l2 = float(feed_lengths['l2'])
+    l3 = float(feed_lengths['l3'])
+    l4 = float(feed_lengths['l4'])
+    l5 = float(feed_lengths['l5'])
+
+    # Poloha T-uzlu odvozená přímo z délek spodní větve:
+    # Dolní ohyb je na x=0, y=y_T. Spodní větev vede od T-uzlu (x_T, y_T) doprava: x_T + l2 + l3 = 0 -> x_T = -(l2 + l3)
+    # Vertikální úsek l4 vede od y_T k dolní hraně flíčku -L/2: y_T = -L/2 - l4
+    x_T = -(l2 + l3)
+    y_T = -(patch_l / 2.0) - l4
+
+    feed_offset_x = float(np.round(abs(x_T) - (patch_w / 2.0), 1))
+    feed_offset_y = float(np.round(abs(y_T) - (patch_l / 2.0), 1))
+
+    # Rozměry substrátu odvozené z reálného dosahu vedení l1 až l8
+    # V ose Y: od portu (y_T - l1) k horní hraně patche + rezerva
+    y_needed = max(abs(y_T - l1), (patch_l / 2.0) + 15.0)
+    sub_l = float(np.round(2.0 * (y_needed + 5.0), 1))
+
+    # V ose X: levý ohyb je na x_T - l5, pravý okraj flíčku na +W/2
+    x_needed = max(abs(x_T - l5), (patch_w / 2.0))
+    sub_w = float(np.round(2.0 * (x_needed + 15.0), 1))
+
+    res = {
+        'w1': float(np.round(w1, 2)),
+        'w2': float(np.round(w2, 2)),
+        'w3': float(np.round(w3, 2)),
+        'feed_w': float(np.round(w1, 2)),          # Zpětná kompatibilita pro port
+        'eps_eff_w1': float(np.round(eps_eff_w1, 3)),
+        'eps_eff_w2': float(np.round(eps_eff_w2, 3)),
+        'eps_eff_w3': float(np.round(eps_eff_w3, 3)),
+        'lambda_g': float(np.round(lambda_g2, 3)),
+        'lambda_g2_4': float(np.round(lambda_g2_4, 3)),
+        'lambda_g3_4': float(np.round(lambda_g3_4, 3)),
+        'lambda_g_4': float(np.round(lambda_g2_4, 3)),  # Zpětná kompatibilita
+        'lambda_sub': float(np.round(lambda_sub, 3)),
+        'feed_x_T': float(np.round(x_T, 3)),
+        'feed_y_T': float(np.round(y_T, 3)),
         'feed_offset_x': feed_offset_x,
         'feed_offset_y': feed_offset_y,
         'sub_l': sub_l,
         'sub_w': sub_w,
+        'sub_L': sub_l,
+        'sub_W': sub_w,
+        'feed_lengths': feed_lengths,
     }
+    # Pro přímý přístup k l1 až l8 v params
+    if isinstance(feed_lengths, dict):
+        res.update(feed_lengths)
+    elif isinstance(feed_lengths, (list, tuple)):
+        for idx, val in enumerate(feed_lengths, start=1):
+            res[f'l{idx}'] = val
+
+    return res
+
