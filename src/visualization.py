@@ -51,7 +51,6 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
     w1 = params.get('w1', params.get('feed_W', synth_microstrip_w(port_z0, h, eps_r)))
     w2 = params.get('w2', synth_microstrip_w(2.0 * port_z0, h, eps_r))
     w3 = params.get('w3', w2)
-    w3 = max(float(w3), float(w2))
 
     eps_eff_w2 = calc_microstrip_eps_eff(w2, h, eps_r)
     lambda_g2_4 = calc_quarter_wave_length(f_design, eps_eff_w2)

@@ -217,7 +217,7 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
     Vypočte rozměry napájecí sítě dle specifikace v docs/abstrakce_zadani.md:
     1. w1: Hlavní vstupní vedení (50 Ohm, přirozeně přizpůsobeno T-uzlu 100 || 100 = 50 Ohm).
     2. w2: Větve děliče výkonu (100 Ohm), ze kterých se počítá fázovací zpoždění lambda_g/4.
-    3. w3: Vodič k samotné anténě (optimalizační stupeň volnosti, w3 >= w2).
+    3. w3: Vodič k samotné anténě (optimalizační stupeň volnosti, w3 <= w2).
     """
     # 1. Hlavní přívodní vedení (w1, 50 Ohm)
     w1 = synth_microstrip_w(port_z0, h, eps_r)
@@ -231,11 +231,10 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
     lambda_g2_4 = calc_quarter_wave_length(freq_ghz, eps_eff_w2)
     lambda_g2 = 4.0 * lambda_g2_4
 
-    # 3. Vodič k anténě (w3, stupeň volnosti, mez: w3 >= w2)
+    # 3. Vodič k anténě (w3, stupeň volnosti, mez: w3 <= w2)
     if w3 is None:
         w3 = w2
-    else:
-        w3 = max(float(w3), float(w2))
+
     eps_eff_w3 = calc_microstrip_eps_eff(w3, h, eps_r)
     lambda_g3_4 = calc_quarter_wave_length(freq_ghz, eps_eff_w3)
 

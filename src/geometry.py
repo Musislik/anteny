@@ -29,7 +29,7 @@ def build_model(params):
     # Tři šířky spojů:
     # 1. w1: 50 Ohm hlavní přívod od portu k T-uzlu (přirozené přizpůsobení, bez transformátoru)
     # 2. w2: 100 Ohm větve fázovacího děliče (referenční spodní větev Ey, zpožďovací levá větev Ex s délkou + lambda_g/4)
-    # 3. w3: vodič k samotné anténě (stupeň volnosti, w3 >= w2)
+    # 3. w3: vodič k samotné anténě (stupeň volnosti, w3 <= w2)
 
     w1 = params.get('w1')
     w2 = params.get('w2')

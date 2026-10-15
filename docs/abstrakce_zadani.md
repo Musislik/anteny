@@ -40,8 +40,8 @@
      - Úsek vedení propojující výstupy fázovacího děliče s jednotlivými vstupními branami zářiče (flíčku).
      - Šířka w₃ představuje **stupeň volnosti** v návrhu – lze s ní hýbat a ladit ji pro optimalizaci přizpůsobení a minimalizaci činitele odrazu S₁₁.
      - **Meze šířky spoje:**
-       - *Minimální mez:* Musí být minimálně stejná jako pro vedení děliče (w₃ ≥ w₂, tj. w₃ ≥ 0.69 mm).
-       - *Maximální mez:* Není explicitně určena (geometricky je vymezena hranami flíčku a požadavkem na eliminaci parazitních vazeb).
+       - *Maximální mez:* Může být maximálně stejná jako pro vedení děliče (w₃ ≤ w₂, tj. w₃ ≤ 0.69 mm).
+       - *Minimální mez:* Dána technologickými limity výroby DPS (typicky min. šířka spoje cca 0.15 až 0.2 mm).
 - **Poznámka pro další výzkum (zatím neimplementovat!) – Ovlivňování impedance antény zasunutím napaječe (Inset feed):**
   - Vstupní impedance na vnější hraně mikropáskového flíčku bývá vysoká (R_edge ≈ 150 až 300 Ω).
   - Impedanci antény bude možné ovlivňovat a přizpůsobovat **zasunutím napaječe** (zářezem / inset feedem) o hloubku y₀ směrem do středu flíčku, kde impedance klesá podle vztahu:
