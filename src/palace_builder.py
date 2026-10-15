@@ -33,12 +33,18 @@ def build_palace_config(params):
             ]
         },
         "Boundaries": {
+            "PostProcessing": [
+                {
+                    "Attributes": [5],
+                    "NSample": 64800
+                }
+            ],
             "PEC": {
                 "Attributes": [3]  # 3: PEC
             },
             "Absorbing": {
                 "Attributes": [5],  # 5: Absorbing outer boundary
-                "Order": 1
+                "Order": 2
             },
             "LumpedPort": [
                 {
@@ -51,7 +57,7 @@ def build_palace_config(params):
             ]
         },
         "Solver": {
-            "Order": 1,
+            "Order": 2,
             "Driven": {
                 "MinFreq": params['freq_min'],
                 "MaxFreq": params['freq_max'],
