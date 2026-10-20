@@ -24,7 +24,9 @@ def setup_scene():
 
     # Cesta k simulovanemu VTU souboru
     current_dir = os.getcwd()
-    driven_dir = os.path.join(current_dir, "postpro", "paraview", "driven")
+    driven_dir = os.path.join(current_dir, "data", "postpro", "paraview", "driven")
+    if not os.path.exists(driven_dir) or not os.listdir(driven_dir):
+        driven_dir = os.path.join(current_dir, "postpro", "paraview", "driven")
     vtu_file = os.path.join(driven_dir, "driven_000000001.vtu")
     if not os.path.exists(vtu_file) and os.path.isdir(driven_dir):
         vtu_candidates = [f for f in os.listdir(driven_dir) if f.endswith(".vtu")]
