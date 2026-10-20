@@ -1,4 +1,5 @@
 import os
+import shutil
 import numpy as np
 import skrf as rf
 import matplotlib.pyplot as plt
@@ -19,7 +20,25 @@ from rf_calc import (
     PORT_Z0
 )
 
-def main(custom_params=None, skip_simulation=False):
+def clean_previous_outputs():
+    print("--- 0. Čištění předchozích výstupů simulace ---")
+    dirs_to_clean = ["data/postpro", "postpro"]
+    for d in dirs_to_clean:
+        if os.path.exists(d):
+            for item in os.listdir(d):
+                p = os.path.join(d, item)
+                try:
+                    if os.path.isdir(p):
+                        shutil.rmtree(p)
+                    elif os.path.isfile(p):
+                        os.remove(p)
+                except Exception as e:
+                    print(f"Upozornění při mazání {p}: {e}")
+    print("Složky s předchozími výsledky byly vyčištěny.")
+
+def main(custom_params=None, skip_simulation=False, clean=False):
+    if clean:
+        clean_previous_outputs()
     # 1. Analytická definice parametrů bez magických čísel
     sub_h = 1.52
     eps_r = 4.3
@@ -147,6 +166,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LHCP Patch Antenna Simulation & CAD Model Generation")
     parser.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true",
                         help="Generovat pouze model, CAD STEP soubor a síť lokálně bez spouštění simulace v Dockeru")
+    parser.add_argument("--clean", dest="clean", action="store_true",
+                        help="Smazat předchozí výstupní data (postpro) před spuštěním nového výpočtu")
     args = parser.parse_args()
-    main(skip_simulation=args.skip_simulation)
+    main(skip_simulation=args.skip_simulation, clean=args.clean)
 
