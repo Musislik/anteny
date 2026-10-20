@@ -26,6 +26,8 @@ services:
       - "5000:5000"
     environment:
       - MLFLOW_TRACKING_URI=sqlite:////workspace/data/mlflow.db
+      - CONF_DIR=${CONF_DIR:-.}
+      - DATA_DIR=${DATA_DIR:-./data}
       - "MLFLOW_SERVER_ALLOWED_HOSTS=*"
       - "MLFLOW_SERVER_CORS_ALLOWED_ORIGINS=http://testudines-vm:5000"
     volumes:
@@ -42,6 +44,8 @@ services:
       dockerfile: docker/Dockerfile.pipeline
     environment:
       - MLFLOW_TRACKING_URI=sqlite:////workspace/data/mlflow.db
+      - CONF_DIR=${CONF_DIR:-.}
+      - DATA_DIR=${DATA_DIR:-./data}
     volumes:
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data

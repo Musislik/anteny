@@ -42,12 +42,12 @@ def build_palace_config(params):
             ]
         },
         "Boundaries": {
-            "PostProcessing": [
-                {
+            "Postprocessing": {
+                "FarField": {
                     "Attributes": [5],
                     "NSample": 64800
                 }
-            ],
+            },
             "PEC": {
                 "Attributes": [3]  # 3: PEC
             },

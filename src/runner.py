@@ -14,7 +14,7 @@ def run_palace():
     if not (docker_compose_bin or docker_bin):
         raise RuntimeError("Docker / Docker Compose nebyl nalezen! Simulace může běžet pouze přes Docker.")
         
-    cmd = [docker_compose_bin, "run", "--build", "--rm", "palace"] if docker_compose_bin else [docker_bin, "compose", "run", "--build", "--rm", "palace"]
+    cmd = [docker_compose_bin, "run", "--rm", "palace"] if docker_compose_bin else [docker_bin, "compose", "run", "--rm", "palace"]
     
     print(f"Spouštím solver v Dockeru: {' '.join(cmd)}")
     # Odebráno capture_output=True -> logy z Palace se teď budou vypisovat živě do terminálu!
