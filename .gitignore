@@ -40,3 +40,4 @@ mlruns/
 mlflow.db
 mlflow.db-journal
 data/
+.env
