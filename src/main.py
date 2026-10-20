@@ -19,7 +19,7 @@ from rf_calc import (
     PORT_Z0
 )
 
-def main(custom_params=None):
+def main(custom_params=None, skip_simulation=False):
     # 1. Analytická definice parametrů bez magických čísel
     sub_h = 1.52
     eps_r = 4.3
@@ -103,8 +103,16 @@ def main(custom_params=None):
     print("--- 3. Vytváření konfigurace pro Palace ---")
     build_palace_config(params)
     
+    if skip_simulation:
+        print("--- Hotovo: Geometrie, STEP CAD model, náhled a síť byly vygenerovány lokálně bez simulace v Dockeru. ---")
+        return
+
     print("--- 4. Spuštění fyzikální simulace (Palace) ---")
-    run_palace()
+    try:
+        run_palace()
+    except Exception as e:
+        print(f"Upozornění: Simulace Palace nebyla spuštěna: {e}")
+        return
     
     print("--- 5. Zpracování výsledků ---")
     # Palace ukládá S-parametry jako Touchstone soubor do definovaného výstupního adresáře
@@ -135,4 +143,10 @@ def main(custom_params=None):
         print(f"Výstupní soubor {s11_file} nebyl nalezen. Simulace zřejmě selhala nebo byla zapsána jinam.")
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="LHCP Patch Antenna Simulation & CAD Model Generation")
+    parser.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true",
+                        help="Generovat pouze model, CAD STEP soubor a síť lokálně bez spouštění simulace v Dockeru")
+    args = parser.parse_args()
+    main(skip_simulation=args.skip_simulation)
+
