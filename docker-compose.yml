@@ -3,9 +3,11 @@ version: '3.8'
 services:
   # 1. Samotný solver (Palace) - spouští se pouze jako jednorázová úloha (run)
   palace:
+    image: anteny-palace:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.palace
+    command: ["-np", "5", "/workspace/data/config.json"]
     volumes:
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data
