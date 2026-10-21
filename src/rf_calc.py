@@ -139,10 +139,11 @@ def calc_patch_edge_impedance(patch_w, patch_l, h, eps_r):
     # Zastropujeme do fyzikálně realistického rozsahu
     return float(np.clip(r_in, 150.0, 300.0))
 
-def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3):
+def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3, inset=0.0):
     """
     Uživatelská funkce pro výpočet jednotlivých délek mikropáskového vedení l1 až l8
     napájecí sítě cross-fed patch antény (kruhová polarizace LHCP dle napajeni.png).
+    Umožňuje zanoření napaječe (inset feed) o hloubku inset do vyzařujícího flíčku.
 
     Přiřazení a definice délek l1 až l8:
     -----------------------------------
@@ -153,13 +154,13 @@ def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3):
     2. Spodní referenční větev (fáze 0°, buzení pole Ey, spodní hrana flíčku):
        - l2: Horizontální úsek z T-uzlu doprava ke skoku šířky (šířka w2 = 100 Ohm, délka Delta).
        - l3: Horizontální úsek od skoku šířky k rohovému ohybu (šířka w3, přechod k ose flíčku x = 0).
-       - l4: Vertikální úsek od rohového ohybu nahoru k dolní hraně flíčku (šířka w3, y = -L/2).
+       - l4: Vertikální úsek od rohového ohybu nahoru k napájecímu bodu flíčku (šířka w3, y = -L/2 + inset).
 
     3. Levá zpožďovací větev (fáze -90°, buzení pole Ex, levá hrana flíčku):
        - l5: Horizontální úsek z T-uzlu doleva k rohovému ohybu (šířka w2 = 100 Ohm, vybočení jog).
        - l6: Vertikální úsek od ohybu nahoru ke skoku šířky (šířka w2 = 100 Ohm, délka Delta + lambda_g/4).
        - l7: Vertikální úsek od skoku šířky k hornímu rohovému ohybu (šířka w3, k úrovni y = 0).
-       - l8: Horizontální úsek od horního ohybu doprava k levé hraně flíčku (šířka w3, x = -W/2).
+       - l8: Horizontální úsek od horního ohybu doprava k napájecímu bodu flíčku (šířka w3, x = -W/2 + inset).
 
     Vstupní parametry:
         L (float): délka rezonančního flíčku [mm]
@@ -170,6 +171,7 @@ def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3):
         w1 (float): šířka hlavního 50 Ohm přívodu [mm]
         w2 (float): šířka 100 Ohm ramen děliče výkonu [mm]
         w3 (float): šířka propojovacího vedení k anténě [mm]
+        inset (float): hloubka zanoření napaječe do flíčku [mm] (výchozí: 0.0)
 
     Návratová hodnota:
         dict: {'l1': float, 'l2': float, ..., 'l8': float} (všechny rozměry v mm)
@@ -178,11 +180,11 @@ def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3):
     l1 = 10*h + w2/2
     l2 = 5*h + w1/2
     l3 = W/4 + lambda_g/8 - 5*h - w1/2
-    l4 = 5*h + w1/2 + lambda_g/8 - L/4
+    l4 = 5*h + w1/2 + lambda_g/8 - L/4 + inset
     l5 = 5*h + w1/2
     l6 = lambda_g/4
     l7 = L/4 + 5*h + w1/2 - lambda_g/8
-    l8 = 5*h + w1/2 + lambda_g/8 - W/4
+    l8 = 5*h + w1/2 + lambda_g/8 - W/4 + inset
 
     lengths = {
         'l1': float(np.round(l1, 3)),
@@ -200,24 +202,25 @@ def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3):
         if val <= 0.0:
             raise ValueError(f"Chyba návrhu napájecího obvodu: Rozměr {name} nesmí být nulový ani záporný ({name} = {val:.3f} mm)!")
 
-    # 2. Vyhodnocení upozornění: nedodržení minimálního odstupu 5*h + w3/2
+    # 2. Vyhodnocení upozornění: nedodržení minimálního odstupu 5*h + w3/2 vně flíčku
     limit = 5.0 * h + (w3 / 2.0)
-    if l8 < limit:
-        msg = f"Nedodržena podmínka odstupu l8: l8 ({l8:.3f} mm) < 5*h + w3/2 ({limit:.3f} mm). Hrozí parazitní vazba flíčku s napájecím vedením!"
+    if (l8 - inset) < limit:
+        msg = f"Nedodržena podmínka odstupu l8 vně flíčku: ({l8 - inset:.3f} mm) < 5*h + w3/2 ({limit:.3f} mm). Hrozí parazitní vazba flíčku s napájecím vedením!"
         warnings.warn(msg, UserWarning, stacklevel=2)
         print(f"[VAROVÁNÍ] {msg}")
-    if l4 < limit:
-        msg = f"Nedodržena podmínka odstupu l4: l4 ({l4:.3f} mm) < 5*h + w3/2 ({limit:.3f} mm). Hrozí parazitní vazba flíčku s napájecím vedením!"
+    if (l4 - inset) < limit:
+        msg = f"Nedodržena podmínka odstupu l4 vně flíčku: ({l4 - inset:.3f} mm) < 5*h + w3/2 ({limit:.3f} mm). Hrozí parazitní vazba flíčku s napájecím vedením!"
         warnings.warn(msg, UserWarning, stacklevel=2)
         print(f"[VAROVÁNÍ] {msg}")
     return lengths
 
-def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0, w3=None, sub_margin=None):
+def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0, w3=None, sub_margin=None, inset=0.0):
     """
     Vypočte rozměry napájecí sítě dle specifikace v docs/abstrakce_zadani.md:
     1. w1: Hlavní vstupní vedení (50 Ohm, přirozeně přizpůsobeno T-uzlu 100 || 100 = 50 Ohm).
     2. w2: Větve děliče výkonu (100 Ohm), ze kterých se počítá fázovací zpoždění lambda_g/4.
     3. w3: Vodič k samotné anténě (optimalizační stupeň volnosti, w3 <= w2).
+    4. inset: Zanoření napájecího vedení do flíčku (jediný parametr pro inset feed).
     """
     # 1. Hlavní přívodní vedení (w1, 50 Ohm)
     w1 = synth_microstrip_w(port_z0, h, eps_r)
@@ -242,8 +245,8 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
     lambda_0 = C_0_MM_GHZ / freq_ghz
     lambda_sub = lambda_0 / np.sqrt(eps_r)
 
-    # Výpočet délek vedení l1 až l8 uživatelskou funkcí s efektivní vlnovou délkou mikropásku lambda_g2
-    feed_lengths = calc_feed_lengths(L=patch_l, W=patch_w, h=h, lambda_g=lambda_g2, w1=w1, w2=w2, w3=w3)
+    # Výpočet délek vedení l1 až l8 uživatelskou funkcí s efektivní vlnovou délkou mikropásku lambda_g2 a parametrem inset
+    feed_lengths = calc_feed_lengths(L=patch_l, W=patch_w, h=h, lambda_g=lambda_g2, w1=w1, w2=w2, w3=w3, inset=inset)
 
     l1 = float(feed_lengths['l1'])
     l2 = float(feed_lengths['l2'])
@@ -253,9 +256,9 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
 
     # Poloha T-uzlu odvozená přímo z délek spodní větve:
     # Dolní ohyb je na x=0, y=y_T. Spodní větev vede od T-uzlu (x_T, y_T) doprava: x_T + l2 + l3 = 0 -> x_T = -(l2 + l3)
-    # Vertikální úsek l4 vede od y_T k dolní hraně flíčku -L/2: y_T = -L/2 - l4
+    # Vertikální úsek l4 vede od y_T k napájecímu bodu (-L/2 + inset): y_T = -(patch_l / 2.0) + inset - l4
     x_T = -(l2 + l3)
-    y_T = -(patch_l / 2.0) - l4
+    y_T = -(patch_l / 2.0) + inset - l4
 
     feed_offset_x = float(np.round(abs(x_T) - (patch_w / 2.0), 1))
     feed_offset_y = float(np.round(abs(y_T) - (patch_l / 2.0), 1))
@@ -294,6 +297,7 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
         'sub_w': sub_w,
         'sub_L': sub_l,
         'sub_W': sub_w,
+        'inset': float(np.round(inset, 3)),
         'feed_lengths': feed_lengths,
     }
     # Pro přímý přístup k l1 až l8 v params

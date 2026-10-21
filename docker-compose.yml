@@ -52,6 +52,11 @@ services:
       - MESH_SIZE_MAX=${MESH_SIZE_MAX:-5.0}
       - MESH_SIZE_MIN=${MESH_SIZE_MIN:-0.5}
       - AMR_MAX_ITS=${AMR_MAX_ITS:-2}
+      - PATCH_L=${PATCH_L:-30.3}
+      - PATCH_W=${PATCH_W:-30.3}
+      - FEED_INSET=${FEED_INSET:-0.0}
+      - FEED_INSET_GAP=${FEED_INSET_GAP:-}
+      - FEED_INSET_WIDTH=${FEED_INSET_WIDTH:-}
     volumes:
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data

@@ -39,8 +39,13 @@ def load_env_file(filepath=".env"):
 
 def _resolve_param(key, env_key, default_val, custom_params=None, cast_type=float):
     """Vyhodnotí parametr s prioritou: custom_params > os.environ > default."""
-    if custom_params and key in custom_params and custom_params[key] is not None:
-        return cast_type(custom_params[key])
+    if custom_params:
+        if key in custom_params and custom_params[key] is not None:
+            return cast_type(custom_params[key])
+        if key.lower() in custom_params and custom_params[key.lower()] is not None:
+            return cast_type(custom_params[key.lower()])
+        if key.upper() in custom_params and custom_params[key.upper()] is not None:
+            return cast_type(custom_params[key.upper()])
     val = os.getenv(env_key)
     if val is not None:
         try:
@@ -91,14 +96,29 @@ def main(custom_params=None, skip_simulation=False, clean=False):
 
     print(f"--- Parametry simulace: Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, AMR {amr_max_its} it. ---")
 
-    # Geometrie flíčku syntetizovaná z analytické rezonance pro střed pásma SDARS
+    # Geometrie flíčku (priority: custom_params > os.environ (PATCH_L/PATCH_W) > 30.3 mm)
     patch_size = float(np.round(synth_square_patch_size(DESIGN_FREQ_GHZ, sub_h, eps_r), 2))
-    patch_l = custom_params.get('patch_L', patch_size) if custom_params and 'patch_L' in custom_params else patch_size
-    patch_w = custom_params.get('patch_W', patch_size) if custom_params and 'patch_W' in custom_params else patch_size
-    
+    patch_l = _resolve_param('patch_L', 'PATCH_L', 30.3, custom_params, float)
+    patch_w = _resolve_param('patch_W', 'PATCH_W', patch_l, custom_params, float)
+
+    # Zanoření napaječe (inset feed)
+    feed_inset = _resolve_param('feed_inset', 'FEED_INSET', 0.0, custom_params, float)
+    if feed_inset == 0.0:
+        feed_inset = _resolve_param('inset', 'INSET', 0.0, custom_params, float)
+
+    feed_inset_gap = _resolve_param('feed_inset_gap', 'FEED_INSET_GAP', None, custom_params, float)
+    if feed_inset_gap is None:
+        feed_inset_gap = _resolve_param('inset_gap', 'INSET_GAP', None, custom_params, float)
+
+    feed_inset_width = _resolve_param('feed_inset_width', 'FEED_INSET_WIDTH', None, custom_params, float)
+    if feed_inset_width is None:
+        feed_inset_width = _resolve_param('inset_width', 'INSET_WIDTH', None, custom_params, float)
+
+    print(f"--- Geometrie flíčku: L = {patch_l:.2f} mm, W = {patch_w:.2f} mm, Zanoření napaječe: {feed_inset:.2f} mm ---")
+
     # Rozměry napájecí sítě a substrátu odvozené z analytického modelu bez magických čísel
     from rf_calc import calc_feed_network_dimensions
-    feed_net = calc_feed_network_dimensions(patch_w, patch_l, sub_h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=port_impedance)
+    feed_net = calc_feed_network_dimensions(patch_w, patch_l, sub_h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=port_impedance, inset=feed_inset)
     feed_w = feed_net['feed_w']
     sub_w = feed_net['sub_w']
     sub_l = feed_net['sub_l']
@@ -140,6 +160,10 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     }
     # Zahrnutí všech parametrů napájecí sítě (w1, w2, w3, délky l1-l8)
     params.update(feed_net)
+    if feed_inset_gap is not None:
+        params['inset_gap'] = feed_inset_gap
+    if feed_inset_width is not None:
+        params['inset_width'] = feed_inset_width
     
     run_name = None
     if custom_params:
@@ -227,16 +251,23 @@ if __name__ == "__main__":
     parser.add_argument("--amr-its", type=int, default=None, dest="amr_max_its",
                         help="Maximální počet adaptivních zjemnění AMR (výchozí: 2 nebo z AMR_MAX_ITS)")
 
-    # Parametrizace geometrie patche
+    # Parametrizace geometrie patche a zanoření
     parser.add_argument("--patch-l", type=float, default=None, dest="patch_L",
-                        help="Délka flíčku patche v mm (výchozí: z analytického modelu)")
+                        help="Délka flíčku patche v mm (výchozí: 30.3 nebo z PATCH_L)")
     parser.add_argument("--patch-w", type=float, default=None, dest="patch_W",
-                        help="Šířka flíčku patche v mm (výchozí: z analytického modelu)")
+                        help="Šířka flíčku patche v mm (výchozí: z PATCH_W nebo rovno patch-l)")
+    parser.add_argument("--inset", "--feed-inset", type=float, default=None, dest="feed_inset",
+                        help="Hloubka zanoření napaječe do flíčku v mm (výchozí: 0.0 nebo z FEED_INSET)")
+    parser.add_argument("--inset-gap", type=float, default=None, dest="feed_inset_gap",
+                        help="Šířka mezery zářezu po stranách napaječe v mm (výchozí: rovno šířce w3 cca 0.69 mm)")
+    parser.add_argument("--inset-width", type=float, default=None, dest="feed_inset_width",
+                        help="Celková šířka výřezu zářezu v mm (w3 + 2*gap)")
 
     args = parser.parse_args()
 
     cli_params = {}
-    for param in ['freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its', 'patch_L', 'patch_W']:
+    for param in ['freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
+                  'patch_L', 'patch_W', 'feed_inset', 'feed_inset_gap', 'feed_inset_width']:
         val = getattr(args, param, None)
         if val is not None:
             cli_params[param] = val

@@ -22,9 +22,9 @@ def build_model(params):
                                     W_sub + 2*margin, L_sub + 2*margin, h + 2*margin)
     
     # 2. Plošné entity (2D) pro flíček a napájení (z = h)
-    # Patch
-    patch_tag = gmsh.model.occ.addRectangle(-W/2, -L/2, h, W, L)
-    
+    # Zanoření napaječe (inset feed)
+    inset = float(params.get('inset', params.get('feed_inset', 0.0)))
+
     # Napájecí dělič dle specifikace v docs/abstrakce_zadani.md (Cross-fed patch dle napajeni.png)
     # Tři šířky spojů:
     # 1. w1: 50 Ohm hlavní přívod od portu k T-uzlu (přirozené přizpůsobení, bez transformátoru)
@@ -34,6 +34,28 @@ def build_model(params):
     w1 = params.get('w1')
     w2 = params.get('w2')
     w3 = params.get('w3')
+
+    # Šířka mezery zářezu (gap g po obou stranách pásku w3, nebo odvozeno z celkové šířky výřezu)
+    if params.get('inset_width') is not None or params.get('feed_inset_width') is not None:
+        total_w = float(params.get('inset_width', params.get('feed_inset_width')))
+        inset_gap = max((total_w - w3) / 2.0, 0.05)
+    else:
+        inset_gap = float(params.get('inset_gap', params.get('feed_inset_gap', w3)))
+
+    params['inset_gap'] = inset_gap
+    params['inset_width'] = float(np.round(w3 + 2.0 * inset_gap, 3))
+
+    # Patch (s volitelným zanořením napájecího vedení / zářezy)
+    if inset > 0:
+        patch_base = gmsh.model.occ.addRectangle(-W/2, -L/2, h, W, L)
+        # Zářez pro spodní větev (na x = 0, y od -L/2 do -L/2 + inset, šířka w3 + 2*inset_gap)
+        notch_b = gmsh.model.occ.addRectangle(-(w3/2 + inset_gap), -L/2 - 0.05, h, w3 + 2*inset_gap, inset + 0.05)
+        # Zářez pro levou větev (na y = 0, x od -W/2 do -W/2 + inset, výška w3 + 2*inset_gap)
+        notch_l = gmsh.model.occ.addRectangle(-W/2 - 0.05, -(w3/2 + inset_gap), h, inset + 0.05, w3 + 2*inset_gap)
+        cut_surfs, _ = gmsh.model.occ.cut([(2, patch_base)], [(2, notch_b), (2, notch_l)])
+        patch_tag = cut_surfs[0][1]
+    else:
+        patch_tag = gmsh.model.occ.addRectangle(-W/2, -L/2, h, W, L)
 
     # Získání délek vedení l1 až l8 (musí být definovány v params)
     l1 = float(params['l1'])

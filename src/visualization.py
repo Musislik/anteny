@@ -68,8 +68,9 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
     l7 = float(params['l7'])
     l8 = float(params['l8'])
 
+    inset = float(params.get('inset', params.get('feed_inset', 0.0)))
     x_T = float(params.get('feed_x_T', -(l2 + l3)))
-    y_T = float(params.get('feed_y_T', -L/2 - l4))
+    y_T = float(params.get('feed_y_T', -L/2 + inset - l4))
 
     # 1. Hlavní přívod (port k T-uzlu, šířka w1, 50 Ohm, délka l1)
     y_port = -L_sub / 2.0
@@ -124,6 +125,12 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
     ax.view_init(elev=30, azim=45)
     
     plt.title('Isometrický pohled na geometrii (Substrát, Patch, Airbox)')
-    plt.savefig(filename, dpi=150)
-    plt.close()
-    print(f"Isometrický nákres byl uložen do {filename}")
+    import os
+    os.makedirs(os.path.dirname(os.path.abspath(filename)) or ".", exist_ok=True)
+    try:
+        plt.savefig(filename, dpi=150)
+        print(f"Isometrický nákres byl uložen do {filename}")
+    except Exception as e:
+        print(f"Upozornění: Náhled geometrie se nepodařilo uložit do {filename}: {e}")
+    finally:
+        plt.close()

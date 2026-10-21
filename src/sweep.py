@@ -1,3 +1,4 @@
+import os
 import time
 import numpy as np
 from main import main
@@ -9,9 +10,16 @@ DEFAULT_EPS_R = 4.3
 
 def generate_sweep_patch_lengths(center_freq=DESIGN_FREQ_GHZ, h=DEFAULT_SUB_H, eps_r=DEFAULT_EPS_R, span_mm=1.6, num_points=5):
     """
-    Dynamicky generuje pole rozměrů flíčku symetricky kolem analytické rezonance L0 +/- delta_L.
+    Dynamicky generuje pole rozměrů flíčku symetricky kolem rezonance L0 +/- delta_L.
     """
-    l0 = synth_square_patch_size(center_freq, h, eps_r)
+    env_l = os.getenv('PATCH_L')
+    if env_l is not None:
+        try:
+            l0 = float(env_l)
+        except ValueError:
+            l0 = synth_square_patch_size(center_freq, h, eps_r)
+    else:
+        l0 = synth_square_patch_size(center_freq, h, eps_r)
     half_span = span_mm / 2.0
     lengths = np.linspace(l0 - half_span, l0 + half_span, num_points)
     return [float(np.round(l, 2)) for l in lengths]
