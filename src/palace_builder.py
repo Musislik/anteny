@@ -7,17 +7,23 @@ DEFAULT_PORT_IMPEDANCE = 50.0
 def build_palace_config(params):
     port_r = params.get('port_impedance', DEFAULT_PORT_IMPEDANCE)
     amr_max_its = int(params.get('amr_max_its', 2))
+    amr_tol = float(params.get('amr_threshold', params.get('amr_tol', 0.2)))
+    farfield_nsample = int(params.get('farfield_nsample', 16200))
+    save_step = int(params.get('save_step', 1))
     
     model_config = {
         "Mesh": "data/mesh.msh",
         "L0": SCALE_MM_TO_M
     }
     if amr_max_its > 0:
-        model_config["Refinement"] = {
+        ref_dict = {
             "MaxIts": amr_max_its,
             "SaveAdaptMesh": True,
             "SaveAdaptIterations": True
         }
+        if amr_tol > 0:
+            ref_dict["Tol"] = amr_tol
+        model_config["Refinement"] = ref_dict
 
     config = {
         "Problem": {
@@ -45,7 +51,7 @@ def build_palace_config(params):
             "Postprocessing": {
                 "FarField": {
                     "Attributes": [5],
-                    "NSample": 64800
+                    "NSample": farfield_nsample
                 }
             },
             "PEC": {
@@ -71,7 +77,7 @@ def build_palace_config(params):
                 "MinFreq": params['freq_min'],
                 "MaxFreq": params['freq_max'],
                 "FreqStep": params['freq_step'],
-                "SaveStep": max(1, int(params.get('save_step', 1))),
+                "SaveStep": save_step,
                 "AdaptiveTol": 1e-4
             },
             "Linear": {

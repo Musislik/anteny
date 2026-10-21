@@ -78,7 +78,39 @@ def assign_physical_groups_and_mesh(params):
         gmsh.model.addPhysicalGroup(2, list(set(port_surfs)), tag=4, name="Port")
     gmsh.model.addPhysicalGroup(2, list(set(absorbing_surfs)), tag=5, name="Absorbing")
     
-    # 3. Nastavení sítě a kompatibilní export pro MFEM / Palace (MSH 2.2)
+    # 3. Nastavení lokálního adaptivního zjemnění (Distance / Threshold pole)
+    # Zjemňujeme okolí vyzařujícího flíčku, napájecího vedení (z = h) a budicího portu
+    top_conductors = []
+    for dim, tag in surfs:
+        bbox = gmsh.model.getBoundingBox(dim, tag)
+        if abs(bbox[2] - h) < 1e-4 and abs(bbox[5] - h) < 1e-4:
+            if tag in pec_surfs:
+                top_conductors.append(tag)
+
+    active_surfs = list(set(top_conductors + port_surfs))
+    if active_surfs:
+        f_dist = gmsh.model.mesh.field.add("Distance")
+        gmsh.model.mesh.field.setNumbers(f_dist, "SurfacesList", active_surfs)
+        gmsh.model.mesh.field.setNumber(f_dist, "Sampling", 25)
+
+        mesh_min = float(params['mesh_size_min'])
+        mesh_max = float(params['mesh_size_max'])
+        d_min = float(params.get('mesh_dist_min', 0.5))
+        d_max = float(params.get('mesh_dist_max', 6.0))
+
+        f_thresh = gmsh.model.mesh.field.add("Threshold")
+        gmsh.model.mesh.field.setNumber(f_thresh, "InField", f_dist)
+        gmsh.model.mesh.field.setNumber(f_thresh, "SizeMin", mesh_min)
+        gmsh.model.mesh.field.setNumber(f_thresh, "SizeMax", mesh_max)
+        gmsh.model.mesh.field.setNumber(f_thresh, "DistMin", d_min)
+        gmsh.model.mesh.field.setNumber(f_thresh, "DistMax", d_max)
+
+        gmsh.model.mesh.field.setAsBackgroundMesh(f_thresh)
+        gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+
+    # 4. Globální meze a kompatibilní export pro MFEM / Palace (MSH 2.2)
     gmsh.option.setNumber("Mesh.MeshSizeMax", params['mesh_size_max'])
     gmsh.option.setNumber("Mesh.MeshSizeMin", params['mesh_size_min'])
     gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)

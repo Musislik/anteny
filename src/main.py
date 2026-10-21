@@ -88,13 +88,17 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     freq_step = _resolve_param('freq_step', 'FREQ_STEP', 0.005, custom_params, float)
     
     # Parametry sítě a řešiče
-    mesh_size_max = _resolve_param('mesh_size_max', 'MESH_SIZE_MAX', 5.0, custom_params, float)
+    mesh_size_max = _resolve_param('mesh_size_max', 'MESH_SIZE_MAX', 8.0, custom_params, float)
     mesh_size_min = _resolve_param('mesh_size_min', 'MESH_SIZE_MIN', 0.5, custom_params, float)
+    mesh_dist_min = _resolve_param('mesh_dist_min', 'MESH_DIST_MIN', 0.5, custom_params, float)
+    mesh_dist_max = _resolve_param('mesh_dist_max', 'MESH_DIST_MAX', 6.0, custom_params, float)
     amr_max_its = _resolve_param('amr_max_its', 'AMR_MAX_ITS', 2, custom_params, int)
-    amr_threshold = _resolve_param('amr_threshold', 'AMR_THRESHOLD', 0.3, custom_params, float)
+    amr_threshold = _resolve_param('amr_threshold', 'AMR_THRESHOLD', 0.2, custom_params, float)
+    farfield_nsample = _resolve_param('farfield_nsample', 'FARFIELD_NSAMPLE', 16200, custom_params, int)
+    save_step = _resolve_param('save_step', 'SAVE_STEP', 1, custom_params, int)
     port_impedance = _resolve_param('port_impedance', 'PORT_IMPEDANCE', PORT_Z0, custom_params, float)
 
-    print(f"--- Parametry simulace: Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, AMR {amr_max_its} it. ---")
+    print(f"--- Parametry simulace: Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, AMR {amr_max_its} it. (Tol {amr_threshold}) ---")
 
     # Geometrie flíčku (priority: custom_params > os.environ (PATCH_L/PATCH_W) > 30.3 mm)
     patch_size = float(np.round(synth_square_patch_size(DESIGN_FREQ_GHZ, sub_h, eps_r), 2))
@@ -148,6 +152,8 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         # Síť
         'mesh_size_max': mesh_size_max,
         'mesh_size_min': mesh_size_min,
+        'mesh_dist_min': mesh_dist_min,
+        'mesh_dist_max': mesh_dist_max,
         
         # Palace solver (frekvence v GHz)
         'freq_min': freq_min,
@@ -155,6 +161,8 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         'freq_step': freq_step,
         'amr_max_its': amr_max_its,
         'amr_threshold': amr_threshold,
+        'farfield_nsample': farfield_nsample,
+        'save_step': save_step,
         'port_impedance': port_impedance,
         'design_freq_ghz': DESIGN_FREQ_GHZ
     }
@@ -245,11 +253,17 @@ if __name__ == "__main__":
 
     # Parametrizace sítě a řešiče
     parser.add_argument("--mesh-max", type=float, default=None, dest="mesh_size_max",
-                        help="Maximální velikost elementu sítě v mm (výchozí: 5.0 nebo z MESH_SIZE_MAX)")
+                        help="Maximální velikost elementu sítě v mm (výchozí: 8.0 nebo z MESH_SIZE_MAX)")
     parser.add_argument("--mesh-min", type=float, default=None, dest="mesh_size_min",
                         help="Minimální velikost elementu sítě v mm (výchozí: 0.5 nebo z MESH_SIZE_MIN)")
     parser.add_argument("--amr-its", type=int, default=None, dest="amr_max_its",
                         help="Maximální počet adaptivních zjemnění AMR (výchozí: 2 nebo z AMR_MAX_ITS)")
+    parser.add_argument("--amr-tol", "--amr-threshold", type=float, default=None, dest="amr_threshold",
+                        help="Relativní tolerance pro zastavení AMR zjemnění (výchozí: 0.2 nebo z AMR_THRESHOLD)")
+    parser.add_argument("--farfield-nsample", type=int, default=None, dest="farfield_nsample",
+                        help="Počet bodů vzorkování dálkového pole (výchozí: 16200 nebo z FARFIELD_NSAMPLE)")
+    parser.add_argument("--save-step", type=int, default=None, dest="save_step",
+                        help="Krok ukládání 3D polí (výchozí: 1 nebo z SAVE_STEP)")
 
     # Parametrizace geometrie patche a zanoření
     parser.add_argument("--patch-l", type=float, default=None, dest="patch_L",
@@ -267,6 +281,7 @@ if __name__ == "__main__":
 
     cli_params = {}
     for param in ['freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
+                  'amr_threshold', 'farfield_nsample', 'save_step',
                   'patch_L', 'patch_W', 'feed_inset', 'feed_inset_gap', 'feed_inset_width']:
         val = getattr(args, param, None)
         if val is not None:
