@@ -1,0 +1,230 @@
+"""
+ParaView Makro pro DYNAMICKOU animaci fáze v reálném čase s INTERAKTIVNÍM POSUVNÍKEM FREKVENCE.
+
+Funkce:
+1. Interaktivní grafický posuvník přímo na obrazovce pro plynulou změnu frekvence (2.320 - 2.345 GHz).
+2. Plynulá rotace fáze (0° až 360°) stisknutím tlačítka PLAY na horní liště.
+3. Vše počítáno dynamicky v paměti GPU bez ukládání jakýchkoliv souborů na disk.
+
+Spuštění v ParaView:
+    Tools -> Python Shell -> Run Script -> vyberte tento soubor
+"""
+
+import os
+import vtk
+from paraview.simple import *
+
+PROJECT_DIR = r"D:\code\anteny"
+
+# Globální reference, aby Python nesmazal posuvník z paměti
+_GLOBAL_FREQUENCY_SLIDER = None
+
+def setup_dynamic_phase_scene():
+    global _GLOBAL_FREQUENCY_SLIDER
+
+    target_dir = PROJECT_DIR
+    if not os.path.exists(target_dir):
+        if os.path.exists(os.path.join(os.getcwd(), "data")):
+            target_dir = os.getcwd()
+
+    pvd_file = os.path.join(target_dir, "data", "postpro", "paraview", "driven_boundary", "driven_boundary.pvd")
+    if not os.path.exists(pvd_file):
+        pvd_file = os.path.join(target_dir, "postpro", "paraview", "driven_boundary", "driven_boundary.pvd")
+
+    if not os.path.exists(pvd_file):
+        print(f"[CHYBA] Soubor {pvd_file} nebyl nalezen!")
+        return
+
+    print(f"--- 1. Načítám frekvenční data: {pvd_file} ---")
+    view = GetActiveViewOrCreate('RenderView')
+
+    # Načtení databáze všech frekvencí
+    reader = PVDReader(registrationName='Palace_Frekvencni_Data', FileName=pvd_file)
+    reader.UpdatePipeline()
+
+    # Filtr pro výběr a uzamčení konkrétní frekvence (výchozí 2.330 GHz)
+    print("--- 2. Vytvářím volič frekvence (ForceTime) ---")
+    ft = ForceTime(registrationName='Zvolena_Frekvence_GHz', Input=reader)
+    ft.ForcedTime = 2.330
+    ft.UpdateVTKObjects()
+    ft.UpdatePipeline()
+
+    # Dynamický kalkulátor okamžitého pole E(t)
+    print("--- 3. Nastavuji dynamický fázorový kalkulátor ---")
+    calc = Calculator(registrationName='E_Phase_Kalkulator', Input=ft)
+    calc.ResultArrayName = 'E_phase'
+    calc.Function = 'E_real'
+    calc.UpdateVTKObjects()
+    calc.UpdatePipeline()
+
+    # Zobrazení povrchu s barevnou mapou pole E_phase
+    disp_surf = Show(calc, view, 'GeometryRepresentation')
+    disp_surf.Representation = 'Surface'
+    ColorBy(disp_surf, ('POINTS', 'E_phase', 'Magnitude'))
+
+    lut = GetColorTransferFunction('E_phase')
+    lut.ApplyPreset('Turbo', True)
+    # Rozsah škály do 31 000 V/m pokrývá celou šířku pásma bez saturace
+    lut.RescaleTransferFunction(0.0, 31000.0)
+
+    sb = GetScalarBar(lut, view)
+    sb.Title = '|E(t)| [V/m]'
+    sb.ComponentTitle = 'Okamžité pole (E_phase)'
+    sb.Visibility = 1
+    sb.WindowLocation = 'Lower Right Corner'
+
+    # Vektorové šipky pole (Glyphs) ukazující směr pole E_phase
+    print("--- 4. Vytvářím vektorové šipky pole (Glyphs) ---")
+    glyph = Glyph(registrationName='Vektory_E_Pole', Input=calc)
+    glyph.GlyphType = 'Arrow'
+    glyph.OrientationArray = ['POINTS', 'E_phase']
+    glyph.ScaleArray = ['POINTS', 'E_phase']
+    glyph.ScaleFactor = 0.000008
+    glyph.GlyphMode = 'Every Nth Point'
+    glyph.Stride = 5
+    glyph.UpdateVTKObjects()
+    glyph.UpdatePipeline()
+
+    disp_glyph = Show(glyph, view, 'GeometryRepresentation')
+    ColorBy(disp_glyph, ('POINTS', 'E_phase', 'Magnitude'))
+    disp_glyph.DiffuseColor = [1.0, 1.0, 1.0]
+
+    # Textový popisek s frekvencí a fází
+    info_text = Text(registrationName='Popisek_Info')
+    info_text.Text = "Frekvence: 2.330 GHz  |  Fáze φ: 000°"
+    info_text.UpdateVTKObjects()
+    info_text.UpdatePipeline()
+
+    disp_text = Show(info_text, view)
+    try:
+        disp_text.Color = [1.0, 1.0, 0.2]
+        disp_text.FontSize = 13
+        disp_text.WindowLocation = 'Upper Left Corner'
+    except Exception:
+        pass
+
+    # Nastavení kamery (nadhled s mírným náklonem)
+    view.ResetCamera()
+    view.CameraPosition = [0.0, -0.09, 0.11]
+    view.CameraFocalPoint = [0.0, 0.0, 0.0015]
+    view.CameraViewUp = [0.0, 0.9, 0.4]
+
+    # 5. Animační smyčka pro rotaci fáze v reálném čase
+    print("--- 5. Konfiguruji animační fázovou smyčku (0° až 360°) ---")
+    cue = PythonAnimationCue()
+    cue.StartTime = 0.0
+    cue.EndTime = 360.0
+    cue.Script = """
+def start_cue(cue):
+    pass
+
+def tick(cue):
+    import numpy as np
+    t = cue.GetAnimationTime()
+    phi = t * 2.0 * np.pi
+    deg = int(round(t * 360.0)) % 360
+    cos_v = np.cos(phi)
+    sin_v = np.sin(phi)
+
+    from paraview.simple import FindSource
+    c = FindSource('E_Phase_Kalkulator')
+    if c:
+        c.Function = f'E_real * ({cos_v:.6f}) - E_imag * ({sin_v:.6f})'
+        c.UpdateVTKObjects()
+        c.UpdatePipeline()
+
+    g = FindSource('Vektory_E_Pole')
+    if g:
+        g.UpdatePipeline()
+
+    txt = FindSource('Popisek_Info')
+    if txt:
+        ft = FindSource('Zvolena_Frekvence_GHz')
+        f_val = ft.ForcedTime if ft else 2.330
+        txt.Text = f'Frekvence: {f_val:.3f} GHz  |  Fáze φ: {deg:03d}°'
+        txt.UpdateVTKObjects()
+        txt.UpdatePipeline()
+
+def end_cue(cue):
+    pass
+"""
+
+    scene = GetAnimationScene()
+    scene.StartTime = 0.0
+    scene.EndTime = 360.0
+    scene.PlayMode = 'Sequence'
+    scene.NumberOfFrames = 36
+    scene.Cues.append(cue)
+
+    # 6. Interaktivní grafický posuvník frekvence na obrazovce (vtkSliderWidget)
+    print("--- 6. Vytvářím interaktivní posuvník frekvence na obrazovce ---")
+    render_window = view.SMProxy.GetRenderWindow()
+    interactor = render_window.GetInteractor()
+
+    slider_rep = vtk.vtkSliderRepresentation2D()
+    slider_rep.SetMinimumValue(2.320)
+    slider_rep.SetMaximumValue(2.345)
+    slider_rep.SetValue(2.330)
+    slider_rep.SetTitleText("Frekvence [GHz]")
+    slider_rep.GetPoint1Coordinate().SetCoordinateSystemToNormalizedDisplay()
+    slider_rep.GetPoint1Coordinate().SetValue(0.15, 0.07)
+    slider_rep.GetPoint2Coordinate().SetCoordinateSystemToNormalizedDisplay()
+    slider_rep.GetPoint2Coordinate().SetValue(0.65, 0.07)
+
+    slider_widget = vtk.vtkSliderWidget()
+    slider_widget.SetInteractor(interactor)
+    slider_widget.SetRepresentation(slider_rep)
+    slider_widget.SetAnimationModeToAnimate()
+    slider_widget.EnabledOn()
+
+    def on_freq_change(obj, event):
+        raw_val = obj.GetRepresentation().GetValue()
+        snapped = round(raw_val / 0.005) * 0.005
+        snapped = max(2.320, min(2.345, snapped))
+        obj.GetRepresentation().SetValue(snapped)
+
+        # 1. Změna frekvence na ForceTime
+        ft.ForcedTime = snapped
+        ft.UpdateVTKObjects()
+        ft.UpdatePipeline()
+
+        # 2. Vynucení přepočtu kalkulátoru i při pauznuté animaci
+        calc.Modified()
+        calc.UpdateVTKObjects()
+        calc.UpdatePipeline()
+
+        # 3. Vynucení přepočtu vektorových šipek
+        glyph.Modified()
+        glyph.UpdateVTKObjects()
+        glyph.UpdatePipeline()
+
+        # 4. Aktualizace zobrazení povrchu i šipek v okně
+        disp_surf.UpdatePipeline()
+        disp_glyph.UpdatePipeline()
+
+        # 5. Aktualizace textu na obrazovce
+        txt = FindSource('Popisek_Info')
+        if txt:
+            txt.Text = f'Frekvence: {snapped:.3f} GHz'
+            txt.UpdateVTKObjects()
+            txt.UpdatePipeline()
+
+        # 6. Překreslení scény
+        view.Update()
+        Render()
+
+    # Reagovat jak na tažení, tak na puštění myši
+    slider_widget.AddObserver(vtk.vtkCommand.InteractionEvent, on_freq_change)
+    slider_widget.AddObserver(vtk.vtkCommand.EndInteractionEvent, on_freq_change)
+    _GLOBAL_FREQUENCY_SLIDER = slider_widget
+
+    # Okamžité překreslení scény
+    view.Update()
+    Render()
+
+    print("==================================================")
+    print("DYNAMICKÁ SCÉNA PŘIPRAVENA A AKTUALIZOVÁNA!")
+    print("==================================================")
+
+# Spustit nastavení scény
+setup_dynamic_phase_scene()
