@@ -7,7 +7,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.palace
-    command: ["-np", "5", "/workspace/data/config.json"]
+    command: ["-np", "${PALACE_CORES:-5}", "/workspace/data/config.json"]
     volumes:
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data
@@ -48,6 +48,13 @@ services:
       - MLFLOW_TRACKING_URI=sqlite:////workspace/data/mlflow.db
       - CONF_DIR=${CONF_DIR:-.}
       - DATA_DIR=${DATA_DIR:-./data}
+      - PALACE_CORES=${PALACE_CORES:-5}
+      - FREQ_MIN=${FREQ_MIN:-2.320}
+      - FREQ_MAX=${FREQ_MAX:-2.345}
+      - FREQ_STEP=${FREQ_STEP:-0.005}
+      - MESH_SIZE_MAX=${MESH_SIZE_MAX:-5.0}
+      - MESH_SIZE_MIN=${MESH_SIZE_MIN:-0.5}
+      - AMR_MAX_ITS=${AMR_MAX_ITS:-2}
     volumes:
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data

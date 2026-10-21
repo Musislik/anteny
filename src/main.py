@@ -20,6 +20,35 @@ from rf_calc import (
     PORT_Z0
 )
 
+def load_env_file(filepath=".env"):
+    """Načte proměnné prostředí ze souboru .env, pokud existuje."""
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k, v = k.strip(), v.strip()
+                        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                            v = v[1:-1]
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception as e:
+            print(f"Upozornění při čtení .env: {e}")
+
+def _resolve_param(key, env_key, default_val, custom_params=None, cast_type=float):
+    """Vyhodnotí parametr s prioritou: custom_params > os.environ > default."""
+    if custom_params and key in custom_params and custom_params[key] is not None:
+        return cast_type(custom_params[key])
+    val = os.getenv(env_key)
+    if val is not None:
+        try:
+            return cast_type(val)
+        except (ValueError, TypeError):
+            pass
+    return default_val
+
 def clean_previous_outputs():
     print("--- 0. Čištění předchozích výstupů simulace ---")
     dirs_to_clean = ["data/postpro", "postpro"]
@@ -39,24 +68,37 @@ def clean_previous_outputs():
 def main(custom_params=None, skip_simulation=False, clean=False):
     if clean:
         clean_previous_outputs()
-    # 1. Analytická definice parametrů bez magických čísel
-    sub_h = 1.52
-    eps_r = 4.3
-    tan_delta = 0.02
+
+    # Načtení případného .env souboru
+    load_env_file()
+
+    # 1. Parametrizace materiálů a frekvenčního pásma
+    sub_h = _resolve_param('sub_h', 'SUB_H', 1.52, custom_params, float)
+    eps_r = _resolve_param('eps_r', 'EPS_R', 4.3, custom_params, float)
+    tan_delta = _resolve_param('tan_delta', 'TAN_DELTA', 0.02, custom_params, float)
     
     # Kmitočtové pásmo sweepu (GHz)
-    freq_min = 2.1
-    freq_max = 2.6
-    freq_step = 0.001
+    freq_min = _resolve_param('freq_min', 'FREQ_MIN', 2.320, custom_params, float)
+    freq_max = _resolve_param('freq_max', 'FREQ_MAX', 2.345, custom_params, float)
+    freq_step = _resolve_param('freq_step', 'FREQ_STEP', 0.005, custom_params, float)
     
+    # Parametry sítě a řešiče
+    mesh_size_max = _resolve_param('mesh_size_max', 'MESH_SIZE_MAX', 5.0, custom_params, float)
+    mesh_size_min = _resolve_param('mesh_size_min', 'MESH_SIZE_MIN', 0.5, custom_params, float)
+    amr_max_its = _resolve_param('amr_max_its', 'AMR_MAX_ITS', 2, custom_params, int)
+    amr_threshold = _resolve_param('amr_threshold', 'AMR_THRESHOLD', 0.3, custom_params, float)
+    port_impedance = _resolve_param('port_impedance', 'PORT_IMPEDANCE', PORT_Z0, custom_params, float)
+
+    print(f"--- Parametry simulace: Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, AMR {amr_max_its} it. ---")
+
     # Geometrie flíčku syntetizovaná z analytické rezonance pro střed pásma SDARS
     patch_size = float(np.round(synth_square_patch_size(DESIGN_FREQ_GHZ, sub_h, eps_r), 2))
-    patch_l = custom_params.get('patch_L', patch_size) if custom_params else patch_size
-    patch_w = custom_params.get('patch_W', patch_size) if custom_params else patch_size
+    patch_l = custom_params.get('patch_L', patch_size) if custom_params and 'patch_L' in custom_params else patch_size
+    patch_w = custom_params.get('patch_W', patch_size) if custom_params and 'patch_W' in custom_params else patch_size
     
     # Rozměry napájecí sítě a substrátu odvozené z analytického modelu bez magických čísel
     from rf_calc import calc_feed_network_dimensions
-    feed_net = calc_feed_network_dimensions(patch_w, patch_l, sub_h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0)
+    feed_net = calc_feed_network_dimensions(patch_w, patch_l, sub_h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=port_impedance)
     feed_w = feed_net['feed_w']
     sub_w = feed_net['sub_w']
     sub_l = feed_net['sub_l']
@@ -65,7 +107,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     
     # Rozměry vzduchového boxu: vzdálenost stěn >= lambda_0 / 4 při nejnižší frekvenci
     lambda_0_max = C_0_MM_GHZ / freq_min
-    air_margin = float(np.round(lambda_0_max / 4.0, 1))  # cca 35.7 mm
+    air_margin = float(np.round(lambda_0_max / 4.0, 1))
 
     params = {
         # Geometrie
@@ -84,16 +126,16 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         'tan_delta': tan_delta,
         
         # Síť
-        'mesh_size_max': 5.0,
-        'mesh_size_min': 0.5,
+        'mesh_size_max': mesh_size_max,
+        'mesh_size_min': mesh_size_min,
         
         # Palace solver (frekvence v GHz)
         'freq_min': freq_min,
         'freq_max': freq_max,
         'freq_step': freq_step,
-        'amr_max_its': 2,
-        'amr_threshold': 0.3,
-        'port_impedance': PORT_Z0,
+        'amr_max_its': amr_max_its,
+        'amr_threshold': amr_threshold,
+        'port_impedance': port_impedance,
         'design_freq_ghz': DESIGN_FREQ_GHZ
     }
     # Zahrnutí všech parametrů napájecí sítě (w1, w2, w3, délky l1-l8)
@@ -168,6 +210,36 @@ if __name__ == "__main__":
                         help="Generovat pouze model, CAD STEP soubor a síť lokálně bez spouštění simulace v Dockeru")
     parser.add_argument("--clean", dest="clean", action="store_true",
                         help="Smazat předchozí výstupní data (postpro) před spuštěním nového výpočtu")
+    
+    # Parametrizace frekvenčního rozsahu a kroku
+    parser.add_argument("--freq-min", type=float, default=None, dest="freq_min",
+                        help="Minimální frekvence sweepu v GHz (výchozí: 2.320 nebo z FREQ_MIN)")
+    parser.add_argument("--freq-max", type=float, default=None, dest="freq_max",
+                        help="Maximální frekvence sweepu v GHz (výchozí: 2.345 nebo z FREQ_MAX)")
+    parser.add_argument("--freq-step", type=float, default=None, dest="freq_step",
+                        help="Frekvenční krok sweepu v GHz (výchozí: 0.005 nebo z FREQ_STEP)")
+
+    # Parametrizace sítě a řešiče
+    parser.add_argument("--mesh-max", type=float, default=None, dest="mesh_size_max",
+                        help="Maximální velikost elementu sítě v mm (výchozí: 5.0 nebo z MESH_SIZE_MAX)")
+    parser.add_argument("--mesh-min", type=float, default=None, dest="mesh_size_min",
+                        help="Minimální velikost elementu sítě v mm (výchozí: 0.5 nebo z MESH_SIZE_MIN)")
+    parser.add_argument("--amr-its", type=int, default=None, dest="amr_max_its",
+                        help="Maximální počet adaptivních zjemnění AMR (výchozí: 2 nebo z AMR_MAX_ITS)")
+
+    # Parametrizace geometrie patche
+    parser.add_argument("--patch-l", type=float, default=None, dest="patch_L",
+                        help="Délka flíčku patche v mm (výchozí: z analytického modelu)")
+    parser.add_argument("--patch-w", type=float, default=None, dest="patch_W",
+                        help="Šířka flíčku patche v mm (výchozí: z analytického modelu)")
+
     args = parser.parse_args()
-    main(skip_simulation=args.skip_simulation, clean=args.clean)
+
+    cli_params = {}
+    for param in ['freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its', 'patch_L', 'patch_W']:
+        val = getattr(args, param, None)
+        if val is not None:
+            cli_params[param] = val
+
+    main(custom_params=cli_params if cli_params else None, skip_simulation=args.skip_simulation, clean=args.clean)
 
