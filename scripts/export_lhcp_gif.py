@@ -26,15 +26,10 @@ def find_default_dataset():
         "data/postpro/paraview/driven_boundary/Cycle000003/data.pvtu",
         "data/postpro/paraview/driven_boundary/Cycle000002/data.pvtu",
         "data/postpro/paraview/driven_boundary/Cycle000001/data.pvtu",
-        "postpro/paraview/driven_boundary/Cycle000003/data.pvtu",
         "data/postpro/paraview/driven/Cycle000003/data.pvtu",
-        "data/postpro/paraview/driven/driven_000000001.vtu",
-        "postpro/paraview/driven/driven_000000001.vtu"
     ]
-    # Také zkusíme glob pro libovolný Cycle v driven_boundary
     cycles = sorted(glob.glob("data/postpro/paraview/driven_boundary/Cycle*/data.pvtu"))
     if cycles:
-        # Pokud máme více cyklů (např. 6), vezmeme prostřední (typicky rezonanční kmitočet)
         mid_idx = len(cycles) // 2
         candidates.insert(0, cycles[mid_idx])
 
@@ -107,7 +102,7 @@ def read_mesh_fields(vtu_path):
 
 
 def export_lhcp_gif(vtu_path=None,
-                    output_gif="postpro/lhcp_rotation.gif",
+                    output_gif="data/postpro/lhcp_rotation.gif",
                     n_frames=36,
                     sub_h_mm=1.52,
                     domain_extent_mm=32.0):
@@ -260,18 +255,8 @@ def export_lhcp_gif(vtu_path=None,
     anim.save(output_gif, writer=writer)
     plt.close()
 
-    # Také zkopírujeme do data/postpro pokud byl specifikován jiný adresář
-    alt_output = "data/postpro/lhcp_rotation.gif" if output_gif.startswith("postpro") else "postpro/lhcp_rotation.gif"
-    try:
-        os.makedirs(os.path.dirname(alt_output), exist_ok=True)
-        shutil.copyfile(output_gif, alt_output)
-    except Exception:
-        pass
-
     print("==================================================")
     print(f"Animovaný GIF byl úspěšně vygenerován do: {output_gif}")
-    if os.path.exists(alt_output):
-        print(f"Zároveň uložen do: {alt_output}")
     print("==================================================")
 
 

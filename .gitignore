@@ -23,21 +23,31 @@ wheels/
 venv/
 .venv/
 
-# Anténa a simulace - vygenerované soubory
-postpro/
-mesh.msh
-*.step
-*.brep
-*.png
-config.json
-
 # Docker a editor
+.env
 .dockerignore
 .vscode/
 .idea/
 *.swp
+trash/
+
+# Datové a exportní složky (veškeré generované vstupy i výstupy simulací)
+data/
+postpro/
+export/
+
+# Pojistka pro generované artefakty (pokud by vznikly v kořeni)
+mesh.msh
+config.json
+*.step
+*.brep
+*.png
+*.gif
+*.pvd
+*.vtu
+*.pvtu
+
+# MLflow a databáze běhů
 mlruns/
 mlflow.db
 mlflow.db-journal
-data/
-.env

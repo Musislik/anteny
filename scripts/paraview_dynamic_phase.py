@@ -22,17 +22,29 @@ _GLOBAL_FREQUENCY_SLIDER = None
 def setup_dynamic_phase_scene():
     global _GLOBAL_FREQUENCY_SLIDER
 
-    target_dir = PROJECT_DIR
-    if not os.path.exists(target_dir):
-        if os.path.exists(os.path.join(os.getcwd(), "data")):
-            target_dir = os.getcwd()
+    # Flexibilní vyhledání souboru driven_boundary.pvd (pro přenosný balíček i původní projekt)
+    script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+    candidates = [
+        # 1. Přenosný balíček (skript a složka driven_boundary v jedné složce)
+        os.path.join(script_dir, "driven_boundary", "driven_boundary.pvd"),
+        os.path.join(script_dir, "driven_boundary.pvd"),
+        os.path.join(script_dir, "data", "postpro", "paraview", "driven_boundary", "driven_boundary.pvd"),
+        # 2. V aktuálním pracovním adresáři
+        os.path.join(os.getcwd(), "driven_boundary", "driven_boundary.pvd"),
+        os.path.join(os.getcwd(), "data", "postpro", "paraview", "driven_boundary", "driven_boundary.pvd"),
+        # 3. Cesta projektu
+        r"D:\code\anteny\data\postpro\paraview\driven_boundary\driven_boundary.pvd",
+    ]
 
-    pvd_file = os.path.join(target_dir, "data", "postpro", "paraview", "driven_boundary", "driven_boundary.pvd")
-    if not os.path.exists(pvd_file):
-        pvd_file = os.path.join(target_dir, "postpro", "paraview", "driven_boundary", "driven_boundary.pvd")
+    pvd_file = None
+    for c in candidates:
+        if c and os.path.exists(c):
+            pvd_file = os.path.abspath(c)
+            break
 
-    if not os.path.exists(pvd_file):
-        print(f"[CHYBA] Soubor {pvd_file} nebyl nalezen!")
+    if not pvd_file or not os.path.exists(pvd_file):
+        print("[CHYBA] Soubor driven_boundary.pvd nebyl nalezen v žádném z obvyklých umístění!")
+        print(f"Hledáno v okolí: {script_dir}")
         return
 
     print(f"--- 1. Načítám frekvenční data: {pvd_file} ---")

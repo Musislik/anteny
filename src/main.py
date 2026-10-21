@@ -51,7 +51,7 @@ def _resolve_param(key, env_key, default_val, custom_params=None, cast_type=floa
 
 def clean_previous_outputs():
     print("--- 0. Čištění předchozích výstupů simulace ---")
-    dirs_to_clean = ["data/postpro", "postpro"]
+    dirs_to_clean = ["data/postpro"]
     for d in dirs_to_clean:
         if os.path.exists(d):
             for item in os.listdir(d):
@@ -63,7 +63,7 @@ def clean_previous_outputs():
                         os.remove(p)
                 except Exception as e:
                     print(f"Upozornění při mazání {p}: {e}")
-    print("Složky s předchozími výsledky byly vyčištěny.")
+    print("Složka data/postpro byla vyčištěna.")
 
 def main(custom_params=None, skip_simulation=False, clean=False):
     if clean:
