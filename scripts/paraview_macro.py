@@ -33,19 +33,23 @@ def setup_scene():
         if vtu_candidates:
             vtu_file = os.path.join(driven_dir, sorted(vtu_candidates)[-1])
     
-    if not os.path.exists(vtu_file):
-        print(f"[CHYBA] Soubor {vtu_file} nebyl nalezen.")
+    pvd_file = os.path.join(driven_dir, "driven.pvd")
+    if not os.path.exists(pvd_file) and not os.path.exists(vtu_file):
+        print(f"[CHYBA] Soubor {vtu_file} ani {pvd_file} nebyl nalezen.")
         print(f"Ujistete se, ze existuji vystupni data simulace ve slozce '{driven_dir}'.")
         return
 
-    print(f"Nacitam data: {vtu_file}")
-    
     # 1. Kompletni reset ParaView session (vymaze pamet, starou pipeline a uvolni cache pro nacteni novych dat)
     ResetSession()
     renderView1 = GetActiveViewOrCreate('RenderView')
     
     # 2. Nacteni pole z Palace / simulace
-    driven_vtu = XMLUnstructuredGridReader(registrationName='Palace_Field', FileName=[vtu_file])
+    if os.path.exists(pvd_file):
+        print(f"Nacitam PVD casovou radu: {pvd_file}")
+        driven_vtu = PVDReader(registrationName='Palace_Field', FileName=pvd_file)
+    else:
+        print(f"Nacitam data: {vtu_file}")
+        driven_vtu = XMLUnstructuredGridReader(registrationName='Palace_Field', FileName=[vtu_file])
     
     # 3. Zobrazit obrysovou krabici (Domain Bounding Box) pro 3D orientaci
     domain_box = Outline(registrationName='Domain_Box', Input=driven_vtu)
