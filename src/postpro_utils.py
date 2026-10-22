@@ -54,12 +54,50 @@ def load_env(env_path=None):
     # Pokud zadaná cesta existuje v aktuálním souborovém systému, použijeme ji.
     # Pokud neexistuje (např. hostitelská cesta jako /mnt/data-nosync/... spuštěná uvnitř Docker kontejneru),
     # použijeme lokální složku projektu data/ (v kontejneru odpovídá /workspace/data).
-    if env_data_dir and os.path.exists(env_data_dir):
-        data_dir = os.path.abspath(env_data_dir)
+    if env_data_dir:
+        if os.path.exists("/.dockerenv") and not os.path.exists(env_data_dir):
+            data_dir = os.path.abspath(os.path.join(root_dir, "data"))
+        elif os.path.isabs(env_data_dir):
+            data_dir = os.path.abspath(env_data_dir)
+        else:
+            data_dir = os.path.abspath(os.path.join(root_dir, env_data_dir))
     else:
         data_dir = os.path.abspath(os.path.join(root_dir, "data"))
 
     return root_dir, data_dir
+
+
+def get_export_dir(root_dir=None):
+    """
+    Vrátí platnou lokální cestu k exportní složce pro aktuální běhové prostředí podle EXPORT_DIR v .env.
+    Pokud EXPORT_DIR z .env ukazuje na hostitelskou cestu, která v kontejneru neexistuje
+    (např. /mnt/data-nosync/anteny/export), automaticky použije /workspace/export (připojený svazek).
+    """
+    if root_dir is None:
+        root_dir = get_project_root()
+
+    env_export_dir = os.getenv("EXPORT_DIR")
+    if env_export_dir:
+        if os.path.exists("/.dockerenv") and not os.path.exists(env_export_dir):
+            export_dir = os.path.join(root_dir, "export")
+        elif os.path.isabs(env_export_dir):
+            export_dir = env_export_dir
+        else:
+            export_dir = os.path.join(root_dir, env_export_dir)
+    else:
+        export_dir = os.path.join(root_dir, "export")
+
+    os.makedirs(export_dir, exist_ok=True)
+    return os.path.abspath(export_dir)
+
+
+def load_env_paths(env_path=None):
+    """
+    Načte .env a vrátí tuple (root_dir, data_dir, export_dir).
+    """
+    root_dir, data_dir = load_env(env_path)
+    export_dir = get_export_dir(root_dir)
+    return root_dir, data_dir, export_dir
 
 
 def get_latest_iteration_dir(data_dir=None):

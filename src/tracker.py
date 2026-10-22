@@ -177,13 +177,20 @@ def format_value(val, fmt):
         return str(val)
 
 
-def record_run(params, output_dir="data/postpro", run_name=None, export_zip=None, results_dir="export"):
+def record_run(params, output_dir="data/postpro", run_name=None, export_zip=None, results_dir=None):
     """
     Hlavní funkce pro zaznamenání běhu:
     1. Vypočte metriky z výstupních souborů
-    2. Zapíše řádek do export/sweep_results.csv a export/sweep_results.md
+    2. Zapíše řádek do <export_dir>/sweep_results.csv a <export_dir>/sweep_results.md
     3. Vytiskne přehledný řádek přímo do terminálu
     """
+    if results_dir is None:
+        try:
+            from postpro_utils import get_export_dir
+            results_dir = get_export_dir()
+        except ImportError:
+            results_dir = "export"
+
     os.makedirs(results_dir, exist_ok=True)
     csv_file = os.path.join(results_dir, "sweep_results.csv")
     md_file = os.path.join(results_dir, "sweep_results.md")
@@ -287,8 +294,15 @@ def update_markdown_summary(csv_file, md_file):
         print(f"Upozornění: Nepodařilo se aktualizovat Markdown tabulku: {e}")
 
 
-def print_summary_table(csv_file="export/sweep_results.csv"):
+def print_summary_table(csv_file=None):
     """Vytiskne celou souhrnnou tabulku přehledně do konzole."""
+    if csv_file is None:
+        try:
+            from postpro_utils import get_export_dir
+            csv_file = os.path.join(get_export_dir(), "sweep_results.csv")
+        except ImportError:
+            csv_file = "export/sweep_results.csv"
+
     if not os.path.exists(csv_file):
         print(f"Tabulka {csv_file} zatím neexistuje.")
         return

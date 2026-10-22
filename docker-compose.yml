@@ -45,6 +45,7 @@ services:
       - MLFLOW_TRACKING_URI=sqlite:////workspace/data/mlflow.db
       - CONF_DIR=${CONF_DIR:-.}
       - DATA_DIR=${DATA_DIR:-./data}
+      - EXPORT_DIR=${EXPORT_DIR:-./export}
       - PALACE_CORES=${PALACE_CORES:-5}
       - FREQ_MIN=${FREQ_MIN:-2.320}
       - FREQ_MAX=${FREQ_MAX:-2.345}
@@ -65,6 +66,7 @@ services:
     volumes:
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data
+      - ${EXPORT_DIR:-./export}:/workspace/export
       - /var/run/docker.sock:/var/run/docker.sock
     working_dir: /workspace
     profiles: ["worker"]

@@ -201,7 +201,12 @@ def run_inset_sweep(
     print("\n" + "=" * 65)
     print(f"SWEEP ZANOŘENÍ DOKONČEN! Úspěšně proběhlo {successful_runs}/{total_steps} běhů.")
     if export_each and not skip_simulation:
-        print("Vyexportované ZIP archivy naleznete ve složce: export/")
+        try:
+            from postpro_utils import get_export_dir
+            exp_folder = get_export_dir()
+        except ImportError:
+            exp_folder = "export/"
+        print(f"Vyexportované ZIP archivy naleznete ve složce: {exp_folder}")
     print("=" * 65)
 
     # Souhrnná tabulka výsledků (nahrazuje MLflow)

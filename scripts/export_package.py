@@ -25,7 +25,7 @@ except ImportError:
         import scripts._env
     except ImportError:
         pass
-from postpro_utils import load_env, ensure_paraview_linked
+from postpro_utils import load_env, ensure_paraview_linked, get_export_dir
 
 
 def get_next_default_export_path(export_dir, base_name="antena_export"):
@@ -49,15 +49,16 @@ def get_next_default_export_path(export_dir, base_name="antena_export"):
     return os.path.join(export_dir, f"{base_name}_{next_num}.zip")
 
 
-def resolve_export_path(root_dir, output_name=None, default_base="antena_export"):
+def resolve_export_path(root_dir, output_name=None, default_base="antena_export", export_dir=None):
     """
-    Určí cílovou cestu k ZIP souboru.
-    - Pokud output_name není zadáno: vrací export/antena_export_<N>.zip (od 1).
+    Určí cílovou cestu k ZIP souboru podle konfigurace EXPORT_DIR z .env.
+    - Pokud output_name není zadáno: vrací <export_dir>/antena_export_<N>.zip (od 1).
     - Pokud output_name je zadáno:
         - pokud soubor <name>.zip neexistuje, použije se <name>.zip
         - pokud soubor <name>.zip již existuje, vytvoří se <name>_2.zip, <name>_3.zip atd.
     """
-    export_dir = os.path.join(root_dir, "export")
+    if export_dir is None:
+        export_dir = get_export_dir(root_dir)
     os.makedirs(export_dir, exist_ok=True)
 
     if not output_name:
