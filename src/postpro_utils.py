@@ -50,7 +50,15 @@ def load_env(env_path=None):
         except Exception as e:
             print(f"Upozornění při čtení .env: {e}")
 
-    data_dir = os.getenv("DATA_DIR", os.path.join(root_dir, "data"))
+    env_data_dir = os.getenv("DATA_DIR")
+    # Pokud zadaná cesta existuje v aktuálním souborovém systému, použijeme ji.
+    # Pokud neexistuje (např. hostitelská cesta jako /mnt/data-nosync/... spuštěná uvnitř Docker kontejneru),
+    # použijeme lokální složku projektu data/ (v kontejneru odpovídá /workspace/data).
+    if env_data_dir and os.path.exists(env_data_dir):
+        data_dir = os.path.abspath(env_data_dir)
+    else:
+        data_dir = os.path.abspath(os.path.join(root_dir, "data"))
+
     return root_dir, data_dir
 
 

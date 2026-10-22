@@ -39,9 +39,11 @@ def _resolve_param(key, env_key, default_val, custom_params=None, cast_type=floa
             pass
     return default_val
 
-def clean_previous_outputs():
+def clean_previous_outputs(data_dir=None):
     print("--- 0. Čištění předchozích výstupů simulace ---")
-    dirs_to_clean = ["data/postpro"]
+    if data_dir is None:
+        _, data_dir = load_env()
+    dirs_to_clean = [os.path.join(data_dir, "postpro")]
     for d in dirs_to_clean:
         if os.path.exists(d):
             for item in os.listdir(d):
@@ -193,7 +195,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         return
 
     # Propojení složky paraview na poslední iteraci, pokud Palace běžel v AMR režimu
-    data_dir = os.getenv("DATA_DIR", "data")
+    _, data_dir = load_env()
     ensure_paraview_linked(data_dir)
 
     print("--- 5. Zpracování výsledků ---")
@@ -214,7 +216,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         plt.axhline(-10, color='r', linestyle='--')
         plt.legend()
         
-        plot_path = "data/S11_graf.png"
+        plot_path = os.path.join(data_dir, "S11_graf.png")
         plt.savefig(plot_path)
         print(f"Graf byl úspěšně uložen do {plot_path}")
         

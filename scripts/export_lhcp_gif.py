@@ -106,7 +106,7 @@ def export_lhcp_gif(vtu_path=None,
                     sub_h_mm=1.52,
                     domain_extent_mm=32.0):
     load_env()
-    data_dir = os.getenv("DATA_DIR", "data")
+    _, data_dir = load_env()
     if output_gif is None:
         output_gif = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")
 
@@ -266,7 +266,7 @@ def export_lhcp_gif(vtu_path=None,
 
 if __name__ == "__main__":
     load_env()
-    data_dir = os.getenv("DATA_DIR", "data")
+    _, data_dir = load_env()
     vtu = sys.argv[1] if len(sys.argv) > 1 else None
     default_out = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")
     out = sys.argv[2] if len(sys.argv) > 2 else default_out
