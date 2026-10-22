@@ -80,7 +80,7 @@ def build_palace_config(params):
                 "MaxFreq": params['freq_max'],
                 "FreqStep": params['freq_step'],
                 "SaveStep": save_step,
-                "AdaptiveTol": 1e-4
+                "AdaptiveTol": 1e-3
             },
             "Linear": {
                 "Type": "SuperLU",
