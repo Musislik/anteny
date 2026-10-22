@@ -17,6 +17,7 @@ load_env()
 
 from main import main
 from rf_calc import synth_square_patch_size, DESIGN_FREQ_GHZ
+from tracker import print_summary_table
 
 # Import exportní utility pro uložení balíčků po každém kroku
 try:
@@ -160,6 +161,7 @@ def run_inset_sweep(
 
         # custom_params přebíjí výchozí parametry v main()
         custom_params = {
+            'run_name': export_name,
             'feed_inset': inset_val,
             'patch_L': patch_l,
             'patch_W': patch_w,
@@ -198,10 +200,12 @@ def run_inset_sweep(
 
     print("\n" + "=" * 65)
     print(f"SWEEP ZANOŘENÍ DOKONČEN! Úspěšně proběhlo {successful_runs}/{total_steps} běhů.")
-    print("Všechny výsledky jsou zaznamenány v MLflow (spusťte: mlflow ui).")
     if export_each and not skip_simulation:
         print("Vyexportované ZIP archivy naleznete ve složce: export/")
     print("=" * 65)
+
+    # Souhrnná tabulka výsledků (nahrazuje MLflow)
+    print_summary_table()
 
 
 def run_patch_length_sweep(patch_lengths=None, export_each=False, skip_simulation=False):
@@ -233,8 +237,10 @@ def run_patch_length_sweep(patch_lengths=None, export_each=False, skip_simulatio
             print(f"Při běhu s patch_L={length} došlo k chybě: {e}")
 
     print("\n" + "=" * 65)
-    print("Sweep patch_L dokončen! Výsledky jsou uloženy a zalogovány v MLflow.")
+    print("Sweep patch_L dokončen! Výsledky jsou uloženy v export/sweep_results.csv.")
     print("=" * 65)
+
+    print_summary_table()
 
 
 def run_sweep(patch_lengths=None):

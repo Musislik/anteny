@@ -146,43 +146,72 @@ def export_paraview_package(output_name=None, output_zip=None):
         shutil.copytree(boundary_dir, dest_boundary)
         print(f"  + driven_boundary/ (kompletní 3D data všech frekvencí)")
 
-        # C) Doplňkové výsledky (GIF animace a S-parametry, pokud existují)
+        # C) Doplňkové výsledky a klíčová data simulace
         gif_src = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")
         if os.path.exists(gif_src):
             shutil.copy2(gif_src, os.path.join(temp_pack_dir, "lhcp_rotation.gif"))
             print("  + lhcp_rotation.gif (náhledová animace)")
 
-        s11_src = os.path.join(data_dir, "postpro", "port-S.csv")
-        if os.path.exists(s11_src):
-            shutil.copy2(s11_src, os.path.join(temp_pack_dir, "port-S.csv"))
-            print("  + port-S.csv (tabulka S11)")
+        # Důležité CSV a konfigurační výstupy z postpro
+        important_postpro = [
+            ("port-S.csv", "S-parametry / činitel odrazu S11"),
+            ("farfield-rE.csv", "dálkové pole (zisk, LHCP/RHCP, osový poměr AR)"),
+            ("port-V.csv", "napětí na budicím portu"),
+            ("port-I.csv", "proud na budicím portu"),
+            ("domain-E.csv", "energie a dielektrické ztráty v doménách"),
+            ("error-indicators.csv", "indikátory chyb adaptivního zjemnění AMR"),
+            ("palace.json", "konfigurace FEM řešiče Palace"),
+            ("config_resolved.json", "vyřešená konfigurace řešiče"),
+        ]
+        for fname, desc in important_postpro:
+            fsrc = os.path.join(data_dir, "postpro", fname)
+            if os.path.exists(fsrc) and os.path.getsize(fsrc) > 0:
+                shutil.copy2(fsrc, os.path.join(temp_pack_dir, fname))
+                print(f"  + {fname} ({desc})")
 
-        # D) Jednoduchý návod k použití (README.txt)
+        # CAD STEP model a 2D graf S11 (z kořene složky data)
+        extra_models = [
+            ("antenna_model.step", "3D CAD model antény"),
+            ("S11_graf.png", "2D graf činitele odrazu S11"),
+        ]
+        for fname, desc in extra_models:
+            fsrc = os.path.join(data_dir, fname)
+            if os.path.exists(fsrc) and os.path.getsize(fsrc) > 0:
+                shutil.copy2(fsrc, os.path.join(temp_pack_dir, fname))
+                print(f"  + {fname} ({desc})")
+
+        # D) Podrobný návod k použití a popis souborů (README.txt)
         readme_content = """======================================================================
-LHCP PATCH ANTENA — INTERAKTIVNI PARAVIEW PREZENTACE
+LHCP PATCH ANTENA — KOMPLETNÍ EXPORTNÍ BALÍČEK VÝSLEDKŮ
 ======================================================================
 
-OBSAH SLOZKY:
-- paraview_dynamic_phase.py  ... Ridici skript pro ParaView
-- driven_boundary/           ... Kompletni FEM simulace z resice Palace
-- lhcp_rotation.gif          ... Rychly nahled rotace pole
-- port-S.csv                 ... Prubeh S11 napric pasmem
+OBSAH BALÍČKU:
+1. 3D Model a animace polí:
+   - paraview_dynamic_phase.py  ... Řídicí makro pro ParaView
+   - driven_boundary/           ... Kompletní FEM síť a 3D pole pro všechny frekvence
+   - lhcp_rotation.gif          ... Rychlý náhled rotace pole
+   - antenna_model.step         ... 3D CAD model geometrie (pro CAD / výrobu DPS)
 
-JAK ZOBRAZIT INTERAKTIVNI MODEL V PARAVIEW:
-1. Otevrete ParaView (libovolna verze 5.x nebo 6.x).
-2. V hornim menu zvolte:
-      Tools -> Python Shell -> Run Script
-3. Vyberte soubor:
-      paraview_dynamic_phase.py (primo z teto slozky)
+2. Vysokofrekvenční parametry a vyzařování:
+   - port-S.csv                 ... Průběh S11 napříč pásmem (amplituda v dB a fáze)
+   - farfield-rE.csv            ... Vektorové dálkové pole (zisk, LHCP/RHCP, osový poměr AR)
+   - port-V.csv, port-I.csv     ... Komplexní napětí a proud na portu (Zin = V / I)
+   - domain-E.csv               ... Energie pole a ztráty v dielektriku / vzduchu
+   - S11_graf.png               ... Graf S11 s vyznačenou mezí -10 dB
 
-OVLADANI:
-- Posuvnik dole ve 3D okne: prepina frekvenci (2.320 az 2.345 GHz)
-- Tlacitko PLAY [ > ] v horni liste: spusti plynulou rotaci faze (0 az 360 stupnu)
+3. Konfigurace:
+   - palace.json                ... Kompletní konfigurace řešiče pro reprodukovatelnost
+
+JAK ZOBRAZIT INTERAKTIVNÍ MODEL V PARAVIEW:
+1. Otevřete ParaView.
+2. V horním menu zvolte: Tools -> Python Shell -> Run Script
+3. Vyberte soubor: paraview_dynamic_phase.py (přímo z této složky)
+4. Posuvníkem přepínejte frekvenci, tlačítkem PLAY spusťte rotaci fáze.
 ======================================================================
 """
         with open(os.path.join(temp_pack_dir, "README.txt"), "w", encoding="utf-8") as f:
             f.write(readme_content)
-        print("  + README.txt (návod k použití)")
+        print("  + README.txt (návod k použití a popis souborů)")
 
         # 2. Vytvoření ZIP archivu
         print(f"--- 2. Komprimuji do ZIP archivu: {output_zip} ---")
