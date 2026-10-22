@@ -11,10 +11,18 @@ Spuštění v ParaView:
 """
 
 import os
+import sys
 import vtk
 from paraview.simple import *
 
-PROJECT_DIR = r"D:\code\anteny"
+try:
+    import _env
+    from postpro_utils import get_driven_boundary_pvd
+except ImportError:
+    def get_driven_boundary_pvd(caller_file=None):
+        script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
+        local_pvd = os.path.join(script_dir, "driven_boundary", "driven_boundary.pvd")
+        return os.path.abspath(local_pvd) if os.path.exists(local_pvd) else None
 
 # Globální reference, aby Python nesmazal posuvník z paměti
 _GLOBAL_FREQUENCY_SLIDER = None
@@ -22,29 +30,10 @@ _GLOBAL_FREQUENCY_SLIDER = None
 def setup_dynamic_phase_scene():
     global _GLOBAL_FREQUENCY_SLIDER
 
-    # Flexibilní vyhledání souboru driven_boundary.pvd (pro přenosný balíček i původní projekt)
-    script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else os.getcwd()
-    candidates = [
-        # 1. Přenosný balíček (skript a složka driven_boundary v jedné složce)
-        os.path.join(script_dir, "driven_boundary", "driven_boundary.pvd"),
-        os.path.join(script_dir, "driven_boundary.pvd"),
-        os.path.join(script_dir, "data", "postpro", "paraview", "driven_boundary", "driven_boundary.pvd"),
-        # 2. V aktuálním pracovním adresáři
-        os.path.join(os.getcwd(), "driven_boundary", "driven_boundary.pvd"),
-        os.path.join(os.getcwd(), "data", "postpro", "paraview", "driven_boundary", "driven_boundary.pvd"),
-        # 3. Cesta projektu
-        r"D:\code\anteny\data\postpro\paraview\driven_boundary\driven_boundary.pvd",
-    ]
-
-    pvd_file = None
-    for c in candidates:
-        if c and os.path.exists(c):
-            pvd_file = os.path.abspath(c)
-            break
-
+    pvd_file = get_driven_boundary_pvd(caller_file=__file__ if "__file__" in globals() else None)
     if not pvd_file or not os.path.exists(pvd_file):
-        print("[CHYBA] Soubor driven_boundary.pvd nebyl nalezen v žádném z obvyklých umístění!")
-        print(f"Hledáno v okolí: {script_dir}")
+        print(f"[CHYBA] Soubor driven_boundary.pvd nebyl nalezen.")
+        print("Zkontrolujte parametr DATA_DIR v souboru .env nebo existenci složky driven_boundary.")
         return
 
     print(f"--- 1. Načítám frekvenční data: {pvd_file} ---")

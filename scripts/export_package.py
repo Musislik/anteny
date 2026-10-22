@@ -12,19 +12,30 @@ import sys
 import shutil
 import zipfile
 
-def export_paraview_package(output_zip="export/antena_paraview_balicek.zip"):
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    os.chdir(project_dir)
+import _env
+from postpro_utils import load_env, ensure_paraview_linked
 
-    # 1. Nalezení zdrojových dat
-    boundary_dir = os.path.join("data", "postpro", "paraview", "driven_boundary")
+def export_paraview_package(output_zip=None):
+    root_dir, data_dir = load_env()
+    os.chdir(root_dir)
+
+    # Zajistíme propojení na poslední AMR iteraci
+    ensure_paraview_linked(data_dir)
+
+    if output_zip is None:
+        output_zip = os.path.join(root_dir, "export", "antena_paraview_balicek.zip")
+    elif not os.path.isabs(output_zip):
+        output_zip = os.path.join(root_dir, output_zip)
+
+    # 1. Nalezení zdrojových dat přímo podle DATA_DIR
+    boundary_dir = os.path.abspath(os.path.join(data_dir, "postpro", "paraview", "driven_boundary"))
 
     if not os.path.exists(boundary_dir):
         print(f"[CHYBA] Složka se simulovanými daty nebyla nalezena: {boundary_dir}")
-        print("Nejprve spusťte simulaci (např. python src/main.py).")
+        print("Zkontrolujte parametr DATA_DIR v souboru .env nebo nejprve spusťte simulaci.")
         return False
 
-    script_path = os.path.join("scripts", "paraview_dynamic_phase.py")
+    script_path = os.path.join(root_dir, "scripts", "paraview_dynamic_phase.py")
     if not os.path.exists(script_path):
         print(f"[CHYBA] Skript {script_path} nebyl nalezen!")
         return False
@@ -40,11 +51,15 @@ def export_paraview_package(output_zip="export/antena_paraview_balicek.zip"):
         shutil.rmtree(temp_pack_dir)
     os.makedirs(temp_pack_dir, exist_ok=True)
 
-    print(f"--- 1. Kopíruji soubory do balíčku ---")
+    print(f"--- 1. Kopíruji soubory do balíčku z {data_dir} ---")
 
-    # A) Skript pro ParaView
+    # A) Skript pro ParaView a pomocné utility
     shutil.copy2(script_path, os.path.join(temp_pack_dir, "paraview_dynamic_phase.py"))
     print("  + paraview_dynamic_phase.py")
+    utils_path = os.path.join(root_dir, "src", "postpro_utils.py")
+    if os.path.exists(utils_path):
+        shutil.copy2(utils_path, os.path.join(temp_pack_dir, "postpro_utils.py"))
+        print("  + postpro_utils.py")
 
     # B) Simulační data povrchu (driven_boundary)
     dest_boundary = os.path.join(temp_pack_dir, "driven_boundary")
@@ -52,12 +67,12 @@ def export_paraview_package(output_zip="export/antena_paraview_balicek.zip"):
     print(f"  + driven_boundary/ (kompletní 3D data všech frekvencí)")
 
     # C) Doplňkové výsledky (GIF animace a S-parametry, pokud existují)
-    gif_src = os.path.join("data", "postpro", "lhcp_rotation.gif")
+    gif_src = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")
     if os.path.exists(gif_src):
         shutil.copy2(gif_src, os.path.join(temp_pack_dir, "lhcp_rotation.gif"))
         print("  + lhcp_rotation.gif (náhledová animace)")
 
-    s11_src = os.path.join("data", "postpro", "port-S.csv")
+    s11_src = os.path.join(data_dir, "postpro", "port-S.csv")
     if os.path.exists(s11_src):
         shutil.copy2(s11_src, os.path.join(temp_pack_dir, "port-S.csv"))
         print("  + port-S.csv (tabulka S11)")
@@ -113,5 +128,5 @@ OVLADANI:
     return True
 
 if __name__ == "__main__":
-    out = sys.argv[1] if len(sys.argv) > 1 else "export/antena_paraview_balicek.zip"
+    out = sys.argv[1] if len(sys.argv) > 1 else None
     export_paraview_package(out)

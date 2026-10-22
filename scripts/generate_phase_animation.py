@@ -8,32 +8,39 @@ Výstup se uloží jako ParaView PVD kolekce, kterou lze v ParaView přímo pře
 
 import os
 import sys
+import glob
 import numpy as np
 from paraview.simple import *
 
+import _env
+from postpro_utils import load_env, ensure_paraview_linked
+
 def generate_phase_series(
     input_pvtu=None,
-    out_dir="data/postpro/paraview/phase_animation",
+    out_dir=None,
     n_frames=36,
     freq_label="2.330 GHz"
 ):
-    project_dir = r"D:\code\anteny"
-    if os.path.exists(project_dir):
-        os.chdir(project_dir)
+    root_dir, data_dir = load_env()
+    os.chdir(root_dir)
+    ensure_paraview_linked(data_dir)
+
+    if out_dir is None:
+        out_dir = os.path.join(data_dir, "postpro", "paraview", "phase_animation")
 
     if input_pvtu is None:
-        candidates = [
-            "data/postpro/paraview/driven_boundary/Cycle000003/data.pvtu",
-            "data/postpro/paraview/driven_boundary/Cycle000004/data.pvtu",
-            "postpro/paraview/driven_boundary/Cycle000233/data.pvtu"
-        ]
-        for c in candidates:
-            if os.path.exists(c):
-                input_pvtu = os.path.abspath(c)
-                break
+        cycles = sorted(glob.glob(os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "Cycle*", "data.pvtu")))
+        if cycles:
+            mid_idx = len(cycles) // 2
+            input_pvtu = os.path.abspath(cycles[mid_idx])
+        else:
+            default_cycle = os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "Cycle000003", "data.pvtu")
+            if os.path.exists(default_cycle):
+                input_pvtu = os.path.abspath(default_cycle)
 
     if not input_pvtu or not os.path.exists(input_pvtu):
         print(f"[CHYBA] Vstupní soubor nebyl nalezen: {input_pvtu}")
+        print(f"Zkontrolujte DATA_DIR ({data_dir}) v .env nebo spusťte simulaci.")
         return False
 
     print(f"--- 1. Načítám data pole z rezonančního kroku ({freq_label}): {input_pvtu} ---")

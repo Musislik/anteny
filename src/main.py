@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import numpy as np
 import skrf as rf
@@ -11,6 +12,7 @@ from palace_builder import build_palace_config
 from runner import run_palace
 
 from tracker import analyze_and_log_run
+from postpro_utils import ensure_paraview_linked, load_env
 
 from rf_calc import (
     synth_microstrip_w,
@@ -19,23 +21,6 @@ from rf_calc import (
     DESIGN_FREQ_GHZ,
     PORT_Z0
 )
-
-def load_env_file(filepath=".env"):
-    """Načte proměnné prostředí ze souboru .env, pokud existuje."""
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        k, v = k.strip(), v.strip()
-                        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
-                            v = v[1:-1]
-                        if k and k not in os.environ:
-                            os.environ[k] = v
-        except Exception as e:
-            print(f"Upozornění při čtení .env: {e}")
 
 def _resolve_param(key, env_key, default_val, custom_params=None, cast_type=float):
     """Vyhodnotí parametr s prioritou: custom_params > os.environ > default."""
@@ -75,7 +60,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         clean_previous_outputs()
 
     # Načtení případného .env souboru
-    load_env_file()
+    load_env()
 
     # 1. Parametrizace materiálů a frekvenčního pásma
     sub_h = _resolve_param('sub_h', 'SUB_H', 1.52, custom_params, float)
@@ -206,10 +191,13 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     except Exception as e:
         print(f"Upozornění: Simulace Palace nebyla spuštěna: {e}")
         return
-    
+
+    # Propojení složky paraview na poslední iteraci, pokud Palace běžel v AMR režimu
+    data_dir = os.getenv("DATA_DIR", "data")
+    ensure_paraview_linked(data_dir)
+
     print("--- 5. Zpracování výsledků ---")
-    # Palace ukládá S-parametry jako Touchstone soubor do definovaného výstupního adresáře
-    output_dir = "data/postpro"
+    output_dir = os.path.join(data_dir, "postpro")
     s11_file = os.path.join(output_dir, "port-S.csv") # Palace outputs CSV
     
     if os.path.exists(s11_file):

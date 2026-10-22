@@ -1,42 +1,29 @@
 from paraview.simple import *
 import os
+import sys
+import json
 
-# Cesta k hlavnimu adresari projektu (lze upravit podle vaseho umisteni)
-PROJECT_DIR = r"D:\code\anteny"
+import _env
+from postpro_utils import load_env, ensure_paraview_linked
 
 def setup_scene():
-    # Zmena soucasneho pracovniho adresare do adresare projektu
-    target_dir = PROJECT_DIR
-    if not os.path.exists(target_dir):
-        # Fallback pokud je skript spousten z korene projektu
-        if os.path.exists(os.path.join(os.getcwd(), "postpro")):
-            target_dir = os.getcwd()
-        elif "__file__" in globals() and os.path.exists(os.path.join(os.path.dirname(__file__), "postpro")):
-            target_dir = os.path.dirname(__file__)
+    root_dir, data_dir = load_env()
+    os.chdir(root_dir)
+    ensure_paraview_linked(data_dir)
 
-    if os.path.exists(target_dir):
-        os.chdir(target_dir)
-        print(f"Pracovni adresar nastaven na: {target_dir}")
-    else:
-        print(f"[CHYBA] Adresar projektu nebyl nalezen: {PROJECT_DIR}")
-        print("Zkontrolujte prosim nastaveni promenne PROJECT_DIR v makru.")
-        return
+    # Cesta k simulovanému PVD souboru přímo z DATA_DIR
+    boundary_pvd = os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "driven_boundary.pvd")
+    domain_pvd = os.path.join(data_dir, "postpro", "paraview", "driven", "driven.pvd")
 
-    # Cesta k simulovanemu VTU souboru
-    current_dir = os.getcwd()
-    driven_dir = os.path.join(current_dir, "data", "postpro", "paraview", "driven")
-    if not os.path.exists(driven_dir) or not os.listdir(driven_dir):
-        driven_dir = os.path.join(current_dir, "postpro", "paraview", "driven")
-    vtu_file = os.path.join(driven_dir, "driven_000000001.vtu")
-    if not os.path.exists(vtu_file) and os.path.isdir(driven_dir):
-        vtu_candidates = [f for f in os.listdir(driven_dir) if f.endswith(".vtu")]
-        if vtu_candidates:
-            vtu_file = os.path.join(driven_dir, sorted(vtu_candidates)[-1])
-    
-    pvd_file = os.path.join(driven_dir, "driven.pvd")
-    if not os.path.exists(pvd_file) and not os.path.exists(vtu_file):
-        print(f"[CHYBA] Soubor {vtu_file} ani {pvd_file} nebyl nalezen.")
-        print(f"Ujistete se, ze existuji vystupni data simulace ve slozce '{driven_dir}'.")
+    pvd_file = None
+    if os.path.exists(boundary_pvd):
+        pvd_file = boundary_pvd
+    elif os.path.exists(domain_pvd):
+        pvd_file = domain_pvd
+
+    if not pvd_file:
+        print(f"[CHYBA] Soubor driven_boundary.pvd nebyl nalezen v {data_dir}/postpro/paraview.")
+        print("Ujistěte se, že existují výstupní data simulace a že je správně nastaven DATA_DIR v .env.")
         return
 
     # 1. Kompletni reset ParaView session (vymaze pamet, starou pipeline a uvolni cache pro nacteni novych dat)
@@ -44,13 +31,9 @@ def setup_scene():
     renderView1 = GetActiveViewOrCreate('RenderView')
     
     # 2. Nacteni pole z Palace / simulace
-    if os.path.exists(pvd_file):
-        print(f"Nacitam PVD casovou radu: {pvd_file}")
-        driven_vtu = PVDReader(registrationName='Palace_Field', FileName=pvd_file)
-    else:
-        print(f"Nacitam data: {vtu_file}")
-        driven_vtu = XMLUnstructuredGridReader(registrationName='Palace_Field', FileName=[vtu_file])
-    
+    print(f"Nacitam PVD casovou radu: {pvd_file}")
+    driven_vtu = PVDReader(registrationName='Palace_Field', FileName=pvd_file)
+
     # 3. Zobrazit obrysovou krabici (Domain Bounding Box) pro 3D orientaci
     domain_box = Outline(registrationName='Domain_Box', Input=driven_vtu)
     disp_box = Show(domain_box, renderView1, 'GeometryRepresentation')
@@ -58,10 +41,11 @@ def setup_scene():
     
     # 4. Vytvoreni horizontalniho rezu v rovine patche (z = sub_h)
     sub_h_mm = 1.52  # Vychozi hodnota pro FR4
-    config_file = os.path.join(current_dir, "config.json")
+    config_file = os.path.join(data_dir, "config.json")
+    if not os.path.exists(config_file):
+        config_file = os.path.join(conf_dir, "config.json")
     if os.path.exists(config_file):
         try:
-            import json
             with open(config_file, "r") as f:
                 cfg = json.load(f)
                 if "_Metadata" in cfg and "sub_h" in cfg["_Metadata"]:

@@ -1,10 +1,22 @@
 import pyvista as pv
 import os
+import sys
 
-def plot_e_field(vtu_file, output_image="efield.png"):
+import _env
+from postpro_utils import load_env, ensure_paraview_linked
+
+def plot_e_field(vtu_file=None, output_image=None):
+    root_dir, data_dir = load_env()
+    ensure_paraview_linked(data_dir)
+
+    if vtu_file is None:
+        vtu_file = os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "Cycle000003", "data.pvtu")
+    if output_image is None:
+        output_image = os.path.join(data_dir, "postpro", "efield.png")
+
     print(f"Načítám soubor s polem: {vtu_file}")
     if not os.path.exists(vtu_file):
-        print("Soubor nenalezen. Ujistěte se, že simulátor Palace úspěšně vygeneroval pole (VTU formát).")
+        print(f"Soubor {vtu_file} nenalezen. Ujistěte se, že simulátor Palace úspěšně vygeneroval pole.")
         return
         
     try:
@@ -40,7 +52,6 @@ def plot_e_field(vtu_file, output_image="efield.png"):
     print(f"Rozložení pole bylo exportováno do: {output_image}")
 
 if __name__ == "__main__":
-    import sys
-    # Příklad použití: python plot_efield.py postpro/paraview/driven/driven_000000001.vtu
-    target_vtu = sys.argv[1] if len(sys.argv) > 1 else "postpro/paraview/driven/driven_000000001.vtu"
-    plot_e_field(target_vtu)
+    target_vtu = sys.argv[1] if len(sys.argv) > 1 else None
+    target_out = sys.argv[2] if len(sys.argv) > 2 else None
+    plot_e_field(target_vtu, target_out)

@@ -19,23 +19,22 @@ import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 from matplotlib.animation import FuncAnimation, PillowWriter
 
+import _env
+from postpro_utils import load_env, ensure_paraview_linked
+
 
 def find_default_dataset():
-    """Najde nejvhodnější výstupní soubor simulace (přednostně rezonance v driven_boundary)."""
-    candidates = [
-        "data/postpro/paraview/driven_boundary/Cycle000003/data.pvtu",
-        "data/postpro/paraview/driven_boundary/Cycle000002/data.pvtu",
-        "data/postpro/paraview/driven_boundary/Cycle000001/data.pvtu",
-        "data/postpro/paraview/driven/Cycle000003/data.pvtu",
-    ]
-    cycles = sorted(glob.glob("data/postpro/paraview/driven_boundary/Cycle*/data.pvtu"))
+    """Najde výstupní soubor simulace z DATA_DIR definovaného v .env (střední rezonanční frekvence)."""
+    _, data_dir = load_env()
+    ensure_paraview_linked(data_dir)
+    cycles = sorted(glob.glob(os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "Cycle*", "data.pvtu")))
     if cycles:
         mid_idx = len(cycles) // 2
-        candidates.insert(0, cycles[mid_idx])
+        return cycles[mid_idx]
 
-    for c in candidates:
-        if os.path.exists(c):
-            return c
+    direct_pvtu = os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "Cycle000003", "data.pvtu")
+    if os.path.exists(direct_pvtu):
+        return direct_pvtu
     return None
 
 
@@ -102,15 +101,20 @@ def read_mesh_fields(vtu_path):
 
 
 def export_lhcp_gif(vtu_path=None,
-                    output_gif="data/postpro/lhcp_rotation.gif",
+                    output_gif=None,
                     n_frames=36,
                     sub_h_mm=1.52,
                     domain_extent_mm=32.0):
+    load_env()
+    data_dir = os.getenv("DATA_DIR", "data")
+    if output_gif is None:
+        output_gif = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")
+
     if vtu_path is None:
         vtu_path = find_default_dataset()
         if vtu_path is None:
             print("CHYBA: Nebyl nalezen žádný výstupní soubor simulace (.pvtu/.vtu)!")
-            print("Nejprve spusťte simulaci (např. python src/main.py).")
+            print(f"Zkontrolujte DATA_DIR ({data_dir}) nebo nejprve spusťte simulaci.")
             return
 
     points, e_real, e_imag = read_mesh_fields(vtu_path)
@@ -261,6 +265,9 @@ def export_lhcp_gif(vtu_path=None,
 
 
 if __name__ == "__main__":
+    load_env()
+    data_dir = os.getenv("DATA_DIR", "data")
     vtu = sys.argv[1] if len(sys.argv) > 1 else None
-    out = sys.argv[2] if len(sys.argv) > 2 else "data/postpro/lhcp_rotation.gif"
+    default_out = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")
+    out = sys.argv[2] if len(sys.argv) > 2 else default_out
     export_lhcp_gif(vtu, out)
