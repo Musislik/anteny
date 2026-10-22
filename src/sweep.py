@@ -11,6 +11,10 @@ for d in (src_dir, scripts_dir):
     if d not in sys.path:
         sys.path.append(d)
 
+from postpro_utils import load_env
+# Načtení proměnných prostředí z .env
+load_env()
+
 from main import main
 from rf_calc import synth_square_patch_size, DESIGN_FREQ_GHZ
 
@@ -25,8 +29,60 @@ DEFAULT_SUB_H = 1.52
 DEFAULT_EPS_R = 4.3
 
 # Cílená výchozí sada hodnot zanoření (v mm):
-# 0.0 mm (reference bez zanoření) -> 3.0 mm (přechodový bod) -> 4.5, 4.8, 5.0, 5.2 mm (hledání optima kolem 220-230 Ohm)
 DEFAULT_INSET_VALUES = [0.0, 3.0, 4.5, 4.8, 5.0, 5.2]
+
+
+def _parse_insets_env(val):
+    """Převede řetězec čísel oddělených čárkou nebo mezerou z .env na seznam floatů."""
+    if not val:
+        return None
+    tokens = val.replace(',', ' ').split()
+    res = []
+    for t in tokens:
+        try:
+            res.append(float(t))
+        except ValueError:
+            pass
+    return res if res else None
+
+
+def _resolve_env_float(sweep_key, base_key, default_val):
+    val = os.getenv(sweep_key)
+    if val is not None:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    val = os.getenv(base_key)
+    if val is not None:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return float(default_val)
+
+
+def _resolve_env_int(sweep_key, base_key, default_val):
+    val = os.getenv(sweep_key)
+    if val is not None:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    val = os.getenv(base_key)
+    if val is not None:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return int(default_val)
+
+
+def _resolve_env_bool(sweep_key, default_val=True):
+    val = os.getenv(sweep_key)
+    if val is None:
+        return default_val
+    return val.strip().lower() in ("true", "1", "yes", "y", "ano", "t")
 
 
 def generate_sweep_patch_lengths(center_freq=DESIGN_FREQ_GHZ, h=DEFAULT_SUB_H, eps_r=DEFAULT_EPS_R, span_mm=1.6, num_points=5):
@@ -46,29 +102,48 @@ def generate_sweep_patch_lengths(center_freq=DESIGN_FREQ_GHZ, h=DEFAULT_SUB_H, e
     return [float(np.round(l, 2)) for l in lengths]
 
 
-def run_inset_sweep(insets=None, patch_l=30.3, patch_w=None, export_each=True, skip_simulation=False):
+def run_inset_sweep(
+    insets=None,
+    patch_l=None,
+    patch_w=None,
+    freq_min=None,
+    freq_max=None,
+    freq_step=None,
+    amr_max_its=None,
+    amr_threshold=None,
+    save_step=None,
+    export_each=None,
+    skip_simulation=False,
+):
     """
     Parametrický sweep délky zanoření napáječe (feed_inset).
-
-    :param insets: Seznam hodnot zanoření v mm (např. [0.0, 3.0, 4.8, 5.0])
-    :param patch_l: Délka flíčku v mm (výchozí: 30.3 mm)
-    :param patch_w: Šířka flíčku v mm (výchozí: rovno patch_l)
-    :param export_each: Pokud je True, po každém úspěšném kroku vytvoří pojmenovaný ZIP balíček v export/
-    :param skip_simulation: Pokud je True, generuje pouze geometrii a síť bez spouštění Palace v Dockeru
+    Priorita parametrů: explicitní argument funkce/CLI > SWEEP_* z .env > standardní proměnné .env > výchozí hodnoty.
     """
+    # 1. Vyhodnocení profilu pro sweep
     if insets is None:
-        insets = DEFAULT_INSET_VALUES
+        insets = _parse_insets_env(os.getenv("SWEEP_INSETS")) or DEFAULT_INSET_VALUES
 
-    if patch_w is None:
-        patch_w = patch_l
+    patch_l = patch_l if patch_l is not None else _resolve_env_float("SWEEP_PATCH_L", "PATCH_L", 30.3)
+    patch_w = patch_w if patch_w is not None else _resolve_env_float("SWEEP_PATCH_W", "PATCH_W", patch_l)
+    freq_min = freq_min if freq_min is not None else _resolve_env_float("SWEEP_FREQ_MIN", "FREQ_MIN", 2.280)
+    freq_max = freq_max if freq_max is not None else _resolve_env_float("SWEEP_FREQ_MAX", "FREQ_MAX", 2.380)
+    freq_step = freq_step if freq_step is not None else _resolve_env_float("SWEEP_FREQ_STEP", "FREQ_STEP", 0.005)
+    amr_max_its = amr_max_its if amr_max_its is not None else _resolve_env_int("SWEEP_AMR_MAX_ITS", "AMR_MAX_ITS", 1)
+    amr_threshold = amr_threshold if amr_threshold is not None else _resolve_env_float("SWEEP_AMR_THRESHOLD", "AMR_THRESHOLD", 0.3)
+    save_step = save_step if save_step is not None else _resolve_env_int("SWEEP_SAVE_STEP", "SAVE_STEP", 1)
+    export_each = export_each if export_each is not None else _resolve_env_bool("SWEEP_EXPORT_EACH", True)
 
     total_steps = len(insets)
     print("=" * 65)
     print("ZAHÁJENÍ PARAMETRICKÉHO SWEEPU ZANOŘENÍ NAPÁJEČE (FEED_INSET)")
-    print(f"Testované hodnoty zanoření: {insets} mm")
-    print(f"Rozměry flíčku: L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
-    print(f"Automatický export balíčku: {'ANO' if export_each else 'NE'}")
-    print("Čištění data/postpro před každým krokem: VŽDY AKTIVNÍ")
+    print("Aktivní profil sweepu (z .env / CLI):")
+    print(f"  • Testované hodnoty zanoření: {insets} mm")
+    print(f"  • Frekvenční rozsah:          {freq_min:.3f} - {freq_max:.3f} GHz (krok {freq_step:.4f} GHz)")
+    print(f"  • Rozměry flíčku:             L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
+    print(f"  • AMR zjemnění sítě:          {amr_max_its} iterací (Tolerance: {amr_threshold})")
+    print(f"  • Ukládání 3D polí:           každých {save_step} kroků")
+    print(f"  • Automatický export balíčku: {'ANO' if export_each else 'NE'}")
+    print("  • Čištění data/postpro:       VŽDY AKTIVNÍ (před každým během)")
     print("=" * 65)
 
     successful_runs = 0
@@ -78,10 +153,17 @@ def run_inset_sweep(insets=None, patch_l=30.3, patch_w=None, export_each=True, s
         export_name = f"antena_inset_{inset_val:.2f}mm"
         print(f"\n>>> [{i}/{total_steps}] Spouštím krok: feed_inset = {inset_val:.3f} mm (balíček: {export_name}) <<<")
 
+        # custom_params přebíjí výchozí parametry v main()
         custom_params = {
             'feed_inset': inset_val,
             'patch_L': patch_l,
             'patch_W': patch_w,
+            'freq_min': freq_min,
+            'freq_max': freq_max,
+            'freq_step': freq_step,
+            'amr_max_its': amr_max_its,
+            'amr_threshold': amr_threshold,
+            'save_step': save_step,
         }
 
         try:
@@ -166,21 +248,56 @@ if __name__ == "__main__":
         type=float,
         nargs="+",
         default=None,
-        help="Explicitní seznam hodnot zanoření v mm (např. --insets 0.0 3.0 4.8 5.0).",
+        help="Explicitní seznam hodnot zanoření v mm (přebíjí SWEEP_INSETS z .env).",
     )
     parser.add_argument(
         "--patch-l",
         type=float,
-        default=30.3,
+        default=None,
         dest="patch_l",
-        help="Délka flíčku v mm při sweepu zanoření (výchozí: 30.3 mm).",
+        help="Délka flíčku v mm při sweepu (přebíjí SWEEP_PATCH_L z .env).",
+    )
+    parser.add_argument(
+        "--patch-w",
+        type=float,
+        default=None,
+        dest="patch_w",
+        help="Šířka flíčku v mm při sweepu (přebíjí SWEEP_PATCH_W z .env).",
+    )
+    parser.add_argument(
+        "--freq-min",
+        type=float,
+        default=None,
+        dest="freq_min",
+        help="Minimální frekvence sweepu v GHz (přebíjí SWEEP_FREQ_MIN z .env).",
+    )
+    parser.add_argument(
+        "--freq-max",
+        type=float,
+        default=None,
+        dest="freq_max",
+        help="Maximální frekvence sweepu v GHz (přebíjí SWEEP_FREQ_MAX z .env).",
+    )
+    parser.add_argument(
+        "--freq-step",
+        type=float,
+        default=None,
+        dest="freq_step",
+        help="Frekvenční krok sweepu v GHz (přebíjí SWEEP_FREQ_STEP z .env).",
+    )
+    parser.add_argument(
+        "--amr-its",
+        type=int,
+        default=None,
+        dest="amr_max_its",
+        help="Maximální počet AMR zjemnění (přebíjí SWEEP_AMR_MAX_ITS z .env).",
     )
     parser.add_argument(
         "--no-export",
         dest="export_each",
         action="store_false",
-        default=True,
-        help="Zakázat automatické balení výsledků do ZIP archivů po každém kroku.",
+        default=None,
+        help="Zakázat automatické balení výsledků do ZIP archivů po každém kroku (přebíjí SWEEP_EXPORT_EACH z .env).",
     )
     parser.add_argument(
         "--skip-simulation",
@@ -197,11 +314,16 @@ if __name__ == "__main__":
         run_inset_sweep(
             insets=args.insets,
             patch_l=args.patch_l,
+            patch_w=args.patch_w,
+            freq_min=args.freq_min,
+            freq_max=args.freq_max,
+            freq_step=args.freq_step,
+            amr_max_its=args.amr_max_its,
             export_each=args.export_each,
             skip_simulation=args.skip_simulation,
         )
     else:
         run_patch_length_sweep(
-            export_each=args.export_each,
+            export_each=args.export_each if args.export_each is not None else False,
             skip_simulation=args.skip_simulation,
         )
