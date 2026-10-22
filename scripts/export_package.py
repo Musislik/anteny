@@ -3,29 +3,107 @@ Jednoduchý skript pro zabalení (export) interaktivní ParaView prezentace do j
 
 Použití:
     python scripts/export_package.py
-Nebo:
-    python scripts/export_package.py moje_antena.zip
+    (automaticky vytvoří export s inkrementovaným číslem: export/antena_export_1.zip, export/antena_export_2.zip, ...)
+
+Nebo se zadáním jména:
+    python scripts/export_package.py moje_antena
+    python scripts/export_package.py --name moje_antena.zip
+    (pokud již soubor existuje, vytvoří se automaticky další s číslem 2 a výše: moje_antena_2.zip, moje_antena_3.zip, ...)
 """
 
 import os
 import sys
 import shutil
 import zipfile
+import re
+import argparse
 
-import _env
+try:
+    import _env
+except ImportError:
+    try:
+        import scripts._env
+    except ImportError:
+        pass
 from postpro_utils import load_env, ensure_paraview_linked
 
-def export_paraview_package(output_zip=None):
+
+def get_next_default_export_path(export_dir, base_name="antena_export"):
+    """
+    Nalezne nejbližší volný název souboru s inkrementovaným číslem, např. antena_export_1.zip.
+    """
+    os.makedirs(export_dir, exist_ok=True)
+    pattern = re.compile(rf"^{base_name}_(\d+)\.zip$", re.IGNORECASE)
+    fallback_pattern = re.compile(r"^ante[nt]a_export_(\d+)\.zip$", re.IGNORECASE)
+
+    existing_nums = []
+    for fname in os.listdir(export_dir):
+        m = pattern.match(fname) or fallback_pattern.match(fname)
+        if m:
+            existing_nums.append(int(m.group(1)))
+
+    next_num = max(existing_nums, default=0) + 1
+    while os.path.exists(os.path.join(export_dir, f"{base_name}_{next_num}.zip")):
+        next_num += 1
+
+    return os.path.join(export_dir, f"{base_name}_{next_num}.zip")
+
+
+def resolve_export_path(root_dir, output_name=None, default_base="antena_export"):
+    """
+    Určí cílovou cestu k ZIP souboru.
+    - Pokud output_name není zadáno: vrací export/antena_export_<N>.zip (od 1).
+    - Pokud output_name je zadáno:
+        - pokud soubor <name>.zip neexistuje, použije se <name>.zip
+        - pokud soubor <name>.zip již existuje, vytvoří se <name>_2.zip, <name>_3.zip atd.
+    """
+    export_dir = os.path.join(root_dir, "export")
+    os.makedirs(export_dir, exist_ok=True)
+
+    if not output_name:
+        return get_next_default_export_path(export_dir, default_base)
+
+    if not os.path.isabs(output_name):
+        dirname, basename = os.path.split(output_name)
+        if dirname:
+            target_dir = os.path.abspath(os.path.join(root_dir, dirname))
+        else:
+            target_dir = export_dir
+    else:
+        target_dir, basename = os.path.split(output_name)
+
+    os.makedirs(target_dir, exist_ok=True)
+
+    stem = basename[:-4] if basename.lower().endswith(".zip") else basename
+    base_zip = os.path.join(target_dir, f"{stem}.zip")
+
+    if not os.path.exists(base_zip):
+        return base_zip
+
+    # Soubor již existuje -> hledáme číslo 2 a výše
+    pattern = re.compile(rf"^{re.escape(stem)}_(\d+)\.zip$", re.IGNORECASE)
+    existing_nums = []
+    for fname in os.listdir(target_dir):
+        m = pattern.match(fname)
+        if m:
+            existing_nums.append(int(m.group(1)))
+
+    next_num = max(existing_nums, default=1) + 1
+    while os.path.exists(os.path.join(target_dir, f"{stem}_{next_num}.zip")):
+        next_num += 1
+
+    return os.path.join(target_dir, f"{stem}_{next_num}.zip")
+
+
+def export_paraview_package(output_name=None, output_zip=None):
     root_dir, data_dir = load_env()
     os.chdir(root_dir)
 
     # Zajistíme propojení na poslední AMR iteraci
     ensure_paraview_linked(data_dir)
 
-    if output_zip is None:
-        output_zip = os.path.join(root_dir, "export", "antena_paraview_balicek.zip")
-    elif not os.path.isabs(output_zip):
-        output_zip = os.path.join(root_dir, output_zip)
+    target_name = output_name if output_name is not None else output_zip
+    output_zip = resolve_export_path(root_dir, target_name)
 
     # 1. Nalezení zdrojových dat přímo podle DATA_DIR
     boundary_dir = os.path.abspath(os.path.join(data_dir, "postpro", "paraview", "driven_boundary"))
@@ -46,39 +124,41 @@ def export_paraview_package(output_zip=None):
         os.makedirs(out_dir, exist_ok=True)
 
     # Dočasná exportní složka pro sestavení balíčku
-    temp_pack_dir = os.path.join(out_dir, "antena_paraview")
+    zip_stem = os.path.splitext(os.path.basename(output_zip))[0]
+    temp_pack_dir = os.path.join(out_dir, f"{zip_stem}_temp")
     if os.path.exists(temp_pack_dir):
-        shutil.rmtree(temp_pack_dir)
+        shutil.rmtree(temp_pack_dir, ignore_errors=True)
     os.makedirs(temp_pack_dir, exist_ok=True)
 
-    print(f"--- 1. Kopíruji soubory do balíčku z {data_dir} ---")
+    try:
+        print(f"--- 1. Kopíruji soubory do balíčku z {data_dir} ---")
 
-    # A) Skript pro ParaView a pomocné utility
-    shutil.copy2(script_path, os.path.join(temp_pack_dir, "paraview_dynamic_phase.py"))
-    print("  + paraview_dynamic_phase.py")
-    utils_path = os.path.join(root_dir, "src", "postpro_utils.py")
-    if os.path.exists(utils_path):
-        shutil.copy2(utils_path, os.path.join(temp_pack_dir, "postpro_utils.py"))
-        print("  + postpro_utils.py")
+        # A) Skript pro ParaView a pomocné utility
+        shutil.copy2(script_path, os.path.join(temp_pack_dir, "paraview_dynamic_phase.py"))
+        print("  + paraview_dynamic_phase.py")
+        utils_path = os.path.join(root_dir, "src", "postpro_utils.py")
+        if os.path.exists(utils_path):
+            shutil.copy2(utils_path, os.path.join(temp_pack_dir, "postpro_utils.py"))
+            print("  + postpro_utils.py")
 
-    # B) Simulační data povrchu (driven_boundary)
-    dest_boundary = os.path.join(temp_pack_dir, "driven_boundary")
-    shutil.copytree(boundary_dir, dest_boundary)
-    print(f"  + driven_boundary/ (kompletní 3D data všech frekvencí)")
+        # B) Simulační data povrchu (driven_boundary)
+        dest_boundary = os.path.join(temp_pack_dir, "driven_boundary")
+        shutil.copytree(boundary_dir, dest_boundary)
+        print(f"  + driven_boundary/ (kompletní 3D data všech frekvencí)")
 
-    # C) Doplňkové výsledky (GIF animace a S-parametry, pokud existují)
-    gif_src = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")
-    if os.path.exists(gif_src):
-        shutil.copy2(gif_src, os.path.join(temp_pack_dir, "lhcp_rotation.gif"))
-        print("  + lhcp_rotation.gif (náhledová animace)")
+        # C) Doplňkové výsledky (GIF animace a S-parametry, pokud existují)
+        gif_src = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")
+        if os.path.exists(gif_src):
+            shutil.copy2(gif_src, os.path.join(temp_pack_dir, "lhcp_rotation.gif"))
+            print("  + lhcp_rotation.gif (náhledová animace)")
 
-    s11_src = os.path.join(data_dir, "postpro", "port-S.csv")
-    if os.path.exists(s11_src):
-        shutil.copy2(s11_src, os.path.join(temp_pack_dir, "port-S.csv"))
-        print("  + port-S.csv (tabulka S11)")
+        s11_src = os.path.join(data_dir, "postpro", "port-S.csv")
+        if os.path.exists(s11_src):
+            shutil.copy2(s11_src, os.path.join(temp_pack_dir, "port-S.csv"))
+            print("  + port-S.csv (tabulka S11)")
 
-    # D) Jednoduchý návod k použití (README.txt)
-    readme_content = """======================================================================
+        # D) Jednoduchý návod k použití (README.txt)
+        readme_content = """======================================================================
 LHCP PATCH ANTENA — INTERAKTIVNI PARAVIEW PREZENTACE
 ======================================================================
 
@@ -100,33 +180,55 @@ OVLADANI:
 - Tlacitko PLAY [ > ] v horni liste: spusti plynulou rotaci faze (0 az 360 stupnu)
 ======================================================================
 """
-    with open(os.path.join(temp_pack_dir, "README.txt"), "w", encoding="utf-8") as f:
-        f.write(readme_content)
-    print("  + README.txt (návod k použití)")
+        with open(os.path.join(temp_pack_dir, "README.txt"), "w", encoding="utf-8") as f:
+            f.write(readme_content)
+        print("  + README.txt (návod k použití)")
 
-    # 2. Vytvoření ZIP archivu
-    print(f"--- 2. Komprimuji do ZIP archivu: {output_zip} ---")
-    if os.path.exists(output_zip):
-        os.remove(output_zip)
+        # 2. Vytvoření ZIP archivu
+        print(f"--- 2. Komprimuji do ZIP archivu: {output_zip} ---")
+        if os.path.exists(output_zip):
+            os.remove(output_zip)
 
-    with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-        for root, dirs, files in os.walk(temp_pack_dir):
-            for file in files:
-                abs_path = os.path.join(root, file)
-                rel_path = os.path.relpath(abs_path, temp_pack_dir)
-                zf.write(abs_path, rel_path)
+        with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(temp_pack_dir):
+                for file in files:
+                    abs_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(abs_path, temp_pack_dir)
+                    zf.write(abs_path, rel_path)
 
-    zip_size_mb = os.path.getsize(output_zip) / (1024 * 1024)
+        zip_size_mb = os.path.getsize(output_zip) / (1024 * 1024)
 
-    print("======================================================================")
-    print("BALÍČEK BYL ÚSPĚŠNĚ VYTVOŘEN!")
-    print(f"1. ZIP archiv k odeslání/archivaci:")
-    print(f"   -> {os.path.abspath(output_zip)} ({zip_size_mb:.1f} MB)")
-    print(f"2. Připravená rozbalená složka k okamžitému použití:")
-    print(f"   -> {os.path.abspath(temp_pack_dir)}")
-    print("======================================================================")
-    return True
+        print("======================================================================")
+        print("BALÍČEK BYL ÚSPĚŠNĚ VYTVOŘEN!")
+        print(f"ZIP archiv k odeslání/archivaci:")
+        print(f"   -> {os.path.abspath(output_zip)} ({zip_size_mb:.1f} MB)")
+        print("Dočasná nezazipovaná složka byla smazána.")
+        print("======================================================================")
+        return True
+    finally:
+        # 3. Úklid dočasné rozbalené složky
+        if os.path.exists(temp_pack_dir):
+            shutil.rmtree(temp_pack_dir, ignore_errors=True)
+            print(f"--- 3. Nezazipovaná složka {os.path.basename(temp_pack_dir)} byla smazána ---")
+
 
 if __name__ == "__main__":
-    out = sys.argv[1] if len(sys.argv) > 1 else None
-    export_paraview_package(out)
+    parser = argparse.ArgumentParser(
+        description="Zabalení interaktivní ParaView prezentace do ZIP archivu."
+    )
+    parser.add_argument(
+        "filename",
+        nargs="?",
+        default=None,
+        help="Volitelné jméno výstupního zip souboru (např. moje_antena nebo moje_antena.zip).",
+    )
+    parser.add_argument(
+        "-n",
+        "--name",
+        dest="name",
+        default=None,
+        help="Specifikace jména výstupního zip souboru.",
+    )
+    args = parser.parse_args()
+    target_name = args.name or args.filename
+    export_paraview_package(output_name=target_name)

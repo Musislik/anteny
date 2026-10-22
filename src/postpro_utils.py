@@ -23,7 +23,7 @@ def get_project_root():
     """Vrátí absolutní cestu ke kořenovému adresáři projektu."""
     current_file = os.path.abspath(__file__)
     parent = os.path.dirname(current_file)
-    if os.path.basename(parent) in ("src", "scripts", "export", "antena_paraview"):
+    if os.path.basename(parent) in ("src", "scripts", "export", "antena_paraview") or os.path.basename(parent).startswith("antena_export"):
         return os.path.abspath(os.path.join(parent, ".."))
     return os.path.abspath(parent)
 
