@@ -167,7 +167,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     run_name = None
     if custom_params:
         params.update(custom_params)
-        run_name = "_".join([f"{k}={v}" for k, v in custom_params.items()])
+        run_name = custom_params.get('run_name') or "_".join([f"{k}={v}" for k, v in custom_params.items()])
 
     print("--- 1. Generování geometrie (OpenCASCADE) ---")
     build_model(params)

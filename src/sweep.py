@@ -222,8 +222,10 @@ def run_patch_length_sweep(patch_lengths=None, export_each=False, skip_simulatio
     print("=" * 65)
 
     for i, length in enumerate(patch_lengths, start=1):
-        print(f"\n[{i}/{len(patch_lengths)}] Spouštím simulaci pro patch_L = {length} mm")
+        export_name = f"antena_patchL_{length:.2f}mm"
+        print(f"\n[{i}/{len(patch_lengths)}] Spouštím simulaci pro patch_L = {length} mm (balíček: {export_name})")
         custom_params = {
+            'run_name': export_name,
             'patch_L': length,
             'patch_W': length
         }
@@ -231,7 +233,7 @@ def run_patch_length_sweep(patch_lengths=None, export_each=False, skip_simulatio
         try:
             main(custom_params=custom_params, skip_simulation=skip_simulation, clean=True)
             if export_each and not skip_simulation and export_paraview_package:
-                export_paraview_package(output_name=f"antena_patchL_{length:.2f}mm")
+                export_paraview_package(output_name=export_name)
             time.sleep(1)
         except Exception as e:
             print(f"Při běhu s patch_L={length} došlo k chybě: {e}")

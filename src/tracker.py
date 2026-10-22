@@ -44,7 +44,7 @@ TRACKED_METRICS = [
 ]
 
 
-def extract_s11_metrics(s11_file):
+def extract_s11_metrics(s11_file, z0=50.0):
     """Extrahuje rezonanční frekvenci, minimum S11, šířku pásma a vstupní impedanci."""
     if not os.path.exists(s11_file) or os.path.getsize(s11_file) == 0:
         return {}
@@ -61,11 +61,10 @@ def extract_s11_metrics(s11_file):
         f0 = float(freqs[min_idx])
         s11_min = float(s11_db[min_idx])
 
-        # Výpočet impedance z S11 při rezonanci f0 (Z0 = 50 Ohm)
+        # Výpočet impedance z S11 při rezonanci f0 (Z0 typicky 50 Ohm)
         s11_lin = 10.0 ** (s11_min / 20.0)
         s11_rad = np.deg2rad(s11_deg[min_idx])
         gamma = s11_lin * np.exp(1j * s11_rad)
-        z0 = 50.0
         zin = z0 * (1.0 + gamma) / (1.0 - gamma + 1e-12)
 
         # Šířka pásma pod -10 dB s lineární interpolací
@@ -131,7 +130,7 @@ def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
         theta_col = f_data[:, 2]
         boresight_rows = f_data[np.abs(theta_col) < 1e-2]
         if len(boresight_rows) == 0:
-            boresight_rows = f_data[np.argmin(theta_col)]
+            boresight_rows = f_data[np.argmin(np.abs(theta_col))]
 
         row = boresight_rows[0] if boresight_rows.ndim > 1 else boresight_rows
         ex = row[4] + 1j * row[5]
@@ -193,7 +192,8 @@ def record_run(params, output_dir="data/postpro", run_name=None, export_zip=None
     s11_path = os.path.join(output_dir, "port-S.csv")
     farfield_path = os.path.join(output_dir, "farfield-rE.csv")
 
-    s11_metrics = extract_s11_metrics(s11_path)
+    port_z0 = float(params.get('port_impedance', 50.0))
+    s11_metrics = extract_s11_metrics(s11_path, z0=port_z0)
     f0 = s11_metrics.get('f0_GHz')
     s11_min = s11_metrics.get('s11_min_dB')
     farfield_metrics = extract_farfield_metrics(farfield_path, target_freq=f0, s11_min_db=s11_min)
@@ -238,16 +238,17 @@ def record_run(params, output_dir="data/postpro", run_name=None, export_zip=None
     print("-" * 95)
     info_parts = [
         f"Krok: {row['run_name']}",
-        f"Zanoření: {row.get('inset_mm', 0):.2f} mm" if row.get('inset_mm') is not None else "",
-        f"f0: {row.get('f0 [GHz]', 0):.3f} GHz" if row.get('f0 [GHz]') is not None else "",
-        f"S11: {row.get('S11_min [dB]', 0):.1f} dB" if row.get('S11_min [dB]') is not None else "",
-        f"BW: {row.get('BW_-10dB [MHz]', 0):.1f} MHz" if row.get('BW_-10dB [MHz]') is not None else "",
+        f"Zanoření: {row['inset_mm']} mm" if row.get('inset_mm') else "",
+        f"f0: {row['f0 [GHz]']} GHz" if row.get('f0 [GHz]') else "",
+        f"S11: {row['S11_min [dB]']} dB" if row.get('S11_min [dB]') else "",
+        f"BW: {row['BW_-10dB [MHz]']} MHz" if row.get('BW_-10dB [MHz]') else "",
     ]
     if row.get('Polarizace'):
         info_parts.append(f"Pol: {row['Polarizace']}")
-        info_parts.append(f"AR: {row.get('AR [dB]', 0):.1f} dB")
-    if row.get('Gain [dBi]') is not None:
-        info_parts.append(f"Gain: {row.get('Gain [dBi]', 0):.1f} dBi")
+    if row.get('AR [dB]'):
+        info_parts.append(f"AR: {row['AR [dB]']} dB")
+    if row.get('Gain [dBi]'):
+        info_parts.append(f"Gain: {row['Gain [dBi]']} dBi")
 
     print(" | ".join([p for p in info_parts if p]))
     print("=" * 95)
@@ -277,7 +278,7 @@ def update_markdown_summary(csv_file, md_file):
         ]
 
         for r in rows:
-            line = "| " + " | ".join([str(r.get(h, "-")) for h in headers]) + " |"
+            line = "| " + " | ".join([str(r.get(h) if r.get(h) not in (None, "") else "-") for h in headers]) + " |"
             md_lines.append(line)
 
         with open(md_file, mode='w', encoding='utf-8') as f:
@@ -323,7 +324,7 @@ def print_summary_table(csv_file="export/sweep_results.csv"):
     print(sep_str)
 
     for r in rows:
-        row_str = " | ".join([f"{str(r.get(key, '-')):^{width}}" for key, _, width in disp_cols])
+        row_str = " | ".join([f"{str(r.get(key) if r.get(key) not in (None, '') else '-'):^{width}}" for key, _, width in disp_cols])
         print(row_str)
 
     print("=" * 120)

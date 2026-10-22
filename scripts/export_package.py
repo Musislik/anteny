@@ -160,8 +160,8 @@ def export_paraview_package(output_name=None, output_zip=None):
             ("port-I.csv", "proud na budicím portu"),
             ("domain-E.csv", "energie a dielektrické ztráty v doménách"),
             ("error-indicators.csv", "indikátory chyb adaptivního zjemnění AMR"),
-            ("palace.json", "konfigurace FEM řešiče Palace"),
             ("config_resolved.json", "vyřešená konfigurace řešiče"),
+            ("palace.json", "konfigurace FEM řešiče Palace"),
         ]
         for fname, desc in important_postpro:
             fsrc = os.path.join(data_dir, "postpro", fname)
@@ -169,10 +169,11 @@ def export_paraview_package(output_name=None, output_zip=None):
                 shutil.copy2(fsrc, os.path.join(temp_pack_dir, fname))
                 print(f"  + {fname} ({desc})")
 
-        # CAD STEP model a 2D graf S11 (z kořene složky data)
+        # CAD STEP model, 2D graf S11 a vstupní konfigurace (z kořene složky data)
         extra_models = [
             ("antenna_model.step", "3D CAD model antény"),
             ("S11_graf.png", "2D graf činitele odrazu S11"),
+            ("config.json", "vstupní konfigurace FEM řešiče Palace"),
         ]
         for fname, desc in extra_models:
             fsrc = os.path.join(data_dir, fname)
@@ -200,7 +201,8 @@ OBSAH BALÍČKU:
    - S11_graf.png               ... Graf S11 s vyznačenou mezí -10 dB
 
 3. Konfigurace:
-   - palace.json                ... Kompletní konfigurace řešiče pro reprodukovatelnost
+   - config.json                ... Vstupní konfigurace řešiče pro reprodukovatelnost
+   - config_resolved.json       ... Vyřešená konfigurace řešiče (pokud existuje)
 
 JAK ZOBRAZIT INTERAKTIVNÍ MODEL V PARAVIEW:
 1. Otevřete ParaView.
