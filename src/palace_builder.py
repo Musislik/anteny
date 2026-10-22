@@ -10,6 +10,8 @@ def build_palace_config(params):
     amr_tol = float(params.get('amr_threshold', params.get('amr_tol', 0.2)))
     farfield_nsample = int(params.get('farfield_nsample', 16200))
     save_step = int(params.get('save_step', 1))
+    linear_tol = float(params.get('linear_tol', 1e-6))
+    linear_max_its = int(params.get('linear_max_its', 100))
     
     model_config = {
         "Mesh": "data/mesh.msh",
@@ -83,8 +85,8 @@ def build_palace_config(params):
             "Linear": {
                 "Type": "SuperLU",
                 "KSPType": "FGMRES",
-                "Tol": 1e-6,
-                "MaxIts": 100
+                "Tol": linear_tol,
+                "MaxIts": linear_max_its
             }
         }
     }

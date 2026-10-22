@@ -84,8 +84,10 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     farfield_nsample = _resolve_param('farfield_nsample', 'FARFIELD_NSAMPLE', 16200, custom_params, int)
     save_step = _resolve_param('save_step', 'SAVE_STEP', 1, custom_params, int)
     port_impedance = _resolve_param('port_impedance', 'PORT_IMPEDANCE', PORT_Z0, custom_params, float)
+    linear_tol = _resolve_param('linear_tol', 'LINEAR_TOL', 1e-6, custom_params, float)
+    linear_max_its = _resolve_param('linear_max_its', 'LINEAR_MAX_ITS', 100, custom_params, int)
 
-    print(f"--- Parametry simulace: Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, AMR {amr_max_its} it. (Tol {amr_threshold}) ---")
+    print(f"--- Parametry simulace: Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, AMR {amr_max_its} it. (Tol {amr_threshold}), Solver Tol {linear_tol} (MaxIts {linear_max_its}) ---")
 
     # Geometrie flíčku (priority: custom_params > os.environ (PATCH_L/PATCH_W) > 30.3 mm)
     patch_size = float(np.round(synth_square_patch_size(DESIGN_FREQ_GHZ, sub_h, eps_r), 2))
@@ -151,6 +153,8 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         'farfield_nsample': farfield_nsample,
         'save_step': save_step,
         'port_impedance': port_impedance,
+        'linear_tol': linear_tol,
+        'linear_max_its': linear_max_its,
         'design_freq_ghz': DESIGN_FREQ_GHZ
     }
     # Zahrnutí všech parametrů napájecí sítě (w1, w2, w3, délky l1-l8)
@@ -254,6 +258,10 @@ if __name__ == "__main__":
                         help="Počet bodů vzorkování dálkového pole (výchozí: 16200 nebo z FARFIELD_NSAMPLE)")
     parser.add_argument("--save-step", type=int, default=None, dest="save_step",
                         help="Krok ukládání 3D polí (výchozí: 1 nebo z SAVE_STEP)")
+    parser.add_argument("--linear-tol", type=float, default=None, dest="linear_tol",
+                        help="Relativní tolerance lineárního řešiče FGMRES (výchozí: 1e-6 nebo z LINEAR_TOL)")
+    parser.add_argument("--linear-its", "--linear-max-its", type=int, default=None, dest="linear_max_its",
+                        help="Maximální počet iterací lineárního řešiče FGMRES (výchozí: 100 nebo z LINEAR_MAX_ITS)")
 
     # Parametrizace geometrie patche a zanoření
     parser.add_argument("--patch-l", type=float, default=None, dest="patch_L",
@@ -271,7 +279,7 @@ if __name__ == "__main__":
 
     cli_params = {}
     for param in ['freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
-                  'amr_threshold', 'farfield_nsample', 'save_step',
+                  'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its',
                   'patch_L', 'patch_W', 'feed_inset', 'feed_inset_gap', 'feed_inset_width']:
         val = getattr(args, param, None)
         if val is not None:

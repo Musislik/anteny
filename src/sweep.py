@@ -112,6 +112,8 @@ def run_inset_sweep(
     amr_max_its=None,
     amr_threshold=None,
     save_step=None,
+    linear_tol=None,
+    linear_max_its=None,
     export_each=None,
     skip_simulation=False,
 ):
@@ -131,6 +133,8 @@ def run_inset_sweep(
     amr_max_its = amr_max_its if amr_max_its is not None else _resolve_env_int("SWEEP_AMR_MAX_ITS", "AMR_MAX_ITS", 1)
     amr_threshold = amr_threshold if amr_threshold is not None else _resolve_env_float("SWEEP_AMR_THRESHOLD", "AMR_THRESHOLD", 0.3)
     save_step = save_step if save_step is not None else _resolve_env_int("SWEEP_SAVE_STEP", "SAVE_STEP", 1)
+    linear_tol = linear_tol if linear_tol is not None else _resolve_env_float("SWEEP_LINEAR_TOL", "LINEAR_TOL", 1e-5)
+    linear_max_its = linear_max_its if linear_max_its is not None else _resolve_env_int("SWEEP_LINEAR_MAX_ITS", "LINEAR_MAX_ITS", 100)
     export_each = export_each if export_each is not None else _resolve_env_bool("SWEEP_EXPORT_EACH", True)
 
     total_steps = len(insets)
@@ -141,6 +145,7 @@ def run_inset_sweep(
     print(f"  • Frekvenční rozsah:          {freq_min:.3f} - {freq_max:.3f} GHz (krok {freq_step:.4f} GHz)")
     print(f"  • Rozměry flíčku:             L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
     print(f"  • AMR zjemnění sítě:          {amr_max_its} iterací (Tolerance: {amr_threshold})")
+    print(f"  • Solver Tol / MaxIts:        {linear_tol} / {linear_max_its} iterací")
     print(f"  • Ukládání 3D polí:           každých {save_step} kroků")
     print(f"  • Automatický export balíčku: {'ANO' if export_each else 'NE'}")
     print("  • Čištění data/postpro:       VŽDY AKTIVNÍ (před každým během)")
@@ -164,6 +169,8 @@ def run_inset_sweep(
             'amr_max_its': amr_max_its,
             'amr_threshold': amr_threshold,
             'save_step': save_step,
+            'linear_tol': linear_tol,
+            'linear_max_its': linear_max_its,
         }
 
         try:
@@ -293,6 +300,20 @@ if __name__ == "__main__":
         help="Maximální počet AMR zjemnění (přebíjí SWEEP_AMR_MAX_ITS z .env).",
     )
     parser.add_argument(
+        "--linear-tol",
+        type=float,
+        default=None,
+        dest="linear_tol",
+        help="Relativní tolerance lineárního řešiče FGMRES (výchozí: 1e-5 nebo z SWEEP_LINEAR_TOL).",
+    )
+    parser.add_argument(
+        "--linear-its", "--linear-max-its",
+        type=int,
+        default=None,
+        dest="linear_max_its",
+        help="Maximální počet iterací lineárního řešiče (výchozí: 100 nebo z SWEEP_LINEAR_MAX_ITS).",
+    )
+    parser.add_argument(
         "--no-export",
         dest="export_each",
         action="store_false",
@@ -319,6 +340,8 @@ if __name__ == "__main__":
             freq_max=args.freq_max,
             freq_step=args.freq_step,
             amr_max_its=args.amr_max_its,
+            linear_tol=args.linear_tol,
+            linear_max_its=args.linear_max_its,
             export_each=args.export_each,
             skip_simulation=args.skip_simulation,
         )
