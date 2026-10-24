@@ -73,3 +73,4 @@ Simulátor generuje `.vtu` soubory prostorových polí do složky `postpro/parav
 *   `paraview_macro.py` - Automatizační makro pro 3D ParaView.
 *   `docker-compose.yml` - Definuje izolované prostředí pro běh celého řešení.
 *   `docs/known_issues.md` - Odškrtávací seznam známých nedostatků a naplánovaných úkolů.
+*   `docs/future-features.md` - Plán a specifikace budoucích vylepšení (zkosení ohybů, asymetrické zanoření).
