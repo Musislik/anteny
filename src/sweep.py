@@ -112,6 +112,7 @@ def run_inset_sweep(
     freq_step=None,
     amr_max_its=None,
     amr_threshold=None,
+    farfield_nsample=None,
     save_step=None,
     linear_tol=None,
     linear_max_its=None,
@@ -133,6 +134,7 @@ def run_inset_sweep(
     freq_step = freq_step if freq_step is not None else _resolve_env_float("SWEEP_FREQ_STEP", "FREQ_STEP", 0.005)
     amr_max_its = amr_max_its if amr_max_its is not None else _resolve_env_int("SWEEP_AMR_MAX_ITS", "AMR_MAX_ITS", 1)
     amr_threshold = amr_threshold if amr_threshold is not None else _resolve_env_float("SWEEP_AMR_THRESHOLD", "AMR_THRESHOLD", 0.3)
+    farfield_nsample = farfield_nsample if farfield_nsample is not None else _resolve_env_int("SWEEP_FARFIELD_NSAMPLE", "FARFIELD_NSAMPLE", 16200)
     save_step = save_step if save_step is not None else _resolve_env_int("SWEEP_SAVE_STEP", "SAVE_STEP", 1)
     linear_tol = linear_tol if linear_tol is not None else _resolve_env_float("SWEEP_LINEAR_TOL", "LINEAR_TOL", 1e-5)
     linear_max_its = linear_max_its if linear_max_its is not None else _resolve_env_int("SWEEP_LINEAR_MAX_ITS", "LINEAR_MAX_ITS", 100)
@@ -146,6 +148,7 @@ def run_inset_sweep(
     print(f"  • Frekvenční rozsah:          {freq_min:.3f} - {freq_max:.3f} GHz (krok {freq_step:.4f} GHz)")
     print(f"  • Rozměry flíčku:             L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
     print(f"  • AMR zjemnění sítě:          {amr_max_its} iterací (Tolerance: {amr_threshold})")
+    print(f"  • Far-field vzorkování:       {farfield_nsample} bodů")
     print(f"  • Solver Tol / MaxIts:        {linear_tol} / {linear_max_its} iterací")
     print(f"  • Ukládání 3D polí:           každých {save_step} kroků")
     print(f"  • Automatický export balíčku: {'ANO' if export_each else 'NE'}")
@@ -170,6 +173,7 @@ def run_inset_sweep(
             'freq_step': freq_step,
             'amr_max_its': amr_max_its,
             'amr_threshold': amr_threshold,
+            'farfield_nsample': farfield_nsample,
             'save_step': save_step,
             'linear_tol': linear_tol,
             'linear_max_its': linear_max_its,
@@ -213,16 +217,19 @@ def run_inset_sweep(
     print_summary_table()
 
 
-def run_patch_length_sweep(patch_lengths=None, export_each=False, skip_simulation=False):
+def run_patch_length_sweep(patch_lengths=None, export_each=False, skip_simulation=False, farfield_nsample=None):
     """
     Parametrický sweep pro délku flíčku patch_L (původní sweep).
     """
     if patch_lengths is None:
         patch_lengths = generate_sweep_patch_lengths()
 
+    farfield_nsample = farfield_nsample if farfield_nsample is not None else _resolve_env_int("SWEEP_FARFIELD_NSAMPLE", "FARFIELD_NSAMPLE", 16200)
+
     print("=" * 65)
     print("ZAHÁJENÍ PARAMETRICKÉHO SWEEPU PRO PATCH_L")
     print(f"Hodnoty k testování: {patch_lengths} mm")
+    print(f"Far-field vzorkování: {farfield_nsample} bodů")
     print("Čištění data/postpro před každým krokem: VŽDY AKTIVNÍ")
     print("=" * 65)
 
@@ -232,7 +239,8 @@ def run_patch_length_sweep(patch_lengths=None, export_each=False, skip_simulatio
         custom_params = {
             'run_name': export_name,
             'patch_L': length,
-            'patch_W': length
+            'patch_W': length,
+            'farfield_nsample': farfield_nsample,
         }
 
         try:
@@ -327,6 +335,13 @@ if __name__ == "__main__":
         help="Maximální počet iterací lineárního řešiče (výchozí: 100 nebo z SWEEP_LINEAR_MAX_ITS).",
     )
     parser.add_argument(
+        "--farfield-nsample",
+        type=int,
+        default=None,
+        dest="farfield_nsample",
+        help="Počet bodů vzorkování dálkového pole (výchozí: 16200 nebo z SWEEP_FARFIELD_NSAMPLE / FARFIELD_NSAMPLE).",
+    )
+    parser.add_argument(
         "--no-export",
         dest="export_each",
         action="store_false",
@@ -353,6 +368,7 @@ if __name__ == "__main__":
             freq_max=args.freq_max,
             freq_step=args.freq_step,
             amr_max_its=args.amr_max_its,
+            farfield_nsample=args.farfield_nsample,
             linear_tol=args.linear_tol,
             linear_max_its=args.linear_max_its,
             export_each=args.export_each,
@@ -362,4 +378,5 @@ if __name__ == "__main__":
         run_patch_length_sweep(
             export_each=args.export_each if args.export_each is not None else False,
             skip_simulation=args.skip_simulation,
+            farfield_nsample=args.farfield_nsample,
         )
