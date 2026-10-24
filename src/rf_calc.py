@@ -178,13 +178,13 @@ def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3, inset=0.0):
     """
 
     l1 = 10*h + w2/2
-    l2 = 5*h + w1/2
+    l2 = 15*h + w1/2
     l3 = W/4 + lambda_g/8 - 5*h - w1/2
-    l4 = 5*h + w1/2 + lambda_g/8 - L/4 + inset
+    l4 = 15*h + w1/2 + lambda_g/8 - L/4 + inset
     l5 = 5*h + w1/2
     l6 = lambda_g/4
-    l7 = L/4 + 5*h + w1/2 - lambda_g/8
-    l8 = 5*h + w1/2 + lambda_g/8 - W/4 + inset
+    l7 = L/4 + 15*h + w1/2 - lambda_g/8
+    l8 = 15*h + w1/2 + lambda_g/8 - W/4 + inset
 
     lengths = {
         'l1': float(np.round(l1, 3)),
