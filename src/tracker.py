@@ -40,7 +40,8 @@ TRACKED_METRICS = [
     ('e_rhcp', 'E_RHCP [V]', '{:.2f}'),
     ('axial_ratio_db', 'AR [dB]', '{:.2f}'),
     ('polarization', 'Polarizace', '{}'),
-    ('gain_lhcp_dbi', 'Gain [dBi]', '{:.2f}'),
+    ('gain_lhcp_dbi', 'Gain_LHCP [dBi]', '{:.2f}'),
+    ('gain_rhcp_dbi', 'Gain_RHCP [dBi]', '{:.2f}'),
 ]
 
 
@@ -150,17 +151,22 @@ def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
 
         # Odhad zisku v dBi (Poyntingův tok vs. vstupní výkon při 1 W excitaci)
         u_lhcp = (e_lhcp ** 2) / (2.0 * ETA_0)
+        u_rhcp = (e_rhcp ** 2) / (2.0 * ETA_0)
         p_in = 1.0 - (10.0 ** (s11_min_db / 10.0)) if s11_min_db is not None else 1.0
         p_in = max(p_in, 0.01)  # zamezení dělení nulou
-        gain_lin = (4.0 * np.pi * u_lhcp) / p_in
-        gain_dbi = float(10.0 * np.log10(max(gain_lin, 1e-4)))
+        gain_lhcp_lin = (4.0 * np.pi * u_lhcp) / p_in
+        gain_lhcp_dbi = float(10.0 * np.log10(max(gain_lhcp_lin, 1e-4)))
+        gain_rhcp_lin = (4.0 * np.pi * u_rhcp) / p_in
+        gain_rhcp_dbi = float(10.0 * np.log10(max(gain_rhcp_lin, 1e-4)))
 
         return {
             'e_lhcp': e_lhcp,
             'e_rhcp': e_rhcp,
             'axial_ratio_db': ar_db,
             'polarization': polarization,
-            'gain_lhcp_dbi': gain_dbi,
+            'gain_lhcp_dbi': gain_lhcp_dbi,
+            'gain_rhcp_dbi': gain_rhcp_dbi,
+            'gain_dbi': gain_lhcp_dbi,
         }
     except Exception as e:
         print(f"Upozornění: Chyba při analýze vyzařování z {farfield_file}: {e}")
@@ -230,8 +236,29 @@ def record_run(params, output_dir="data/postpro", run_name=None, export_zip=None
     fieldnames = ['run_name'] + [col for _, col, _ in TRACKED_PARAMS] + [col for _, col, _ in TRACKED_METRICS] + ['export_zip']
     file_exists = os.path.exists(csv_file) and os.path.getsize(csv_file) > 0
 
+    if file_exists:
+        try:
+            with open(csv_file, mode='r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                existing_headers = reader.fieldnames or []
+                existing_rows = list(reader)
+
+            if existing_headers != fieldnames:
+                for r in existing_rows:
+                    if 'Gain [dBi]' in r and 'Gain_LHCP [dBi]' not in r:
+                        r['Gain_LHCP [dBi]'] = r.pop('Gain [dBi]')
+                with open(csv_file, mode='w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+                    writer.writeheader()
+                    for r in existing_rows:
+                        writer.writerow(r)
+        except Exception as e:
+            print(f"Upozornění při migraci CSV záhlaví: {e}")
+
+    file_exists = os.path.exists(csv_file) and os.path.getsize(csv_file) > 0
+
     with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
         if not file_exists:
             writer.writeheader()
         writer.writerow(row)
@@ -254,8 +281,12 @@ def record_run(params, output_dir="data/postpro", run_name=None, export_zip=None
         info_parts.append(f"Pol: {row['Polarizace']}")
     if row.get('AR [dB]'):
         info_parts.append(f"AR: {row['AR [dB]']} dB")
-    if row.get('Gain [dBi]'):
+    if row.get('Gain_LHCP [dBi]'):
+        info_parts.append(f"G_LHCP: {row['Gain_LHCP [dBi]']} dBi")
+    elif row.get('Gain [dBi]'):
         info_parts.append(f"Gain: {row['Gain [dBi]']} dBi")
+    if row.get('Gain_RHCP [dBi]'):
+        info_parts.append(f"G_RHCP: {row['Gain_RHCP [dBi]']} dBi")
 
     print(" | ".join([p for p in info_parts if p]))
     print("=" * 95)
@@ -329,7 +360,8 @@ def print_summary_table(csv_file=None):
         ('Zin_Re [Ohm]', 'Zin_Re', 8),
         ('AR [dB]', 'AR [dB]', 8),
         ('Polarizace', 'Pol', 8),
-        ('Gain [dBi]', 'Gain', 9),
+        ('Gain_LHCP [dBi]', 'G_LHCP', 8),
+        ('Gain_RHCP [dBi]', 'G_RHCP', 8),
     ]
 
     header_str = " | ".join([f"{title:^{width}}" for _, title, width in disp_cols])
@@ -338,6 +370,8 @@ def print_summary_table(csv_file=None):
     print(sep_str)
 
     for r in rows:
+        if 'Gain_LHCP [dBi]' not in r and 'Gain [dBi]' in r:
+            r['Gain_LHCP [dBi]'] = r['Gain [dBi]']
         row_str = " | ".join([f"{str(r.get(key) if r.get(key) not in (None, '') else '-'):^{width}}" for key, _, width in disp_cols])
         print(row_str)
 
