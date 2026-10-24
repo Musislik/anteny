@@ -106,18 +106,28 @@ def export_paraview_package(output_name=None, output_zip=None):
     target_name = output_name if output_name is not None else output_zip
     output_zip = resolve_export_path(root_dir, target_name)
 
-    # 1. Nalezení zdrojových dat přímo podle DATA_DIR
-    boundary_dir = os.path.abspath(os.path.join(data_dir, "postpro", "paraview", "driven_boundary"))
+    # 1. Kontrola dostupných dat v DATA_DIR
+    postpro_dir = os.path.abspath(os.path.join(data_dir, "postpro"))
+    boundary_dir = os.path.abspath(os.path.join(postpro_dir, "paraview", "driven_boundary"))
+    has_boundary = os.path.exists(boundary_dir) and os.path.isdir(boundary_dir)
 
-    if not os.path.exists(boundary_dir):
-        print(f"[CHYBA] Složka se simulovanými daty nebyla nalezena: {boundary_dir}")
+    s11_file = os.path.join(postpro_dir, "port-S.csv")
+    step_file = os.path.join(data_dir, "antenna_model.step")
+    config_file = os.path.join(data_dir, "config.json")
+
+    has_any_data = (
+        has_boundary
+        or (os.path.exists(s11_file) and os.path.getsize(s11_file) > 0)
+        or (os.path.exists(step_file) and os.path.getsize(step_file) > 0)
+        or (os.path.exists(config_file) and os.path.getsize(config_file) > 0)
+    )
+
+    if not has_any_data:
+        print(f"[CHYBA] Ve složce {data_dir} nebyla nalezena žádná výstupní simulační data ani CAD model.")
         print("Zkontrolujte parametr DATA_DIR v souboru .env nebo nejprve spusťte simulaci.")
         return False
 
     script_path = os.path.join(root_dir, "scripts", "paraview_dynamic_phase.py")
-    if not os.path.exists(script_path):
-        print(f"[CHYBA] Skript {script_path} nebyl nalezen!")
-        return False
 
     # Příprava výstupní složky
     out_dir = os.path.dirname(output_zip)
@@ -135,20 +145,25 @@ def export_paraview_package(output_name=None, output_zip=None):
         print(f"--- 1. Kopíruji soubory do balíčku z {data_dir} ---")
 
         # A) Skript pro ParaView a pomocné utility
-        shutil.copy2(script_path, os.path.join(temp_pack_dir, "paraview_dynamic_phase.py"))
-        print("  + paraview_dynamic_phase.py")
+        if has_boundary and os.path.exists(script_path):
+            shutil.copy2(script_path, os.path.join(temp_pack_dir, "paraview_dynamic_phase.py"))
+            print("  + paraview_dynamic_phase.py")
+
         utils_path = os.path.join(root_dir, "src", "postpro_utils.py")
         if os.path.exists(utils_path):
             shutil.copy2(utils_path, os.path.join(temp_pack_dir, "postpro_utils.py"))
             print("  + postpro_utils.py")
 
         # B) Simulační data povrchu (driven_boundary)
-        dest_boundary = os.path.join(temp_pack_dir, "driven_boundary")
-        shutil.copytree(boundary_dir, dest_boundary)
-        print(f"  + driven_boundary/ (kompletní 3D data všech frekvencí)")
+        if has_boundary:
+            dest_boundary = os.path.join(temp_pack_dir, "driven_boundary")
+            shutil.copytree(boundary_dir, dest_boundary)
+            print("  + driven_boundary/ (kompletní 3D data všech frekvencí)")
+        else:
+            print("  i driven_boundary/ není k dispozici (simulace proběhla se SAVE_STEP=0, 3D pole nebyla ukládána)")
 
         # C) Doplňkové výsledky a klíčová data simulace
-        gif_src = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")
+        gif_src = os.path.join(postpro_dir, "lhcp_rotation.gif")
         if os.path.exists(gif_src):
             shutil.copy2(gif_src, os.path.join(temp_pack_dir, "lhcp_rotation.gif"))
             print("  + lhcp_rotation.gif (náhledová animace)")
@@ -165,7 +180,7 @@ def export_paraview_package(output_name=None, output_zip=None):
             ("palace.json", "konfigurace FEM řešiče Palace"),
         ]
         for fname, desc in important_postpro:
-            fsrc = os.path.join(data_dir, "postpro", fname)
+            fsrc = os.path.join(postpro_dir, fname)
             if os.path.exists(fsrc) and os.path.getsize(fsrc) > 0:
                 shutil.copy2(fsrc, os.path.join(temp_pack_dir, fname))
                 print(f"  + {fname} ({desc})")
@@ -173,6 +188,7 @@ def export_paraview_package(output_name=None, output_zip=None):
         # CAD STEP model, 2D graf S11 a vstupní konfigurace (z kořene složky data)
         extra_models = [
             ("antenna_model.step", "3D CAD model antény"),
+            ("geometry_iso.png", "2D náhled geometrie antény"),
             ("S11_graf.png", "2D graf činitele odrazu S11"),
             ("config.json", "vstupní konfigurace FEM řešiče Palace"),
         ]
@@ -183,7 +199,8 @@ def export_paraview_package(output_name=None, output_zip=None):
                 print(f"  + {fname} ({desc})")
 
         # D) Podrobný návod k použití a popis souborů (README.txt)
-        readme_content = """======================================================================
+        if has_boundary:
+            readme_content = """======================================================================
 LHCP PATCH ANTENA — KOMPLETNÍ EXPORTNÍ BALÍČEK VÝSLEDKŮ
 ======================================================================
 
@@ -193,6 +210,7 @@ OBSAH BALÍČKU:
    - driven_boundary/           ... Kompletní FEM síť a 3D pole pro všechny frekvence
    - lhcp_rotation.gif          ... Rychlý náhled rotace pole
    - antenna_model.step         ... 3D CAD model geometrie (pro CAD / výrobu DPS)
+   - geometry_iso.png           ... 2D náhled geometrie antény
 
 2. Vysokofrekvenční parametry a vyzařování:
    - port-S.csv                 ... Průběh S11 napříč pásmem (amplituda v dB a fáze)
@@ -210,6 +228,30 @@ JAK ZOBRAZIT INTERAKTIVNÍ MODEL V PARAVIEW:
 2. V horním menu zvolte: Tools -> Python Shell -> Run Script
 3. Vyberte soubor: paraview_dynamic_phase.py (přímo z této složky)
 4. Posuvníkem přepínejte frekvenci, tlačítkem PLAY spusťte rotaci fáze.
+======================================================================
+"""
+        else:
+            readme_content = """======================================================================
+LHCP PATCH ANTENA — EXPORTNÍ BALÍČEK VÝSLEDKŮ (BEZ 3D POLÍ)
+======================================================================
+
+POZNÁMKA:
+Balíček byl vygenerován z běhu s parametrem SAVE_STEP=0 (rychlý výpočet S-parametrů
+a dálkového pole bez ukládání 3D prostorových polí pro ParaView).
+
+OBSAH BALÍČKU:
+1. Vysokofrekvenční parametry a vyzařování:
+   - port-S.csv                 ... Průběh S11 napříč pásmem (amplituda v dB a fáze)
+   - farfield-rE.csv            ... Vektorové dálkové pole (zisk, LHCP/RHCP, osový poměr AR)
+   - port-V.csv, port-I.csv     ... Komplexní napětí a proud na portu (Zin = V / I)
+   - domain-E.csv               ... Energie pole a ztráty v dielektriku / vzduchu
+   - S11_graf.png               ... Graf S11 s vyznačenou mezí -10 dB
+
+2. Geometrie a modely:
+   - antenna_model.step         ... 3D CAD model geometrie (pro CAD / výrobu DPS)
+   - geometry_iso.png           ... 2D náhled geometrie antény
+   - config.json                ... Vstupní konfigurace řešiče pro reprodukovatelnost
+   - config_resolved.json       ... Vyřešená konfigurace řešiče (pokud existuje)
 ======================================================================
 """
         with open(os.path.join(temp_pack_dir, "README.txt"), "w", encoding="utf-8") as f:
