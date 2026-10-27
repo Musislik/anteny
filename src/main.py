@@ -2,7 +2,6 @@ import os
 import sys
 import shutil
 import numpy as np
-import skrf as rf
 import matplotlib.pyplot as plt
 import gmsh
 
@@ -64,6 +63,9 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     # Načtení případného .env souboru
     load_env()
 
+    # Model antény (1 = původní T-dělič 50 Ohm, 2 = nový dvouportový model 100 Ohm LHCP)
+    antenna_model = _resolve_param('antenna_model', 'ANTENNA_MODEL', 1, custom_params, int)
+
     # 1. Parametrizace materiálů a frekvenčního pásma
     sub_h = _resolve_param('sub_h', 'SUB_H', 1.52, custom_params, float)
     eps_r = _resolve_param('eps_r', 'EPS_R', 4.3, custom_params, float)
@@ -83,68 +85,34 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     amr_threshold = _resolve_param('amr_threshold', 'AMR_THRESHOLD', 0.2, custom_params, float)
     farfield_nsample = _resolve_param('farfield_nsample', 'FARFIELD_NSAMPLE', 16200, custom_params, int)
     save_step = _resolve_param('save_step', 'SAVE_STEP', 1, custom_params, int)
-    port_impedance = _resolve_param('port_impedance', 'PORT_IMPEDANCE', PORT_Z0, custom_params, float)
+    
+    default_port_z0 = 100.0 if antenna_model == 2 else PORT_Z0
+    port_impedance = _resolve_param('port_impedance', 'PORT_IMPEDANCE', default_port_z0, custom_params, float)
     linear_tol = _resolve_param('linear_tol', 'LINEAR_TOL', 1e-6, custom_params, float)
     linear_max_its = _resolve_param('linear_max_its', 'LINEAR_MAX_ITS', 100, custom_params, int)
 
-    print(f"--- Parametry simulace: Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, AMR {amr_max_its} it. (Tol {amr_threshold}), Solver Tol {linear_tol} (MaxIts {linear_max_its}) ---")
+    print(f"--- Model {antenna_model} | Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, Port Z0 {port_impedance:.1f} Ohm ---")
 
-    # Geometrie flíčku (priority: custom_params > os.environ (PATCH_L/PATCH_W) > 30.3 mm)
-    patch_size = float(np.round(synth_square_patch_size(DESIGN_FREQ_GHZ, sub_h, eps_r), 2))
+    # Geometrie flíčku
     patch_l = _resolve_param('patch_L', 'PATCH_L', 30.3, custom_params, float)
     patch_w = _resolve_param('patch_W', 'PATCH_W', patch_l, custom_params, float)
 
-    # Zanoření napaječe (inset feed)
-    feed_inset = _resolve_param('feed_inset', 'FEED_INSET', 0.0, custom_params, float)
-    if feed_inset == 0.0:
-        feed_inset = _resolve_param('inset', 'INSET', 0.0, custom_params, float)
-
-    feed_inset_gap = _resolve_param('feed_inset_gap', 'FEED_INSET_GAP', None, custom_params, float)
-    if feed_inset_gap is None:
-        feed_inset_gap = _resolve_param('inset_gap', 'INSET_GAP', None, custom_params, float)
-
-    feed_inset_width = _resolve_param('feed_inset_width', 'FEED_INSET_WIDTH', None, custom_params, float)
-    if feed_inset_width is None:
-        feed_inset_width = _resolve_param('inset_width', 'INSET_WIDTH', None, custom_params, float)
-
-    print(f"--- Geometrie flíčku: L = {patch_l:.2f} mm, W = {patch_w:.2f} mm, Zanoření napaječe: {feed_inset:.2f} mm ---")
-
-    # Rozměry napájecí sítě a substrátu odvozené z analytického modelu bez magických čísel
-    from rf_calc import calc_feed_network_dimensions
-    feed_net = calc_feed_network_dimensions(patch_w, patch_l, sub_h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=port_impedance, inset=feed_inset)
-    feed_w = feed_net['feed_w']
-    sub_w = feed_net['sub_w']
-    sub_l = feed_net['sub_l']
-    feed_offset_x = feed_net['feed_offset_x']
-    feed_offset_y = feed_net['feed_offset_y']
-    
     # Rozměry vzduchového boxu: vzdálenost stěn >= lambda_0 / 4 při nejnižší frekvenci
     lambda_0_max = C_0_MM_GHZ / freq_min
     air_margin = float(np.round(lambda_0_max / 4.0, 1))
 
     params = {
-        # Geometrie
+        'antenna_model': antenna_model,
         'patch_L': patch_l,
         'patch_W': patch_w,
         'sub_h': sub_h,
-        'sub_L': sub_l,
-        'sub_W': sub_w,
-        'feed_W': feed_w,
-        'feed_offset_x': feed_offset_x,
-        'feed_offset_y': feed_offset_y,
         'air_margin': air_margin,
-        
-        # Materiály
         'eps_r': eps_r,
         'tan_delta': tan_delta,
-        
-        # Síť
         'mesh_size_max': mesh_size_max,
         'mesh_size_min': mesh_size_min,
         'mesh_dist_min': mesh_dist_min,
         'mesh_dist_max': mesh_dist_max,
-        
-        # Palace solver (frekvence v GHz)
         'freq_min': freq_min,
         'freq_max': freq_max,
         'freq_step': freq_step,
@@ -155,15 +123,75 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         'port_impedance': port_impedance,
         'linear_tol': linear_tol,
         'linear_max_its': linear_max_its,
-        'design_freq_ghz': DESIGN_FREQ_GHZ
+        'design_freq_ghz': DESIGN_FREQ_GHZ,
     }
-    # Zahrnutí všech parametrů napájecí sítě (w1, w2, w3, délky l1-l8)
-    params.update(feed_net)
-    if feed_inset_gap is not None:
-        params['inset_gap'] = feed_inset_gap
-    if feed_inset_width is not None:
-        params['inset_width'] = feed_inset_width
-    
+
+    if antenna_model == 2:
+        # MODEL 2: Nezávislá zanoření inset_b a inset_l
+        feed_inset_b = _resolve_param('feed_inset_b', 'FEED_INSET_B', None, custom_params, float)
+        if feed_inset_b is None:
+            feed_inset_b = _resolve_param('inset_b', 'INSET_B', None, custom_params, float)
+        if feed_inset_b is None:
+            feed_inset_b = _resolve_param('feed_inset', 'FEED_INSET', 0.0, custom_params, float)
+
+        feed_inset_l = _resolve_param('feed_inset_l', 'FEED_INSET_L', None, custom_params, float)
+        if feed_inset_l is None:
+            feed_inset_l = _resolve_param('inset_l', 'INSET_L', None, custom_params, float)
+        if feed_inset_l is None:
+            feed_inset_l = _resolve_param('feed_inset', 'FEED_INSET', 0.0, custom_params, float)
+
+        feed_gap_b = _resolve_param('feed_inset_gap_b', 'FEED_INSET_GAP_B', None, custom_params, float)
+        if feed_gap_b is None:
+            feed_gap_b = _resolve_param('inset_gap_b', 'INSET_GAP_B', None, custom_params, float)
+        if feed_gap_b is None:
+            feed_gap_b = _resolve_param('feed_inset_gap', 'FEED_INSET_GAP', None, custom_params, float)
+
+        feed_gap_l = _resolve_param('feed_inset_gap_l', 'FEED_INSET_GAP_L', None, custom_params, float)
+        if feed_gap_l is None:
+            feed_gap_l = _resolve_param('inset_gap_l', 'INSET_GAP_L', None, custom_params, float)
+        if feed_gap_l is None:
+            feed_gap_l = _resolve_param('feed_inset_gap', 'FEED_INSET_GAP', None, custom_params, float)
+
+        params['feed_inset_b'] = feed_inset_b
+        params['feed_inset_l'] = feed_inset_l
+        params['inset_b'] = feed_inset_b
+        params['inset_l'] = feed_inset_l
+        if feed_gap_b is not None:
+            params['inset_gap_b'] = feed_gap_b
+        if feed_gap_l is not None:
+            params['inset_gap_l'] = feed_gap_l
+
+        print(f"--- Model 2: Inset spodní (Ey) = {feed_inset_b:.2f} mm, Inset levý (Ex) = {feed_inset_l:.2f} mm ---")
+
+    else:
+        # MODEL 1: Původní T-dělič a analytická napájecí síť
+        feed_inset = _resolve_param('feed_inset', 'FEED_INSET', 0.0, custom_params, float)
+        if feed_inset == 0.0:
+            feed_inset = _resolve_param('inset', 'INSET', 0.0, custom_params, float)
+
+        feed_inset_gap = _resolve_param('feed_inset_gap', 'FEED_INSET_GAP', None, custom_params, float)
+        if feed_inset_gap is None:
+            feed_inset_gap = _resolve_param('inset_gap', 'INSET_GAP', None, custom_params, float)
+
+        feed_inset_width = _resolve_param('feed_inset_width', 'FEED_INSET_WIDTH', None, custom_params, float)
+        if feed_inset_width is None:
+            feed_inset_width = _resolve_param('inset_width', 'INSET_WIDTH', None, custom_params, float)
+
+        from rf_calc import calc_feed_network_dimensions
+        feed_net = calc_feed_network_dimensions(
+            patch_w, patch_l, sub_h, eps_r,
+            freq_ghz=DESIGN_FREQ_GHZ, port_z0=port_impedance, inset=feed_inset
+        )
+        params.update(feed_net)
+        params['feed_inset'] = feed_inset
+        params['inset'] = feed_inset
+        if feed_inset_gap is not None:
+            params['inset_gap'] = feed_inset_gap
+        if feed_inset_width is not None:
+            params['inset_width'] = feed_inset_width
+
+        print(f"--- Model 1: L = {patch_l:.2f} mm, W = {patch_w:.2f} mm, Zanoření: {feed_inset:.2f} mm ---")
+
     run_name = None
     if custom_params:
         params.update(custom_params)
@@ -172,7 +200,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     print("--- 1. Generování geometrie (OpenCASCADE) ---")
     build_model(params)
     
-    # Export 3D modelu pro vizualizaci geometrie v CADu
+    # Export 3D modelu pro CAD
     step_file = "data/antenna_model.step"
     gmsh.write(step_file)
     print(f"Geometrie byla exportována do {step_file} pro případné zobrazení v CAD softwaru.")
@@ -204,34 +232,81 @@ def main(custom_params=None, skip_simulation=False, clean=False):
 
     print("--- 5. Zpracování výsledků ---")
     output_dir = os.path.join(data_dir, "postpro")
-    s11_file = os.path.join(output_dir, "port-S.csv") # Palace outputs CSV
     
-    if os.path.exists(s11_file):
-        data_arr = np.loadtxt(s11_file, delimiter=',', skiprows=1)
-        freqs = data_arr[:, 0]
-        s11_db = data_arr[:, 1]
-        
-        plt.figure(figsize=(8, 6))
-        plt.plot(freqs, s11_db, label='S11')
-        plt.title('Činitel odrazu (S11) - LHCP Flíčková anténa')
-        plt.xlabel('Frekvence [GHz]')
-        plt.ylabel('S11 [dB]')
-        plt.grid(True)
-        plt.axhline(-10, color='r', linestyle='--')
-        plt.legend()
-        
-        plot_path = os.path.join(data_dir, "S11_graf.png")
-        plt.savefig(plot_path)
-        print(f"Graf byl úspěšně uložen do {plot_path}")
-        
-        # Logování do Aim Trackeru
+    # Zpracování výsledků podle modelu antény
+    if antenna_model == 2:
+        _process_results_model2(params, output_dir, data_dir, run_name)
+    else:
+        _process_results_model1(params, output_dir, data_dir, run_name)
+
+def _process_results_model1(params, output_dir, data_dir, run_name):
+    s11_file = os.path.join(output_dir, "port-S.csv")
+    if os.path.exists(s11_file) and os.path.getsize(s11_file) > 0:
+        try:
+            data_arr = np.loadtxt(s11_file, delimiter=',', skiprows=1)
+            if data_arr.ndim == 1:
+                data_arr = data_arr.reshape(1, -1)
+            freqs = data_arr[:, 0]
+            s11_db = data_arr[:, 1]
+            
+            plt.figure(figsize=(8, 6))
+            plt.plot(freqs, s11_db, label='S11', color='navy', lw=2)
+            plt.title('Činitel odrazu (S11) - Model 1 (LHCP Flíčková anténa s T-děličem)')
+            plt.xlabel('Frekvence [GHz]')
+            plt.ylabel('S11 [dB]')
+            plt.grid(True)
+            plt.axhline(-10, color='r', linestyle='--', label='Mez -10 dB')
+            plt.legend()
+            
+            plot_path = os.path.join(data_dir, "S11_graf.png")
+            plt.savefig(plot_path)
+            plt.close()
+            print(f"Graf byl úspěšně uložen do {plot_path}")
+        except Exception as e:
+            print(f"Upozornění při vykreslování S11 grafu: {e}")
+            
         analyze_and_log_run(params, s11_file, run_name=run_name)
     else:
         print(f"Výstupní soubor {s11_file} nebyl nalezen. Simulace zřejmě selhala nebo byla zapsána jinam.")
 
+def _process_results_model2(params, output_dir, data_dir, run_name):
+    from tracker import extract_s_parameters_model2
+    s_params = extract_s_parameters_model2(output_dir, z0=100.0)
+    
+    if s_params and 'freqs' in s_params:
+        try:
+            freqs = s_params['freqs']
+            s11_db = s_params['s11_db']
+            s22_db = s_params['s22_db']
+
+            plt.figure(figsize=(8, 6))
+            plt.plot(freqs, s11_db, label='S11 (Spodní port, Ey)', color='blue', lw=2)
+            plt.plot(freqs, s22_db, label='S22 (Levý port, Ex)', color='crimson', lw=2, linestyle='--')
+            plt.title('Činitele odrazu S11 a S22 - Model 2 (100 Ω LHCP)')
+            plt.xlabel('Frekvence [GHz]')
+            plt.ylabel('S-parametry [dB]')
+            plt.grid(True)
+            plt.axhline(-10, color='grey', linestyle=':', label='Mez -10 dB')
+            plt.legend()
+
+            plot_path = os.path.join(data_dir, "S_params_graf.png")
+            plt.savefig(plot_path)
+            # Kopie pro zpětnou kompatibilitu
+            plt.savefig(os.path.join(data_dir, "S11_graf.png"))
+            plt.close()
+            print(f"Graf S11 a S22 byl úspěšně uložen do {plot_path}")
+        except Exception as e:
+            print(f"Upozornění při vykreslování S-parametrů grafu: {e}")
+
+    # Záznam do tabulky Modelu 2
+    dummy_csv = os.path.join(output_dir, "port-S.csv")
+    analyze_and_log_run(params, dummy_csv, run_name=run_name)
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="LHCP Patch Antenna Simulation & CAD Model Generation")
+    parser.add_argument("--model", type=int, choices=[1, 2], default=None, dest="antenna_model",
+                        help="Verze modelu antény: 1 (T-dělič 50 Ohm), 2 (dvouportový 100 Ohm LHCP). Výchozí: 1 nebo z ANTENNA_MODEL")
     parser.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true",
                         help="Generovat pouze model, CAD STEP soubor a síť lokálně bez spouštění simulace v Dockeru")
     parser.add_argument("--clean", dest="clean", action="store_true",
@@ -270,20 +345,23 @@ if __name__ == "__main__":
                         help="Šířka flíčku patche v mm (výchozí: z PATCH_W nebo rovno patch-l)")
     parser.add_argument("--inset", "--feed-inset", type=float, default=None, dest="feed_inset",
                         help="Hloubka zanoření napaječe do flíčku v mm (výchozí: 0.0 nebo z FEED_INSET)")
-    parser.add_argument("--inset-gap", type=float, default=None, dest="feed_inset_gap",
-                        help="Šířka mezery zářezu po stranách napaječe v mm (výchozí: rovno šířce w3 cca 0.69 mm)")
-    parser.add_argument("--inset-width", type=float, default=None, dest="feed_inset_width",
-                        help="Celková šířka výřezu zářezu v mm (w3 + 2*gap)")
+    parser.add_argument("--inset-b", type=float, default=None, dest="feed_inset_b",
+                        help="Hloubka zanoření spodního napaječe pro Model 2 (výchozí: FEED_INSET_B nebo FEED_INSET)")
+    parser.add_argument("--inset-l", type=float, default=None, dest="feed_inset_l",
+                        help="Hloubka zanoření levého napaječe pro Model 2 (výchozí: FEED_INSET_L nebo FEED_INSET)")
+    parser.add_argument("--inset-gap-b", type=float, default=None, dest="feed_inset_gap_b",
+                        help="Šířka mezery zářezu spodního napaječe (výchozí: FEED_INSET_GAP_B)")
+    parser.add_argument("--inset-gap-l", type=float, default=None, dest="feed_inset_gap_l",
+                        help="Šířka mezery zářezu levého napaječe (výchozí: FEED_INSET_GAP_L)")
 
     args = parser.parse_args()
 
     cli_params = {}
-    for param in ['freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
+    for param in ['antenna_model', 'freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
                   'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its',
-                  'patch_L', 'patch_W', 'feed_inset', 'feed_inset_gap', 'feed_inset_width']:
+                  'patch_L', 'patch_W', 'feed_inset', 'feed_inset_b', 'feed_inset_l', 'feed_inset_gap_b', 'feed_inset_gap_l']:
         val = getattr(args, param, None)
         if val is not None:
             cli_params[param] = val
 
     main(custom_params=cli_params if cli_params else None, skip_simulation=args.skip_simulation, clean=args.clean)
-

@@ -2,10 +2,42 @@ import json
 
 # Fyzikalni a konfiguracni konstanty
 SCALE_MM_TO_M = 1e-3
-DEFAULT_PORT_IMPEDANCE = 50.0
+DEFAULT_PORT_IMPEDANCE_V1 = 50.0
+DEFAULT_PORT_IMPEDANCE_V2 = 100.0
 
 def build_palace_config(params):
-    port_r = params.get('port_impedance', DEFAULT_PORT_IMPEDANCE)
+    model_version = int(params.get('antenna_model', 1))
+    
+    if model_version == 2:
+        port_r = float(params.get('port_impedance', DEFAULT_PORT_IMPEDANCE_V2))
+        lumped_ports = [
+            {
+                "Index": 1,
+                "Attributes": [4],  # 4: Spodní port (Port 1, pole Ey)
+                "Direction": "+Z",  # Vektor excitace od z=0 do z=h
+                "R": port_r,
+                "Excitation": True
+            },
+            {
+                "Index": 2,
+                "Attributes": [6],  # 6: Levý port (Port 2, pole Ex)
+                "Direction": "+Z",  # Vektor excitace od z=0 do z=h
+                "R": port_r,
+                "Excitation": True
+            }
+        ]
+    else:
+        port_r = float(params.get('port_impedance', DEFAULT_PORT_IMPEDANCE_V1))
+        lumped_ports = [
+            {
+                "Index": 1,
+                "Attributes": [4],  # 4: Port (Model 1)
+                "Direction": "+Z",  # Vektor excitace od z=0 do z=h
+                "R": port_r,
+                "Excitation": True
+            }
+        ]
+
     amr_max_its = int(params.get('amr_max_its', 2))
     amr_tol = float(params.get('amr_threshold', params.get('amr_tol', 0.2)))
     farfield_nsample = int(params.get('farfield_nsample', 16200))
@@ -63,15 +95,7 @@ def build_palace_config(params):
                 "Attributes": [5],  # 5: Absorbing outer boundary
                 "Order": 2
             },
-            "LumpedPort": [
-                {
-                    "Index": 1,
-                    "Attributes": [4],  # 4: Port
-                    "Direction": "+Z",  # Vektor excitace od z=0 do z=h
-                    "R": port_r,
-                    "Excitation": True
-                }
-            ]
+            "LumpedPort": lumped_ports
         },
         "Solver": {
             "Order": 2,
