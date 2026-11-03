@@ -198,5 +198,7 @@ Při detailní analýze S-parametrů nejlepší konfigurace ($L = W = 28.80\text
 3.11.:
   * Rozdělení úkolu na jednodušší sekce
   * Vybral jsem zanoření 5,6mm (spodní) a 5,2 mm
-  * Pokus o omezení kapacitní složky zvětšením mezery spodního napaječe - neúspěšně. Asi je vazba mezi porty příliš velká, pokus o oddělenou simulaci (matice S11...S22)
-  //* Nyní budu změnou délky napaječe ladit činitel odrazu - imag. složka musí být cca 0
+  * Pokus o omezení kapacitní složky zvětšením mezery spodního napaječe - neúspěšně. 
+   * z grafů S parametrů lze vidět, že imaginární složka vstupní impedance se nemění -> není způsobena příliš úzkou mezerou. 
+   * Je zde ale vidět změna reálné složky impedance -> to je asi způsobeno změnou proudu u vstupu. Ignorováno, doladíse zanořením
+   * dalším postupem je kompenzace imag. složky změnou délky napaječe
