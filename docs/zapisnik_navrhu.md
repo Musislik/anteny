@@ -175,3 +175,28 @@ $$\text{SWEEP\_FREQ\_MIN} = 2.320\text{ GHz}, \quad \text{SWEEP\_FREQ\_MAX} = 2.
 4. **Závěr a doporučení:** 
    - Pro rozměr $28.80\text{ mm}$ je optimum kompromisu mezi středem pásma a polarizací **$y_0 = 5.20\text{ až }5.40\text{ mm}$** ($f_0 \approx 2.333\text{ GHz}, AR < 2.9\text{ dB}$).
    - Pokud chceme mít absolutní optimum $AR \approx 1.5\text{ dB}$ přímo ve středu $2.3325\text{ GHz}$, stačí flíček nepatrně korigovat o pouhých $+0.15\text{ mm}$ na **$L = W = 28.95\text{ mm}$** se zanořením **$y_0 = 4.80\text{ mm}$**.
+
+
+## 9. Asymetrie přizpůsobení portů a vliv délky napaječe (Run `antena3_1_1`)
+
+Při detailní analýze S-parametrů nejlepší konfigurace ($L = W = 28.80\text{ mm}$, $y_{0b} = y_{0l} = 5.40\text{ mm}$) byla zjištěna výrazná asymetrie mezi porty:
+
+| Port | Fyzické uspořádání | $f_0$ [GHz] | $S$-parametr [dB] | Vstupní impedance $Z_{\text{in}} [\Omega]$ | Stav přizpůsobení |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| **Port 2 (levý, $E_x$)** | Referenční přímé vedení ($L_{\text{ref}}$) | 2.337 | **$S_{22} = -37.10$** | $98.0 - j1.9$ | **Vynikající** (přesně $100\,\Omega$) |
+| **Port 1 (spodní, $E_y$)** | Prodloužené vedení ($L_{\text{ref}} + \lambda_g/4$) | 2.329 | **$S_{11} = -6.90$** | $42.4 - j32.1$ | **Nedostatečné** (nízká reálná složka) |
+
+### Fyzikální příčiny asymetrie:
+1. **Útlum a ztráty delší trasy:** Spodní napaječ je fyzicky delší o $\lambda_g / 4 \approx 18.7\text{ mm}$ kvůli fázování LHCP ($-90^\circ$). Na ztrátovém FR-4 substrátu ($\tan\delta = 0.02$) přináší delší trasa vyšší dielektrický i kondukční útlum a fázovou disperzi.
+2. **Impedanční inverze čtvrtvlnného úseku:** Úsek $\lambda_g/4$ působí jako impedanční invertor ($Z_{\text{in}} \approx Z_0^2 / Z_{\text{patch}}$). Pokud reálná impedance na zářezu flíčku přesně neodpovídá $100\,\Omega$, je na vstupu portu převrácena.
+3. **Vzájemná vazba při simultánním buzení:** Při současném buzení obou portů se sčítá přímý odraz s vazební vlnou ($S_{11}a_1 + S_{12}a_2$). Na levém portu došlo k příznivému vyrušení, na spodním se vlny složily nepříznivě.
+
+### Závěr a nápravný krok:
+- **Nezvětšovat zanoření obou portů symetricky** – levý port je již na absolutním optimu ($98\,\Omega$), další zanoření by ho rozladilo a stáhlo rezonanci pod $2.320\text{ GHz}$.
+- **Přechod na asymetrický sweep (`SWEEP_MODE=single_fixed`):** Fixovat levý napaječ na $y_{0l} = 5.2\text{ až }5.4\text{ mm}$ a ladit samostatně pouze spodní zanoření $y_{0b} \in [4.8, 5.6]\text{ mm}$ pro dorovnání impedance na $100\,\Omega$.
+
+3.11.:
+  * Rozdělení úkolu na jednodušší sekce
+  * Vybral jsem zanoření 5,6mm (spodní) a 5,2 mm
+  * Pokus o omezení kapacitní složky zvětšením mezery spodního napaječe - neúspěšně. Asi je vazba mezi porty příliš velká, pokus o oddělenou simulaci (matice S11...S22)
+  //* Nyní budu změnou délky napaječe ladit činitel odrazu - imag. složka musí být cca 0
