@@ -161,7 +161,10 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         if feed_gap_l is not None:
             params['inset_gap_l'] = feed_gap_l
 
-        print(f"--- Model 2: Inset spodní (Ey) = {feed_inset_b:.2f} mm, Inset levý (Ex) = {feed_inset_l:.2f} mm ---")
+        driven_port = _resolve_param('driven_port', 'DRIVEN_PORT', 'all', custom_params, str)
+        params['driven_port'] = driven_port
+
+        print(f"--- Model 2: Inset spodní (Ey) = {feed_inset_b:.2f} mm, Inset levý (Ex) = {feed_inset_l:.2f} mm, Buzení = {driven_port} ---")
 
     else:
         # MODEL 1: Původní T-dělič a analytická napájecí síť
@@ -311,12 +314,20 @@ def _process_results_model2(params, output_dir, data_dir, run_name):
     if s_params and 'freqs' in s_params:
         try:
             freqs = s_params['freqs']
-            s11_db = s_params['s11_db']
-            s22_db = s_params['s22_db']
+            s11_db = s_params.get('s11_db')
+            s22_db = s_params.get('s22_db')
+            s21_db = s_params.get('s21_db')
+            s12_db = s_params.get('s12_db')
 
             plt.figure(figsize=(8, 6))
-            plt.plot(freqs, s11_db, label='S11 (Spodní port, Ey)', color='blue', lw=2)
-            plt.plot(freqs, s22_db, label='S22 (Levý port, Ex)', color='crimson', lw=2, linestyle='--')
+            if s11_db is not None:
+                plt.plot(freqs, s11_db, label='S11 (Spodní port, Ey)', color='blue', lw=2)
+            if s22_db is not None:
+                plt.plot(freqs, s22_db, label='S22 (Levý port, Ex)', color='crimson', lw=2, linestyle='--')
+            if s21_db is not None:
+                plt.plot(freqs, s21_db, label='S21 (Vazba 1->2)', color='darkgreen', lw=1.5, linestyle=':')
+            elif s12_db is not None:
+                plt.plot(freqs, s12_db, label='S12 (Vazba 2->1)', color='darkgreen', lw=1.5, linestyle=':')
             plt.title('Činitele odrazu S11 a S22 - Model 2 (100 Ω LHCP)')
             plt.xlabel('Frekvence [GHz]')
             plt.ylabel('S-parametry [dB]')
@@ -390,13 +401,15 @@ if __name__ == "__main__":
                         help="Šířka mezery zářezu spodního napaječe (výchozí: FEED_INSET_GAP_B)")
     parser.add_argument("--inset-gap-l", type=float, default=None, dest="feed_inset_gap_l",
                         help="Šířka mezery zářezu levého napaječe (výchozí: FEED_INSET_GAP_L)")
+    parser.add_argument("--driven-port", type=str, default=None, dest="driven_port",
+                        help="Volba buzeného portu pro Model 2: '1' (spodní), '2' (levý), 'all' (oba současně pro LHCP). Výchozí: all")
 
     args = parser.parse_args()
 
     cli_params = {}
     for param in ['antenna_model', 'freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
                   'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its',
-                  'patch_L', 'patch_W', 'feed_inset', 'feed_inset_b', 'feed_inset_l', 'feed_inset_gap_b', 'feed_inset_gap_l']:
+                  'patch_L', 'patch_W', 'feed_inset', 'feed_inset_b', 'feed_inset_l', 'feed_inset_gap_b', 'feed_inset_gap_l', 'driven_port']:
         val = getattr(args, param, None)
         if val is not None:
             cli_params[param] = val

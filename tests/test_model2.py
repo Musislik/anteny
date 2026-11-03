@@ -480,6 +480,7 @@ if __name__ == "__main__":
         test_tracker_model2_record,
         test_tracker_model2_multiexc_superposition,
         test_sweep_modes_pairs,
+        test_sweep_mode_manual,
         test_tracker_model2_port_s_priority,
         test_farfield_metrics_fgainmax_and_gain_max,
         test_tracker_model2_record_with_gain_max,

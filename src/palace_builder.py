@@ -1,3 +1,4 @@
+import os
 import json
 
 # Fyzikalni a konfiguracni konstanty
@@ -10,20 +11,36 @@ def build_palace_config(params):
     
     if model_version == 2:
         port_r = float(params.get('port_impedance', DEFAULT_PORT_IMPEDANCE_V2))
+        driven_mode = str(params.get('driven_port', os.getenv('DRIVEN_PORT', 'all'))).lower().strip()
+
+        # Volba buzení portů pro Model 2:
+        # '1', 'b', 'bottom', 'ey' -> budit pouze Port 1 (spodní, Ey) pro čisté S11 a S21
+        # '2', 'l', 'left', 'ex'   -> budit pouze Port 2 (levý, Ex) pro čisté S22 a S12
+        # 'all', 'both'            -> budit oba porty současně (LHCP vyzařování)
+        if driven_mode in ('1', 'b', 'bottom', 'ey', 'port1'):
+            exc1 = True
+            exc2 = False
+        elif driven_mode in ('2', 'l', 'left', 'ex', 'port2'):
+            exc1 = False
+            exc2 = True
+        else:
+            exc1 = True
+            exc2 = True
+
         lumped_ports = [
             {
                 "Index": 1,
                 "Attributes": [4],  # 4: Spodní port (Port 1, pole Ey)
                 "Direction": "+Z",  # Vektor excitace od z=0 do z=h
                 "R": port_r,
-                "Excitation": True
+                "Excitation": exc1
             },
             {
                 "Index": 2,
                 "Attributes": [6],  # 6: Levý port (Port 2, pole Ex)
                 "Direction": "+Z",  # Vektor excitace od z=0 do z=h
                 "R": port_r,
-                "Excitation": True
+                "Excitation": exc2
             }
         ]
     else:

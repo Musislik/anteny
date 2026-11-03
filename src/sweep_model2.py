@@ -231,6 +231,7 @@ def run_sweep_model2(
     linear_max_its=None,
     export_each=None,
     skip_simulation=False,
+    driven_port=None,
 ):
     """
     Spustí dedikovaný parametrický sweep pro Model 2.
@@ -246,6 +247,7 @@ def run_sweep_model2(
         manual_pairs=manual_pairs,
     )
 
+    driven_port = driven_port or os.getenv("SWEEP_DRIVEN_PORT") or os.getenv("DRIVEN_PORT", "all")
     patch_l = patch_l if patch_l is not None else _resolve_env_float("SWEEP_PATCH_L", "PATCH_L", 30.3)
     patch_w = patch_w if patch_w is not None else _resolve_env_float("SWEEP_PATCH_W", "PATCH_W", patch_l)
     freq_min = freq_min if freq_min is not None else _resolve_env_float("SWEEP_FREQ_MIN", "FREQ_MIN", 2.280)
@@ -290,6 +292,7 @@ def run_sweep_model2(
             'inset_l': il_val,
             'patch_L': patch_l,
             'patch_W': patch_w,
+            'driven_port': driven_port,
             'freq_min': freq_min,
             'freq_max': freq_max,
             'freq_step': freq_step,
@@ -350,6 +353,8 @@ if __name__ == "__main__":
     parser.add_argument("--farfield-nsample", type=int, default=None, dest="farfield_nsample")
     parser.add_argument("--no-export", dest="export_each", action="store_false", default=None)
     parser.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true", default=False)
+    parser.add_argument("--driven-port", choices=["all", "1", "2"], default=None,
+                        help="Volba buzeného portu pro Model 2: 'all' (obě větve LHCP), '1' (pouze spodní Ey), '2' (pouze levý Ex)")
 
     args = parser.parse_args()
     run_sweep_model2(
@@ -371,4 +376,5 @@ if __name__ == "__main__":
         linear_max_its=args.linear_max_its,
         export_each=args.export_each,
         skip_simulation=args.skip_simulation,
+        driven_port=args.driven_port,
     )

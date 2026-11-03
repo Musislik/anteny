@@ -192,84 +192,87 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
 
                 # Vyhledání sloupců pro S11 (|S[1][1]|) a případnou fázi
                 s11_idx = find_col_idx(s_header, ["|s[1][1]|", "s[1][1]", "s[1,1]", "|s11|", "s11"])
-                if s11_idx is None:
-                    s11_idx = 1
-                s11_db = s_data[:, s11_idx]
-
                 s11_deg_idx = find_col_idx(s_header, ["arg(s[1][1])", "arg(s[1,1])", "arg(s11)", "phase(s[1][1])", "phase(s11)"])
-                if s11_deg_idx is None and s_data.shape[1] > 2 and ("arg" in s_header[2].lower() or "deg" in s_header[2].lower()):
-                    s11_deg_idx = 2
 
                 # Vyhledání sloupců pro S22 (|S[2][2]|) a případnou fázi
                 s22_idx = find_col_idx(s_header, ["|s[2][2]|", "s[2][2]", "s[2,2]", "|s22|", "s22"])
                 s22_deg_idx = find_col_idx(s_header, ["arg(s[2][2])", "arg(s[2,2])", "arg(s22)", "phase(s[2][2])", "phase(s22)"])
 
-                if s22_idx is None:
-                    # Běžná Palace matice 2 portů: [f, S11, arg11, S21, arg21, S12, arg12, S22, arg22]
-                    if s_data.shape[1] >= 8:
-                        s22_idx = 7
-                        if s22_deg_idx is None and s_data.shape[1] >= 9:
-                            s22_deg_idx = 8
-                    elif s_data.shape[1] == 4:
-                        s22_idx = 3
-                    elif s_data.shape[1] == 3 and s11_deg_idx is None:
-                        s22_idx = 2
+                # Vyhledání sloupců pro přenos S21 a S12
+                s21_idx = find_col_idx(s_header, ["|s[2][1]|", "s[2][1]", "s[2,1]", "|s21|", "s21"])
+                s12_idx = find_col_idx(s_header, ["|s[1][2]|", "s[1][2]", "s[1,2]", "|s12|", "s12"])
 
+                # Fallback pro neoznačené sloupce (pouze pokud nebyl nalezen ani jeden z S11 / S22)
+                if s11_idx is None and s22_idx is None:
+                    if s_data.shape[1] >= 8:
+                        # 2 porty plná matice: [f, S11, arg11, S21, arg21, S12, arg12, S22, arg22]
+                        s11_idx, s11_deg_idx = 1, 2
+                        s21_idx = 3
+                        s12_idx = 5
+                        s22_idx, s22_deg_idx = 7, 8
+                    elif s_data.shape[1] >= 2:
+                        # 1 port
+                        s11_idx = 1
+                        if s_data.shape[1] > 2:
+                            s11_deg_idx = 2
+
+                metrics['freqs'] = freqs
+
+                # Vyhodnocení Port 1 (pokud je přítomen v S-matici)
+                if s11_idx is not None and s11_idx < s_data.shape[1]:
+                    s11_db = s_data[:, s11_idx]
+                    min1_idx = int(np.argmin(s11_db))
+                    f0_b = float(freqs[min1_idx])
+                    s11_min = float(s11_db[min1_idx])
+
+                    if s11_deg_idx is not None and s11_deg_idx < s_data.shape[1]:
+                        s11_deg = s_data[:, s11_deg_idx]
+                        s11_lin = 10.0 ** (s11_min / 20.0)
+                        gamma1 = s11_lin * np.exp(1j * np.deg2rad(s11_deg[min1_idx]))
+                        zin1 = z0 * (1.0 + gamma1) / (1.0 - gamma1 + 1e-12)
+                        zin1_re = float(zin1.real)
+                    else:
+                        gamma1_mag = 10.0 ** (s11_min / 20.0)
+                        zin1_re = float(z0 * (1.0 + gamma1_mag) / max(1.0 - gamma1_mag, 1e-4))
+
+                    metrics.update({
+                        'f0_b_GHz': f0_b,
+                        's11_min_dB': s11_min,
+                        'zin1_re_ohm': zin1_re,
+                        's11_db': s11_db,
+                    })
+
+                # Vyhodnocení Port 2 (pokud je přítomen v S-matici)
                 if s22_idx is not None and s22_idx < s_data.shape[1]:
                     s22_db = s_data[:, s22_idx]
-                else:
-                    # Pokud druhý port chybí, zrcadlíme port 1
-                    s22_db = s11_db.copy()
+                    min2_idx = int(np.argmin(s22_db))
+                    f0_l = float(freqs[min2_idx])
+                    s22_min = float(s22_db[min2_idx])
 
-                # Vyhledání S21 (přenos)
-                s21_idx = find_col_idx(s_header, ["|s[2][1]|", "s[2][1]", "s[2,1]", "|s21|", "s21"])
-                if s21_idx is None and s_data.shape[1] >= 4 and s22_idx != 3:
-                    s21_idx = 3
-                s21_db = s_data[:, s21_idx] if s21_idx is not None and s21_idx < s_data.shape[1] else None
+                    if s22_deg_idx is not None and s22_deg_idx < s_data.shape[1]:
+                        s22_deg = s_data[:, s22_deg_idx]
+                        s22_lin = 10.0 ** (s22_min / 20.0)
+                        gamma2 = s22_lin * np.exp(1j * np.deg2rad(s22_deg[min2_idx]))
+                        zin2 = z0 * (1.0 + gamma2) / (1.0 - gamma2 + 1e-12)
+                        zin2_re = float(zin2.real)
+                    else:
+                        gamma2_mag = 10.0 ** (s22_min / 20.0)
+                        zin2_re = float(z0 * (1.0 + gamma2_mag) / max(1.0 - gamma2_mag, 1e-4))
 
-                min1_idx = int(np.argmin(s11_db))
-                f0_b = float(freqs[min1_idx])
-                s11_min = float(s11_db[min1_idx])
+                    metrics.update({
+                        'f0_l_GHz': f0_l,
+                        's22_min_dB': s22_min,
+                        'zin2_re_ohm': zin2_re,
+                        's22_db': s22_db,
+                    })
 
-                min2_idx = int(np.argmin(s22_db))
-                f0_l = float(freqs[min2_idx])
-                s22_min = float(s22_db[min2_idx])
-
-                # Výpočet impedance Zin ze činitele odrazu
-                if s11_deg_idx is not None and s11_deg_idx < s_data.shape[1]:
-                    s11_deg = s_data[:, s11_deg_idx]
-                    s11_lin = 10.0 ** (s11_min / 20.0)
-                    gamma1 = s11_lin * np.exp(1j * np.deg2rad(s11_deg[min1_idx]))
-                    zin1 = z0 * (1.0 + gamma1) / (1.0 - gamma1 + 1e-12)
-                    zin1_re = float(zin1.real)
-                else:
-                    gamma1_mag = 10.0 ** (s11_min / 20.0)
-                    zin1_re = float(z0 * (1.0 + gamma1_mag) / max(1.0 - gamma1_mag, 1e-4))
-
-                if s22_deg_idx is not None and s22_deg_idx < s_data.shape[1]:
-                    s22_deg = s_data[:, s22_deg_idx]
-                    s22_lin = 10.0 ** (s22_min / 20.0)
-                    gamma2 = s22_lin * np.exp(1j * np.deg2rad(s22_deg[min2_idx]))
-                    zin2 = z0 * (1.0 + gamma2) / (1.0 - gamma2 + 1e-12)
-                    zin2_re = float(zin2.real)
-                else:
-                    gamma2_mag = 10.0 ** (s22_min / 20.0)
-                    zin2_re = float(z0 * (1.0 + gamma2_mag) / max(1.0 - gamma2_mag, 1e-4))
-
-                metrics.update({
-                    'f0_b_GHz': f0_b,
-                    'f0_l_GHz': f0_l,
-                    's11_min_dB': s11_min,
-                    's22_min_dB': s22_min,
-                    'zin1_re_ohm': zin1_re,
-                    'zin2_re_ohm': zin2_re,
-                    'freqs': freqs,
-                    's11_db': s11_db,
-                    's22_db': s22_db,
-                })
-                if s21_db is not None:
-                    metrics['s21_db'] = s21_db
-                    metrics['s21_min_dB'] = float(s21_db[min1_idx])
+                # Izolace S21 / S12
+                if s21_idx is not None and s21_idx < s_data.shape[1]:
+                    metrics['s21_db'] = s_data[:, s21_idx]
+                    ref_idx = min1_idx if s11_idx is not None else 0
+                    metrics['s21_min_dB'] = float(s_data[ref_idx, s21_idx])
+                if s12_idx is not None and s12_idx < s_data.shape[1]:
+                    metrics['s12_db'] = s_data[:, s12_idx]
 
                 return metrics
         except Exception as e:
@@ -616,10 +619,11 @@ def _record_run_model2(params, output_dir, run_name, export_zip, results_dir):
     s_metrics = extract_s_parameters_model2(output_dir, z0=port_z0)
     
     f0_b = s_metrics.get('f0_b_GHz')
-    s11_min = s_metrics.get('s11_min_dB')
+    f0_target = f0_b or s_metrics.get('f0_l_GHz') or DESIGN_FREQ_GHZ
+    s_min = s_metrics.get('s11_min_dB') if s_metrics.get('s11_min_dB') is not None else s_metrics.get('s22_min_dB')
     
     farfield_path = os.path.join(output_dir, "farfield-rE.csv")
-    farfield_metrics = extract_farfield_metrics(farfield_path, target_freq=f0_b, s11_min_db=s11_min)
+    farfield_metrics = extract_farfield_metrics(farfield_path, target_freq=f0_target, s11_min_db=s_min)
 
     row = {
         'run_name': run_name or params.get('run_name', 'run_m2'),
