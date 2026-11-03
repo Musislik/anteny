@@ -219,15 +219,24 @@ OBSAH BALÍČKU:
    - domain-E.csv               ... Energie pole a ztráty v dielektriku / vzduchu
    - S11_graf.png               ... Graf S11 s vyznačenou mezí -10 dB
 
-3. Konfigurace:
+3. Konfigurace a vygenerované grafy:
    - config.json                ... Vstupní konfigurace řešiče pro reprodukovatelnost
    - config_resolved.json       ... Vyřešená konfigurace řešiče (pokud existuje)
+   - graf_S_parametry.png        ... Graf S11, S22 a vstupní impedance portů Zin
+   - vyzarovaci_diagram_2d.png   ... 2D polární diagramy řezů X-Z a Y-Z (LHCP/RHCP) + AR
+   - vyzarovaci_diagram_3d.png   ... 3D prostorový vyzařovací diagram v dBi
 
 JAK ZOBRAZIT INTERAKTIVNÍ MODEL V PARAVIEW:
 1. Otevřete ParaView.
 2. V horním menu zvolte: Tools -> Python Shell -> Run Script
 3. Vyberte soubor: paraview_dynamic_phase.py (přímo z této složky)
 4. Posuvníkem přepínejte frekvenci, tlačítkem PLAY spusťte rotaci fáze.
+
+JAK PŘEGENEROVAT GRAFY (pomocí skriptů ze složky scripts/):
+1. S-parametry a impedance:
+   python scripts/plot_s_parameters.py export/<slozka_exportu>
+2. 2D a 3D vyzařovací diagram:
+   python scripts/plot_radiation_pattern.py export/<slozka_exportu> --freq 2.333
 ======================================================================
 """
         else:

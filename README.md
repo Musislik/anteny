@@ -62,6 +62,27 @@ Simulátor generuje `.vtu` soubory prostorových polí do složky `postpro/parav
 3. Cesta k projektu je v souboru definována proměnnou `PROJECT_DIR = r"D:\code\anteny"`, kterou skript při spuštění nastaví jako aktuální pracovní adresář (`os.chdir`).
 4. Skript automaticky načte `.vtu` soubor, aplikuje řezy v rovině patche, zprůhlední vzduchový box a obarví elektrické pole (`E_real`) paletou *Cool to Warm*.
 
+### D) Skripty pro S-parametry a vyzařovací diagramy (Python)
+V adresáři `scripts/` jsou připraveny skripty pro rychlé vykreslení výsledků z výstupních složek simulace (např. `export/antena3_1_1`):
+
+1. **Graf S-parametrů a impedance (`plot_s_parameters.py`):**
+   Vyhodnocuje $S_{11}$, $S_{22}$ a komplexní impedanci $Z_{\text{in}}$ z `port-S.csv` nebo `port-V.csv`:
+   ```powershell
+   python scripts/plot_s_parameters.py <cesta_k_exportu>
+   # Příklad:
+   python scripts/plot_s_parameters.py export/antena3_1_1
+   ```
+   *Výstup:* `graf_S_parametry.png`
+
+2. **2D a 3D vyzařovací diagram (`plot_radiation_pattern.py`):**
+   Z `farfield-rE.csv` počítá směrovost LHCP a RHCP v dBi, osový poměr (AR) a generuje 2D polární řezy (X-Z, Y-Z) i 3D prostorový lalok:
+   ```powershell
+   python scripts/plot_radiation_pattern.py <cesta_k_exportu> [--freq FREKVENCE_GHZ]
+   # Příklad:
+   python scripts/plot_radiation_pattern.py export/antena3_1_1 --freq 2.333
+   ```
+   *Výstupy:* `vyzarovaci_diagram_2d.png`, `vyzarovaci_diagram_3d.png`
+
 ---
 
 ## 📁 Struktura klíčových souborů
