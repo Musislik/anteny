@@ -73,10 +73,18 @@ def interpolate_cut(tree, metric_vals, target_points):
     weights /= np.sum(weights, axis=1, keepdims=True)
     return np.sum(metric_vals[idxs] * weights, axis=1)
 
+def _find_farfield_csv(export_dir):
+    search_dirs = [export_dir, os.path.join(export_dir, "postpro")]
+    for d in search_dirs:
+        p = os.path.join(d, "farfield-rE.csv")
+        if os.path.exists(p) and os.path.getsize(p) > 0:
+            return p
+    return None
+
 def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
-    csv_path = os.path.join(export_dir, "farfield-rE.csv")
-    if not os.path.exists(csv_path):
-        print(f"Soubor {csv_path} neexistuje.")
+    csv_path = _find_farfield_csv(export_dir)
+    if not csv_path:
+        print(f"Soubor farfield-rE.csv nebyl v {export_dir} nalezen.")
         return
         
     print(f"Načítám dálkové pole z {csv_path}...")
@@ -180,13 +188,14 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
     plt.tight_layout()
     if output_png is None:
         output_png = os.path.join(export_dir, "vyzarovaci_diagram_2d.png")
+    os.makedirs(os.path.dirname(os.path.abspath(output_png)) or ".", exist_ok=True)
     plt.savefig(output_png, dpi=200)
     plt.close()
     print(f"Uložen 2D vyzařovací diagram: {output_png}")
 
 def plot_radiation_pattern_3d(export_dir, freq_target=None, output_png=None):
-    csv_path = os.path.join(export_dir, "farfield-rE.csv")
-    if not os.path.exists(csv_path):
+    csv_path = _find_farfield_csv(export_dir)
+    if not csv_path:
         return
         
     df = pd.read_csv(csv_path)
@@ -248,6 +257,7 @@ def plot_radiation_pattern_3d(export_dir, freq_target=None, output_png=None):
     plt.tight_layout()
     if output_png is None:
         output_png = os.path.join(export_dir, "vyzarovaci_diagram_3d.png")
+    os.makedirs(os.path.dirname(os.path.abspath(output_png)) or ".", exist_ok=True)
     plt.savefig(output_png, dpi=200)
     plt.close()
     print(f"Uložen 3D vyzařovací diagram: {output_png}")

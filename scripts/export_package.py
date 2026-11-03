@@ -144,10 +144,16 @@ def export_paraview_package(output_name=None, output_zip=None):
     try:
         print(f"--- 1. Kopíruji soubory do balíčku z {data_dir} ---")
 
-        # A) Skript pro ParaView a pomocné utility
+        # A) Skripty pro ParaView, analýzu a pomocné utility
         if has_boundary and os.path.exists(script_path):
             shutil.copy2(script_path, os.path.join(temp_pack_dir, "paraview_dynamic_phase.py"))
             print("  + paraview_dynamic_phase.py")
+
+        for s_script in ["plot_s_parameters.py", "plot_radiation_pattern.py"]:
+            s_path = os.path.join(root_dir, "scripts", s_script)
+            if os.path.exists(s_path):
+                shutil.copy2(s_path, os.path.join(temp_pack_dir, s_script))
+                print(f"  + {s_script}")
 
         utils_path = os.path.join(root_dir, "src", "postpro_utils.py")
         if os.path.exists(utils_path):
@@ -168,6 +174,27 @@ def export_paraview_package(output_name=None, output_zip=None):
             shutil.copy2(gif_src, os.path.join(temp_pack_dir, "lhcp_rotation.gif"))
             print("  + lhcp_rotation.gif (náhledová animace)")
 
+        # Automatické generování grafu S-parametrů a vyzařovacích diagramů před zabalením
+        try:
+            from plot_s_parameters import plot_s_parameters
+            from plot_radiation_pattern import plot_radiation_pattern_2d, plot_radiation_pattern_3d
+
+            s_param_png = os.path.join(data_dir, "graf_S_parametry.png")
+            if not os.path.exists(s_param_png) or os.path.getsize(s_param_png) == 0:
+                src_plot_dir = postpro_dir if os.path.exists(os.path.join(postpro_dir, "port-V.csv")) or os.path.exists(os.path.join(postpro_dir, "port-S.csv")) else data_dir
+                plot_s_parameters(src_plot_dir, output_png=s_param_png)
+
+            ff_file = os.path.join(postpro_dir, "farfield-rE.csv")
+            if os.path.exists(ff_file) and os.path.getsize(ff_file) > 0:
+                rd_2d_png = os.path.join(data_dir, "vyzarovaci_diagram_2d.png")
+                rd_3d_png = os.path.join(data_dir, "vyzarovaci_diagram_3d.png")
+                if not os.path.exists(rd_2d_png) or os.path.getsize(rd_2d_png) == 0:
+                    plot_radiation_pattern_2d(postpro_dir, output_png=rd_2d_png)
+                if not os.path.exists(rd_3d_png) or os.path.getsize(rd_3d_png) == 0:
+                    plot_radiation_pattern_3d(postpro_dir, output_png=rd_3d_png)
+        except Exception as plot_err:
+            print(f"Upozornění při přípravě grafů pro export: {plot_err}")
+
         # Důležité CSV a konfigurační výstupy z postpro
         important_postpro = [
             ("port-S.csv", "S-parametry / činitel odrazu S11"),
@@ -185,15 +212,20 @@ def export_paraview_package(output_name=None, output_zip=None):
                 shutil.copy2(fsrc, os.path.join(temp_pack_dir, fname))
                 print(f"  + {fname} ({desc})")
 
-        # CAD STEP model, 2D graf S11 a vstupní konfigurace (z kořene složky data)
+        # CAD STEP model, 2D grafy, vyzařovací diagramy a konfigurace (z kořene složky data i postpro)
         extra_models = [
             ("antenna_model.step", "3D CAD model antény"),
             ("geometry_iso.png", "2D náhled geometrie antény"),
             ("S11_graf.png", "2D graf činitele odrazu S11"),
+            ("graf_S_parametry.png", "graf S-parametrů a impedance portů"),
+            ("vyzarovaci_diagram_2d.png", "2D polární diagramy řezů X-Z a Y-Z"),
+            ("vyzarovaci_diagram_3d.png", "3D prostorový vyzařovací lalok"),
             ("config.json", "vstupní konfigurace FEM řešiče Palace"),
         ]
         for fname, desc in extra_models:
             fsrc = os.path.join(data_dir, fname)
+            if not os.path.exists(fsrc):
+                fsrc = os.path.join(postpro_dir, fname)
             if os.path.exists(fsrc) and os.path.getsize(fsrc) > 0:
                 shutil.copy2(fsrc, os.path.join(temp_pack_dir, fname))
                 print(f"  + {fname} ({desc})")
@@ -261,6 +293,17 @@ OBSAH BALÍČKU:
    - geometry_iso.png           ... 2D náhled geometrie antény
    - config.json                ... Vstupní konfigurace řešiče pro reprodukovatelnost
    - config_resolved.json       ... Vyřešená konfigurace řešiče (pokud existuje)
+
+3. Vygenerované grafy:
+   - graf_S_parametry.png        ... Graf S11, S22 a vstupní impedance portů Zin
+   - vyzarovaci_diagram_2d.png   ... 2D polární diagramy řezů X-Z a Y-Z (LHCP/RHCP) + AR
+   - vyzarovaci_diagram_3d.png   ... 3D prostorový vyzařovací diagram v dBi
+
+JAK PŘEGENEROVAT GRAFY:
+1. S-parametry a impedance:
+   python scripts/plot_s_parameters.py export/<slozka_exportu>
+2. 2D a 3D vyzařovací diagram:
+   python scripts/plot_radiation_pattern.py export/<slozka_exportu> --freq 2.333
 ======================================================================
 """
         with open(os.path.join(temp_pack_dir, "README.txt"), "w", encoding="utf-8") as f:

@@ -239,6 +239,39 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     else:
         _process_results_model1(params, output_dir, data_dir, run_name)
 
+def _generate_advanced_plots(output_dir, data_dir):
+    """Automatické generování grafu S-parametrů/impedance a 2D/3D vyzařovacích diagramů po každém kroku simulace."""
+    # 1. Graf S-parametrů a impedance
+    try:
+        from plot_s_parameters import plot_s_parameters
+        s_png_data = os.path.join(data_dir, "graf_S_parametry.png")
+        s_png_post = os.path.join(output_dir, "graf_S_parametry.png")
+        plot_s_parameters(output_dir, output_png=s_png_data)
+        if os.path.abspath(s_png_data) != os.path.abspath(s_png_post) and os.path.exists(s_png_data):
+            shutil.copy2(s_png_data, s_png_post)
+    except Exception as e:
+        print(f"Upozornění při automatickém generování grafu S-parametrů: {e}")
+
+    # 2. 2D a 3D vyzařovací diagram (pokud existuje farfield-rE.csv)
+    try:
+        from plot_radiation_pattern import plot_radiation_pattern_2d, plot_radiation_pattern_3d
+        ff_file = os.path.join(output_dir, "farfield-rE.csv")
+        if os.path.exists(ff_file) and os.path.getsize(ff_file) > 0:
+            rd_2d_data = os.path.join(data_dir, "vyzarovaci_diagram_2d.png")
+            rd_2d_post = os.path.join(output_dir, "vyzarovaci_diagram_2d.png")
+            rd_3d_data = os.path.join(data_dir, "vyzarovaci_diagram_3d.png")
+            rd_3d_post = os.path.join(output_dir, "vyzarovaci_diagram_3d.png")
+            
+            plot_radiation_pattern_2d(output_dir, output_png=rd_2d_data)
+            plot_radiation_pattern_3d(output_dir, output_png=rd_3d_data)
+            
+            if os.path.abspath(rd_2d_data) != os.path.abspath(rd_2d_post) and os.path.exists(rd_2d_data):
+                shutil.copy2(rd_2d_data, rd_2d_post)
+            if os.path.abspath(rd_3d_data) != os.path.abspath(rd_3d_post) and os.path.exists(rd_3d_data):
+                shutil.copy2(rd_3d_data, rd_3d_post)
+    except Exception as e:
+        print(f"Upozornění při automatickém generování vyzařovacích diagramů: {e}")
+
 def _process_results_model1(params, output_dir, data_dir, run_name):
     s11_file = os.path.join(output_dir, "port-S.csv")
     if os.path.exists(s11_file) and os.path.getsize(s11_file) > 0:
@@ -268,6 +301,8 @@ def _process_results_model1(params, output_dir, data_dir, run_name):
         analyze_and_log_run(params, s11_file, run_name=run_name)
     else:
         print(f"Výstupní soubor {s11_file} nebyl nalezen. Simulace zřejmě selhala nebo byla zapsána jinam.")
+
+    _generate_advanced_plots(output_dir, data_dir)
 
 def _process_results_model2(params, output_dir, data_dir, run_name):
     from tracker import extract_s_parameters_model2
@@ -301,6 +336,8 @@ def _process_results_model2(params, output_dir, data_dir, run_name):
     # Záznam do tabulky Modelu 2
     dummy_csv = os.path.join(output_dir, "port-S.csv")
     analyze_and_log_run(params, dummy_csv, run_name=run_name)
+
+    _generate_advanced_plots(output_dir, data_dir)
 
 if __name__ == "__main__":
     import argparse

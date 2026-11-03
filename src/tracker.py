@@ -333,8 +333,19 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
             i1_im = i_data[:, i1_im_idx] if i1_im_idx is not None else np.zeros_like(i1_re)
             i1 = i1_re + 1j * i1_im
 
-            z_in1 = v1 / (i1 + 1e-15)
-            gamma1 = (z_in1 - z0) / (z_in1 + z0 + 1e-15)
+            v1_inc_idx = find_col_idx(v_header, ["v_inc[1]", "v_inc1", "vinc1"])
+            v2_inc_idx = find_col_idx(v_header, ["v_inc[2]", "v_inc2", "vinc2"])
+
+            # Pokud Palace vrátil V a I takové, že V/I == Z0 (lumped port chování v Palace),
+            # počítáme činitel odrazu přímo z dopadající vlny: Gamma = (V - V_inc) / V_inc
+            if v1_inc_idx is not None and np.allclose(v1 / (i1 + 1e-15), z0, atol=1e-2):
+                v1_inc = v_data[:, v1_inc_idx]
+                gamma1 = (v1 - v1_inc) / (v1_inc + 1e-15)
+                z_in1 = z0 * (1.0 + gamma1) / (1.0 - gamma1 + 1e-12)
+            else:
+                z_in1 = v1 / (i1 + 1e-15)
+                gamma1 = (z_in1 - z0) / (z_in1 + z0 + 1e-15)
+
             s11_db = 20.0 * np.log10(np.clip(np.abs(gamma1), 1e-10, 10.0))
 
             min1_idx = int(np.argmin(s11_db))
@@ -358,8 +369,14 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
                 i2_im = i_data[:, i2_im_idx] if i2_im_idx is not None else np.zeros_like(i2_re)
                 i2 = i2_re + 1j * i2_im
 
-                z_in2 = v2 / (i2 + 1e-15)
-                gamma2 = (z_in2 - z0) / (z_in2 + z0 + 1e-15)
+                if v2_inc_idx is not None and np.allclose(v2 / (i2 + 1e-15), z0, atol=1e-2):
+                    v2_inc = v_data[:, v2_inc_idx]
+                    gamma2 = (v2 - v2_inc) / (v2_inc + 1e-15)
+                    z_in2 = z0 * (1.0 + gamma2) / (1.0 - gamma2 + 1e-12)
+                else:
+                    z_in2 = v2 / (i2 + 1e-15)
+                    gamma2 = (z_in2 - z0) / (z_in2 + z0 + 1e-15)
+
                 s22_db = 20.0 * np.log10(np.clip(np.abs(gamma2), 1e-10, 10.0))
 
                 min2_idx = int(np.argmin(s22_db))

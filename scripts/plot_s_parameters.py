@@ -7,11 +7,20 @@ def plot_s_parameters(export_dir, output_png=None):
     if output_png is None:
         output_png = os.path.join(export_dir, "graf_S_parametry.png")
     
-    v_path = os.path.join(export_dir, "port-V.csv")
-    s_path = os.path.join(export_dir, "port-S.csv")
+    # Podpora pro vyhledání v export_dir i podsložce postpro
+    search_dirs = [export_dir, os.path.join(export_dir, "postpro")]
+    v_path = None
+    s_path = None
+    for d in search_dirs:
+        sp = os.path.join(d, "port-S.csv")
+        if os.path.exists(sp) and os.path.getsize(sp) > 0 and s_path is None:
+            s_path = sp
+        vp = os.path.join(d, "port-V.csv")
+        if os.path.exists(vp) and os.path.getsize(vp) > 0 and v_path is None:
+            v_path = vp
     
     # Check what data is available
-    if os.path.exists(s_path) and os.path.getsize(s_path) > 0:
+    if s_path and os.path.exists(s_path) and os.path.getsize(s_path) > 0:
         # Standard Palace port-S output (1 port or full S matrix)
         data = np.loadtxt(s_path, delimiter=',', skiprows=1)
         freqs = data[:, 0]
@@ -30,12 +39,13 @@ def plot_s_parameters(export_dir, output_png=None):
         ax.grid(True, linestyle=':', alpha=0.7)
         ax.legend(fontsize=11)
         plt.tight_layout()
+        os.makedirs(os.path.dirname(os.path.abspath(output_png)) or ".", exist_ok=True)
         plt.savefig(output_png, dpi=200)
         plt.close()
         print(f"Uložen graf S-parametrů: {output_png}")
         return
 
-    if os.path.exists(v_path) and os.path.getsize(v_path) > 0:
+    if v_path and os.path.exists(v_path) and os.path.getsize(v_path) > 0:
         v_data = np.loadtxt(v_path, delimiter=',', skiprows=1)
         freqs = v_data[:, 0]
         v_inc1 = v_data[:, 1]
@@ -89,6 +99,7 @@ def plot_s_parameters(export_dir, output_png=None):
         ax2.legend(loc='upper right', fontsize=9, ncol=2)
         
         plt.tight_layout()
+        os.makedirs(os.path.dirname(os.path.abspath(output_png)) or ".", exist_ok=True)
         plt.savefig(output_png, dpi=200)
         plt.close()
         print(f"Uložen graf S-parametrů a impedance: {output_png}")

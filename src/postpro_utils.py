@@ -8,13 +8,16 @@ import sys
 import glob
 import subprocess
 
-# Automatické přidání kořene projektu a složky src do sys.path
+# Automatické přidání kořene projektu a složek src a scripts do sys.path
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR = os.path.abspath(os.path.join(_SCRIPT_DIR, ".."))
 _SRC_DIR = os.path.join(_ROOT_DIR, "src")
+_SCRIPTS_DIR = os.path.join(_ROOT_DIR, "scripts")
 
 if _SRC_DIR not in sys.path and os.path.exists(_SRC_DIR):
     sys.path.insert(0, _SRC_DIR)
+if _SCRIPTS_DIR not in sys.path and os.path.exists(_SCRIPTS_DIR):
+    sys.path.insert(0, _SCRIPTS_DIR)
 if _ROOT_DIR not in sys.path and os.path.exists(_ROOT_DIR):
     sys.path.insert(0, _ROOT_DIR)
 
