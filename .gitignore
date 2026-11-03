@@ -35,6 +35,7 @@ trash/
 data/
 postpro/
 export/
+export/prehled_m3.md
 
 # Pojistka pro generované artefakty (pokud by vznikly v kořeni)
 mesh.msh

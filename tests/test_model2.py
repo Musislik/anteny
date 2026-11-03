@@ -287,6 +287,45 @@ def test_sweep_modes_pairs():
     assert p_grid == [(2.0, 1.0), (2.0, 4.0), (3.0, 1.0), (3.0, 4.0)]
 
 
+def test_sweep_mode_manual():
+    """Test režimu 'manual' v sweep_model2."""
+    from sweep_model2 import build_sweep_pairs
+
+    # 1. Test 1:1 zipování z insets_b a insets_l
+    p1, desc1 = build_sweep_pairs("manual", insets_b=[4.8, 5.0, 5.2], insets_l=[5.2, 5.2, 5.4])
+    assert p1 == [(4.8, 5.2), (5.0, 5.2), (5.2, 5.4)]
+    assert "3 bodů" in desc1
+
+    # 2. Test explicitních dvojic v parametru manual_pairs
+    p2, _ = build_sweep_pairs("manual", manual_pairs=["4.8:5.2", "5.0:5.2"])
+    assert p2 == [(4.8, 5.2), (5.0, 5.2)]
+
+    # 3. Test neshodné délky seznamů -> musí vyvolat ValueError
+    try:
+        build_sweep_pairs("manual", insets_b=[4.8, 5.0], insets_l=[5.2])
+        assert False, "Měla být vyvolána výjimka ValueError pro neshodnou délku seznamů"
+    except ValueError as e:
+        assert "stejný počet hodnot" in str(e)
+
+    # 4. Test načtení z proměnné prostředí SWEEP_MANUAL_PAIRS
+    os.environ["SWEEP_MANUAL_PAIRS"] = "4.5:5.0, 5.0:5.5"
+    p3, _ = build_sweep_pairs("manual")
+    assert p3 == [(4.5, 5.0), (5.0, 5.5)]
+    del os.environ["SWEEP_MANUAL_PAIRS"]
+
+    # 5. Test fallback na výchozí hodnotu [(4.80, 5.20)], pokud nic není zadáno
+    old_b = os.environ.pop("SWEEP_INSETS_B", None)
+    old_l = os.environ.pop("SWEEP_INSETS_L", None)
+    try:
+        p_def, _ = build_sweep_pairs("manual")
+        assert p_def == [(4.80, 5.20)]
+    finally:
+        if old_b is not None:
+            os.environ["SWEEP_INSETS_B"] = old_b
+        if old_l is not None:
+            os.environ["SWEEP_INSETS_L"] = old_l
+
+
 def test_tracker_model2_port_s_priority():
     """
     Test, že Model 2 prioritně čte data z port-S.csv a nevrací falešných -200 dB

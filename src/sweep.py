@@ -53,7 +53,9 @@ if __name__ == "__main__":
         # Spustíme parser z sweep_model2
         import sweep_model2
         parser_m2 = argparse.ArgumentParser(description="Parametrický sweep Modelu 2 (Dvouportový LHCP)")
-        parser_m2.add_argument("--mode", choices=["symmetric", "single_fixed", "grid"], default=None)
+        parser_m2.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
+        parser_m2.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs",
+                               help="Manuálně definované dvojice zanoření pro Model 2")
         parser_m2.add_argument("--insets", type=float, nargs="+", default=None)
         parser_m2.add_argument("--insets-b", type=float, nargs="+", default=None)
         parser_m2.add_argument("--insets-l", type=float, nargs="+", default=None)
@@ -79,6 +81,7 @@ if __name__ == "__main__":
             insets_l=m2_args.insets_l,
             fixed_name=m2_args.fixed_name,
             fixed_val=m2_args.fixed_val,
+            manual_pairs=m2_args.manual_pairs,
             patch_l=m2_args.patch_l,
             patch_w=m2_args.patch_w,
             freq_min=m2_args.freq_min,

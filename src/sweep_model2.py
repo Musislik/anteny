@@ -1,9 +1,10 @@
 """
 sweep_model2.py - Samostatný parametrický sweep pro dvouportový Model 2 (LHCP).
-Podporuje tři režimy sweepování:
+Podporuje čtyři režimy sweepování:
   1. 'symmetric': Párový sweep se stejnou hloubkou zanoření na obou portech (inset_b = inset_l).
   2. 'single_fixed': Zafixování jednoho napaječe a sweepování druhého (např. fixní inset_l, sweep inset_b).
   3. 'grid': 2D kartézská mřížka (kombinace všech hodnot SWEEP_INSETS_B a SWEEP_INSETS_L).
+  4. 'manual': Explicitně definované dvojice (inset_b, inset_l) nebo paralelní 1:1 párování insets_b a insets_l.
 """
 
 import os
@@ -46,6 +47,56 @@ def _parse_float_list(val):
     return res if res else None
 
 
+def _parse_manual_pairs(val):
+    """
+    Parcuje explicitně zadané dvojice zanoření (inset_b, inset_l).
+    Podporuje formáty:
+      - '4.8:5.2, 5.0:5.2, 5.2:5.4'
+      - '4.8,5.2; 5.0,5.2'
+      - ['4.8:5.2', '5.0:5.2'] nebo ['4.8,5.2', '5.0,5.2']
+      - [(4.8, 5.2), (5.0, 5.2)]
+    """
+    if not val:
+        return None
+    if isinstance(val, (list, tuple)):
+        # Pokud už jde o seznam n-tic/seznamů čísel
+        if val and isinstance(val[0], (list, tuple)) and len(val[0]) == 2:
+            return [(float(b), float(l)) for b, l in val]
+        # Pokud jde o seznam řetězců z CLI (nargs="+")
+        raw_items = []
+        for x in val:
+            raw_items.extend(str(x).replace(';', ' ').replace(',', ' ').split())
+    else:
+        # Řetězec oddělený středníky nebo čárkami/mezerami
+        raw_items = str(val).replace(';', ' ').replace(',', ' ').split()
+
+    pairs = []
+    tokens = []
+    for item in raw_items:
+        if ':' in item:
+            parts = item.split(':')
+            if len(parts) == 2:
+                try:
+                    pairs.append((float(parts[0]), float(parts[1])))
+                    continue
+                except ValueError:
+                    pass
+        tokens.append(item)
+
+    # Pokud zbyly samostatné tokeny, zpracujeme je po dvojicích
+    i = 0
+    while i < len(tokens) - 1:
+        try:
+            b = float(tokens[i])
+            l = float(tokens[i + 1])
+            pairs.append((b, l))
+            i += 2
+        except ValueError:
+            i += 1
+
+    return pairs if pairs else None
+
+
 def _resolve_env_float(sweep_key, base_key, default_val):
     val = os.getenv(sweep_key)
     if val is not None:
@@ -85,13 +136,52 @@ def _resolve_env_bool(sweep_key, default_val=True):
     return val.strip().lower() in ("true", "1", "yes", "y", "ano", "t")
 
 
-def build_sweep_pairs(mode, insets=None, insets_b=None, insets_l=None, fixed_name=None, fixed_val=None):
+def build_sweep_pairs(mode, insets=None, insets_b=None, insets_l=None, fixed_name=None, fixed_val=None, manual_pairs=None):
     """
     Sestaví seznam dvojic (inset_b, inset_l) pro daný simulační režim.
     """
     mode = (mode or "symmetric").lower().strip()
 
-    if mode == "grid":
+    if mode == "manual":
+        # 1. Priorita: Přímo zadané dvojice v parametru manual_pairs
+        pairs = _parse_manual_pairs(manual_pairs)
+
+        # 2. Priorita: Explicitně zadané seznamy insets_b a insets_l z argumentů
+        if not pairs and (insets_b is not None or insets_l is not None):
+            vals_b = insets_b or []
+            vals_l = insets_l or []
+            if len(vals_b) != len(vals_l):
+                raise ValueError(
+                    f"V režimu 'manual' musí mít insets_b a insets_l stejný počet hodnot. "
+                    f"Zadáno: insets_b={len(vals_b)} hodnot, insets_l={len(vals_l)} hodnot."
+                )
+            pairs = [(float(b), float(l)) for b, l in zip(vals_b, vals_l)]
+
+        # 3. Priorita: Proměnná prostředí SWEEP_MANUAL_PAIRS
+        if not pairs:
+            pairs = _parse_manual_pairs(os.getenv("SWEEP_MANUAL_PAIRS"))
+
+        # 4. Priorita: Proměnné prostředí SWEEP_INSETS_B a SWEEP_INSETS_L
+        if not pairs:
+            env_b = _parse_float_list(os.getenv("SWEEP_INSETS_B"))
+            env_l = _parse_float_list(os.getenv("SWEEP_INSETS_L"))
+            if env_b and env_l:
+                if len(env_b) == len(env_l):
+                    pairs = [(float(b), float(l)) for b, l in zip(env_b, env_l)]
+                elif (os.getenv("SWEEP_MODE") or "").lower().strip() == "manual":
+                    raise ValueError(
+                        f"V režimu 'manual' musí mít insets_b a insets_l stejný počet hodnot. "
+                        f"Zadáno: insets_b={len(env_b)} hodnot, insets_l={len(env_l)} hodnot."
+                    )
+
+        # 5. Fallback: Výchozí bod, pokud nebylo nic zadáno
+        if not pairs:
+            pairs = [(4.80, 5.20)]
+
+        desc = f"Manuálně zadané body (Manual): {len(pairs)} bodů -> {pairs}"
+        return pairs, desc
+
+    elif mode == "grid":
         vals_b = insets_b or _parse_float_list(os.getenv("SWEEP_INSETS_B")) or [2.0, 3.0, 4.0]
         vals_l = insets_l or _parse_float_list(os.getenv("SWEEP_INSETS_L")) or [1.0, 2.0, 3.0, 4.0]
         pairs = [(float(b), float(l)) for b in vals_b for l in vals_l]
@@ -127,6 +217,7 @@ def run_sweep_model2(
     insets_l=None,
     fixed_name=None,
     fixed_val=None,
+    manual_pairs=None,
     patch_l=None,
     patch_w=None,
     freq_min=None,
@@ -145,7 +236,15 @@ def run_sweep_model2(
     Spustí dedikovaný parametrický sweep pro Model 2.
     """
     mode = mode or os.getenv("SWEEP_MODE", "symmetric")
-    pairs, mode_desc = build_sweep_pairs(mode, insets, insets_b, insets_l, fixed_name, fixed_val)
+    pairs, mode_desc = build_sweep_pairs(
+        mode,
+        insets=insets,
+        insets_b=insets_b,
+        insets_l=insets_l,
+        fixed_name=fixed_name,
+        fixed_val=fixed_val,
+        manual_pairs=manual_pairs,
+    )
 
     patch_l = patch_l if patch_l is not None else _resolve_env_float("SWEEP_PATCH_L", "PATCH_L", 30.3)
     patch_w = patch_w if patch_w is not None else _resolve_env_float("SWEEP_PATCH_W", "PATCH_W", patch_l)
@@ -226,14 +325,16 @@ def run_sweep_model2(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Parametrický sweep Modelu 2 (Dvouportový LHCP)")
-    parser.add_argument("--mode", choices=["symmetric", "single_fixed", "grid"], default=None,
-                        help="Režim sweepování: 'symmetric' (výchozí), 'single_fixed', 'grid'")
+    parser.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None,
+                        help="Režim sweepování: 'symmetric' (výchozí), 'single_fixed', 'grid', 'manual'")
+    parser.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs",
+                        help="Explicitní dvojice zanoření ve formátu 'ib:il' (např. --pairs 4.8:5.2 5.0:5.2) nebo paralelní seznamy pomocí --insets-b a --insets-l")
     parser.add_argument("--insets", type=float, nargs="+", default=None,
                         help="Hodnoty zanoření pro režimy symmetric a single_fixed")
     parser.add_argument("--insets-b", type=float, nargs="+", default=None,
-                        help="Hodnoty spodního zanoření inset_b pro režim grid")
+                        help="Hodnoty spodního zanoření inset_b pro režimy grid a manual")
     parser.add_argument("--insets-l", type=float, nargs="+", default=None,
-                        help="Hodnoty levého zanoření inset_l pro režim grid")
+                        help="Hodnoty levého zanoření inset_l pro režimy grid a manual")
     parser.add_argument("--fixed-name", choices=["inset_b", "inset_l"], default=None,
                         help="Název fixovaného napaječe pro režim single_fixed")
     parser.add_argument("--fixed-val", type=float, default=None,
@@ -258,6 +359,7 @@ if __name__ == "__main__":
         insets_l=args.insets_l,
         fixed_name=args.fixed_name,
         fixed_val=args.fixed_val,
+        manual_pairs=args.manual_pairs,
         patch_l=args.patch_l,
         patch_w=args.patch_w,
         freq_min=args.freq_min,
