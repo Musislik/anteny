@@ -11,7 +11,12 @@ from palace_builder import build_palace_config
 from runner import run_palace
 
 from tracker import analyze_and_log_run
-from postpro_utils import ensure_paraview_linked, load_env
+from postpro_utils import (
+    ensure_paraview_linked,
+    load_env,
+    copy_postpro_directory,
+    merge_two_port_simulations,
+)
 
 from rf_calc import (
     synth_microstrip_w,
@@ -42,19 +47,31 @@ def clean_previous_outputs(data_dir=None):
     print("--- 0. Čištění předchozích výstupů simulace ---")
     if data_dir is None:
         _, data_dir = load_env()
-    dirs_to_clean = [os.path.join(data_dir, "postpro")]
+    dirs_to_clean = [
+        os.path.join(data_dir, "postpro"),
+        os.path.join(data_dir, "postpro_p1"),
+        os.path.join(data_dir, "postpro_p2"),
+    ]
     for d in dirs_to_clean:
         if os.path.exists(d):
             for item in os.listdir(d):
                 p = os.path.join(d, item)
                 try:
-                    if os.path.isdir(p):
-                        shutil.rmtree(p)
-                    elif os.path.isfile(p):
-                        os.remove(p)
+                    if os.path.islink(p):
+                        try:
+                            os.unlink(p)
+                        except Exception:
+                            os.remove(p)
+                    elif os.path.isdir(p):
+                        shutil.rmtree(p, ignore_errors=True)
+                    else:
+                        try:
+                            os.remove(p)
+                        except Exception:
+                            pass
                 except Exception as e:
                     print(f"Upozornění při mazání {p}: {e}")
-    print("Složka data/postpro byla vyčištěna.")
+    print("Výstupní složky simulace (data/postpro*) byly vyčištěny.")
 
 def main(custom_params=None, skip_simulation=False, clean=False):
     if clean:
@@ -164,7 +181,42 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         driven_port = _resolve_param('driven_port', 'DRIVEN_PORT', 'all', custom_params, str)
         params['driven_port'] = driven_port
 
-        print(f"--- Model 2: Inset spodní (Ey) = {feed_inset_b:.2f} mm, Inset levý (Ex) = {feed_inset_l:.2f} mm, Buzení = {driven_port} ---")
+        # Explicitní délky přívodů (feed_len_b, feed_len_l, feed_delta_l)
+        feed_len_b = _resolve_param('feed_len_b', 'FEED_LEN_B', None, custom_params, float)
+        if feed_len_b is None:
+            feed_len_b = _resolve_param('feed_length_b', 'FEED_LENGTH_B', None, custom_params, float)
+        if feed_len_b is None:
+            feed_len_b = _resolve_param('L_feed_b', 'L_FEED_B', None, custom_params, float)
+
+        feed_len_l = _resolve_param('feed_len_l', 'FEED_LEN_L', None, custom_params, float)
+        if feed_len_l is None:
+            feed_len_l = _resolve_param('feed_length_l', 'FEED_LENGTH_L', None, custom_params, float)
+        if feed_len_l is None:
+            feed_len_l = _resolve_param('L_feed_l', 'L_FEED_L', None, custom_params, float)
+
+        feed_delta_l = _resolve_param('feed_delta_l', 'FEED_DELTA_L', None, custom_params, float)
+        if feed_delta_l is None:
+            feed_delta_l = _resolve_param('delta_l', 'DELTA_L', None, custom_params, float)
+        if feed_delta_l is None:
+            feed_delta_l = _resolve_param('phase_delay_mm', 'PHASE_DELAY_MM', None, custom_params, float)
+
+        if feed_len_b is not None:
+            params['feed_len_b'] = feed_len_b
+        if feed_len_l is not None:
+            params['feed_len_l'] = feed_len_l
+        if feed_delta_l is not None:
+            params['feed_delta_l'] = feed_delta_l
+
+        len_info = []
+        if feed_len_b is not None:
+            len_info.append(f"feed_len_b={feed_len_b:.2f}mm")
+        if feed_len_l is not None:
+            len_info.append(f"feed_len_l={feed_len_l:.2f}mm")
+        if feed_delta_l is not None:
+            len_info.append(f"delta_l={feed_delta_l:.2f}mm")
+        len_str = f", {', '.join(len_info)}" if len_info else ""
+
+        print(f"--- Model 2: Inset spodní (Ey) = {feed_inset_b:.2f} mm, Inset levý (Ex) = {feed_inset_l:.2f} mm, Buzení = {driven_port}{len_str} ---")
 
     else:
         # MODEL 1: Původní T-dělič a analytická napájecí síť
@@ -223,18 +275,72 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         return
 
     print("--- 4. Spuštění fyzikální simulace (Palace) ---")
-    try:
-        run_palace()
-    except Exception as e:
-        print(f"Upozornění: Simulace Palace nebyla spuštěna: {e}")
-        return
+    _, data_dir = load_env()
+    output_dir = os.path.join(data_dir, "postpro")
+
+    driven_mode = str(params.get('driven_port', os.getenv('DRIVEN_PORT', 'all'))).lower().strip()
+    is_model2_matrix = (
+        antenna_model == 2
+        and driven_mode in ('all', 'both', 'matrix', 'full', 's_matrix')
+    )
+
+    if is_model2_matrix:
+        print("--- Spouštím dvoukrokovou simulaci pro kompletní 2-portovou S-matici (Port 1 a Port 2) ---")
+
+        # 1. KROK: Port 1 (spodní, Ey)
+        print("\n>>> Krok 1/2: Simulace buzení Portu 1 (Spodní napaječ Ey, Port 2 = 100 Ω zátěž) <<<")
+        params_p1 = dict(params)
+        params_p1['driven_port'] = '1'
+        build_palace_config(params_p1)
+
+        try:
+            run_palace()
+        except Exception as e:
+            print(f"Upozornění: Simulace Krok 1 (Port 1) selhala: {e}")
+            return
+
+        p1_dir = os.path.join(data_dir, "postpro_p1")
+        if os.path.exists(p1_dir):
+            shutil.rmtree(p1_dir, ignore_errors=True)
+        copy_postpro_directory(output_dir, p1_dir)
+
+        # 2. KROK: Port 2 (levý, Ex)
+        print("\n>>> Krok 2/2: Simulace buzení Portu 2 (Levý napaječ Ex, Port 1 = 100 Ω zátěž) <<<")
+        params_p2 = dict(params)
+        params_p2['driven_port'] = '2'
+        build_palace_config(params_p2)
+
+        try:
+            run_palace()
+        except Exception as e:
+            print(f"Upozornění: Simulace Krok 2 (Port 2) selhala: {e}")
+            return
+
+        p2_dir = os.path.join(data_dir, "postpro_p2")
+        if os.path.exists(p2_dir):
+            shutil.rmtree(p2_dir, ignore_errors=True)
+        copy_postpro_directory(output_dir, p2_dir)
+
+        # 3. KROK: Sloučení výstupů z obou kroků do kompletní 2-portové matice v data/postpro
+        print("\n--- Sloučení výstupů z obou běhů do kompletní 2-portové S-matice ---")
+        merge_two_port_simulations(p1_dir, p2_dir, output_dir)
+
+        # Obnovení výchozí konfigurace config.json
+        build_palace_config(params)
+
+    else:
+        # Běžný jednorázový běh (Model 1, nebo explicitně zadaný jeden port u Modelu 2)
+        build_palace_config(params)
+        try:
+            run_palace()
+        except Exception as e:
+            print(f"Upozornění: Simulace Palace nebyla spuštěna: {e}")
+            return
 
     # Propojení složky paraview na poslední iteraci, pokud Palace běžel v AMR režimu
-    _, data_dir = load_env()
     ensure_paraview_linked(data_dir)
 
     print("--- 5. Zpracování výsledků ---")
-    output_dir = os.path.join(data_dir, "postpro")
     
     # Zpracování výsledků podle modelu antény
     if antenna_model == 2:
@@ -401,6 +507,12 @@ if __name__ == "__main__":
                         help="Šířka mezery zářezu spodního napaječe (výchozí: FEED_INSET_GAP_B)")
     parser.add_argument("--inset-gap-l", type=float, default=None, dest="feed_inset_gap_l",
                         help="Šířka mezery zářezu levého napaječe (výchozí: FEED_INSET_GAP_L)")
+    parser.add_argument("--feed-len-b", "--feed-length-b", type=float, default=None, dest="feed_len_b",
+                        help="Délka spodního přívodu pro Model 2 v mm (výchozí: z W_sub + lambda_g/4 nebo FEED_LEN_B)")
+    parser.add_argument("--feed-len-l", "--feed-length-l", type=float, default=None, dest="feed_len_l",
+                        help="Délka levého přívodu pro Model 2 v mm (výchozí: L_ref nebo FEED_LEN_L)")
+    parser.add_argument("--feed-delta-l", "--delta-l", type=float, default=None, dest="feed_delta_l",
+                        help="Rozdíl délek přívodů Delta L = L_feed_b - L_feed_l pro Model 2 v mm (výchozí: lambda_g/4 nebo FEED_DELTA_L)")
     parser.add_argument("--driven-port", type=str, default=None, dest="driven_port",
                         help="Volba buzeného portu pro Model 2: '1' (spodní), '2' (levý), 'all' (oba současně pro LHCP). Výchozí: all")
 
@@ -409,7 +521,8 @@ if __name__ == "__main__":
     cli_params = {}
     for param in ['antenna_model', 'freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
                   'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its',
-                  'patch_L', 'patch_W', 'feed_inset', 'feed_inset_b', 'feed_inset_l', 'feed_inset_gap_b', 'feed_inset_gap_l', 'driven_port']:
+                  'patch_L', 'patch_W', 'feed_inset', 'feed_inset_b', 'feed_inset_l', 'feed_inset_gap_b', 'feed_inset_gap_l',
+                  'feed_len_b', 'feed_len_l', 'feed_delta_l', 'driven_port']:
         val = getattr(args, param, None)
         if val is not None:
             cli_params[param] = val

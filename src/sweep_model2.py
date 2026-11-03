@@ -32,6 +32,9 @@ except ImportError:
     export_paraview_package = None
 
 DEFAULT_INSET_VALUES = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+DEFAULT_DELTA_L_VALUES = [16.0, 17.0, 18.0, 18.66, 19.0, 20.0]
+DEFAULT_FEED_LENS_B = [35.0, 40.0, 43.51, 45.0, 50.0]
+DEFAULT_FEED_LENS_L = [20.0, 22.0, 24.85, 26.0, 28.0]
 
 
 def _parse_float_list(val):
@@ -111,6 +114,22 @@ def _resolve_env_float(sweep_key, base_key, default_val):
         except ValueError:
             pass
     return float(default_val)
+
+
+def _resolve_env_opt_float(sweep_key, base_key):
+    val = os.getenv(sweep_key)
+    if val is not None:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    val = os.getenv(base_key)
+    if val is not None:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return None
 
 
 def _resolve_env_int(sweep_key, base_key, default_val):
@@ -210,7 +229,8 @@ def build_sweep_pairs(mode, insets=None, insets_b=None, insets_l=None, fixed_nam
         return pairs, f"Symetrický párový sweep (inset_b = inset_l): {vals} mm"
 
 
-def run_sweep_model2(
+def build_sweep_steps(
+    sweep_target=None,
     mode=None,
     insets=None,
     insets_b=None,
@@ -218,6 +238,211 @@ def run_sweep_model2(
     fixed_name=None,
     fixed_val=None,
     manual_pairs=None,
+    feed_lens_b=None,
+    feed_lens_l=None,
+    delta_l=None,
+    feed_len_b=None,
+    feed_len_l=None,
+    feed_delta_l=None,
+    inset_b=None,
+    inset_l=None,
+):
+    """
+    Sestaví seznam jednotlivých kroků sweepu pro Model 2 na základě cíle sweepu (sweep_target):
+      - 'inset': sweepování zanoření (výchozí)
+      - 'delta_l': sweepování fázovacího úseku Delta L
+      - 'feed_len_b': sweepování délky spodního napaječe
+      - 'feed_len_l': sweepování délky levého napaječe
+      - 'feed_lens': sweepování kombinací délek obou napaječů
+    """
+    if sweep_target is not None:
+        target = sweep_target
+    elif delta_l is not None and (len(delta_l) > 1 or (insets is None and insets_b is None and insets_l is None and manual_pairs is None and feed_lens_b is None and feed_lens_l is None)):
+        target = "delta_l"
+    elif feed_lens_b is not None and feed_lens_l is not None:
+        target = "feed_lens"
+    elif feed_lens_b is not None:
+        target = "feed_len_b"
+    elif feed_lens_l is not None:
+        target = "feed_len_l"
+    elif insets is not None or insets_b is not None or insets_l is not None or manual_pairs is not None:
+        target = "inset"
+    elif os.getenv("SWEEP_TARGET"):
+        target = os.getenv("SWEEP_TARGET")
+    elif os.getenv("SWEEP_DELTA_L"):
+        target = "delta_l"
+    elif os.getenv("SWEEP_FEED_LENS_B") and os.getenv("SWEEP_FEED_LENS_L"):
+        target = "feed_lens"
+    elif os.getenv("SWEEP_FEED_LENS_B"):
+        target = "feed_len_b"
+    elif os.getenv("SWEEP_FEED_LENS_L"):
+        target = "feed_len_l"
+    else:
+        target = "inset"
+    target = str(target).lower().strip()
+
+    if target in ("delta_l", "feed_delta_l", "delta", "phase_delay"):
+        target = "delta_l"
+    elif target in ("feed_len_b", "feed_lens_b", "flb", "len_b"):
+        target = "feed_len_b"
+    elif target in ("feed_len_l", "feed_lens_l", "fll", "len_l"):
+        target = "feed_len_l"
+    elif target in ("feed_lens", "feed_lengths", "feeds"):
+        target = "feed_lens"
+    else:
+        target = "inset"
+
+    fixed_ib = float(inset_b if inset_b is not None else os.getenv("FEED_INSET_B", "0.0"))
+    fixed_il = float(inset_l if inset_l is not None else os.getenv("FEED_INSET_L", "0.0"))
+
+    fixed_flb = feed_len_b if feed_len_b is not None else _resolve_env_opt_float("SWEEP_FEED_LEN_B", "FEED_LEN_B")
+    fixed_fll = feed_len_l if feed_len_l is not None else _resolve_env_opt_float("SWEEP_FEED_LEN_L", "FEED_LEN_L")
+    fixed_dl = feed_delta_l if feed_delta_l is not None else _resolve_env_opt_float("SWEEP_FEED_DELTA_L", "FEED_DELTA_L")
+    if fixed_dl is None and target != "delta_l" and delta_l is not None and len(delta_l) == 1:
+        fixed_dl = float(delta_l[0])
+
+    steps = []
+
+    if target == "delta_l":
+        vals = delta_l or _parse_float_list(os.getenv("SWEEP_DELTA_L")) or DEFAULT_DELTA_L_VALUES
+        for dl in vals:
+            dl_val = float(np.round(dl, 2))
+            step = {
+                'run_name': f"m2_dl{dl_val:.2f}mm",
+                'feed_delta_l': dl_val,
+                'delta_l': dl_val,
+                'feed_inset_b': fixed_ib,
+                'feed_inset_l': fixed_il,
+                'inset_b': fixed_ib,
+                'inset_l': fixed_il,
+            }
+            if fixed_fll is not None:
+                step['feed_len_l'] = fixed_fll
+            if fixed_flb is not None:
+                step['feed_len_b'] = fixed_flb
+            steps.append(step)
+        desc = f"Fázovací úsek Delta L (sweep_target=delta_l): {vals} mm (celkem {len(steps)} kroků)"
+        return steps, desc
+
+    elif target == "feed_len_b":
+        vals = feed_lens_b or _parse_float_list(os.getenv("SWEEP_FEED_LENS_B")) or DEFAULT_FEED_LENS_B
+        for flb in vals:
+            flb_val = float(np.round(flb, 2))
+            step = {
+                'run_name': f"m2_flb{flb_val:.2f}mm",
+                'feed_len_b': flb_val,
+                'feed_inset_b': fixed_ib,
+                'feed_inset_l': fixed_il,
+                'inset_b': fixed_ib,
+                'inset_l': fixed_il,
+            }
+            if fixed_fll is not None:
+                step['feed_len_l'] = fixed_fll
+            if fixed_dl is not None:
+                step['feed_delta_l'] = fixed_dl
+            steps.append(step)
+        desc = f"Délka spodního napaječe (sweep_target=feed_len_b): {vals} mm (celkem {len(steps)} kroků)"
+        return steps, desc
+
+    elif target == "feed_len_l":
+        vals = feed_lens_l or _parse_float_list(os.getenv("SWEEP_FEED_LENS_L")) or DEFAULT_FEED_LENS_L
+        for fll in vals:
+            fll_val = float(np.round(fll, 2))
+            step = {
+                'run_name': f"m2_fll{fll_val:.2f}mm",
+                'feed_len_l': fll_val,
+                'feed_inset_b': fixed_ib,
+                'feed_inset_l': fixed_il,
+                'inset_b': fixed_ib,
+                'inset_l': fixed_il,
+            }
+            if fixed_flb is not None:
+                step['feed_len_b'] = fixed_flb
+            if fixed_dl is not None:
+                step['feed_delta_l'] = fixed_dl
+            steps.append(step)
+        desc = f"Délka levého napaječe (sweep_target=feed_len_l): {vals} mm (celkem {len(steps)} kroků)"
+        return steps, desc
+
+    elif target == "feed_lens":
+        vals_b = feed_lens_b or _parse_float_list(os.getenv("SWEEP_FEED_LENS_B")) or [38.0, 43.51, 48.0]
+        vals_l = feed_lens_l or _parse_float_list(os.getenv("SWEEP_FEED_LENS_L")) or [20.0, 24.85, 28.0]
+        m = (mode or os.getenv("SWEEP_MODE") or "grid").lower().strip()
+
+        if m == "manual":
+            pairs = _parse_manual_pairs(manual_pairs) or [(float(b), float(l)) for b, l in zip(vals_b, vals_l)]
+        elif m == "symmetric":
+            pairs = [(float(b), float(l)) for b, l in zip(vals_b, vals_l)] if len(vals_b) == len(vals_l) else [(float(b), float(b)) for b in vals_b]
+        else: # grid
+            pairs = [(float(b), float(l)) for b in vals_b for l in vals_l]
+
+        for flb, fll in pairs:
+            flb_val = float(np.round(flb, 2))
+            fll_val = float(np.round(fll, 2))
+            step = {
+                'run_name': f"m2_flb{flb_val:.2f}_fll{fll_val:.2f}mm",
+                'feed_len_b': flb_val,
+                'feed_len_l': fll_val,
+                'feed_inset_b': fixed_ib,
+                'feed_inset_l': fixed_il,
+                'inset_b': fixed_ib,
+                'inset_l': fixed_il,
+            }
+            if fixed_dl is not None:
+                step['feed_delta_l'] = fixed_dl
+                step['delta_l'] = fixed_dl
+            steps.append(step)
+        desc = f"Délky obou napaječů feed_lens ({m}): {len(steps)} kroků"
+        return steps, desc
+
+    else:
+        # Výchozí target 'inset'
+        pairs, mode_desc = build_sweep_pairs(
+            mode or os.getenv("SWEEP_MODE", "symmetric"),
+            insets=insets,
+            insets_b=insets_b,
+            insets_l=insets_l,
+            fixed_name=fixed_name,
+            fixed_val=fixed_val,
+            manual_pairs=manual_pairs,
+        )
+        for ib, il in pairs:
+            ib_val = float(np.round(ib, 2))
+            il_val = float(np.round(il, 2))
+            step = {
+                'run_name': f"m2_ib{ib_val:.2f}_il{il_val:.2f}mm",
+                'feed_inset_b': ib_val,
+                'feed_inset_l': il_val,
+                'inset_b': ib_val,
+                'inset_l': il_val,
+            }
+            if fixed_flb is not None:
+                step['feed_len_b'] = fixed_flb
+            if fixed_fll is not None:
+                step['feed_len_l'] = fixed_fll
+            if fixed_dl is not None:
+                step['feed_delta_l'] = fixed_dl
+            steps.append(step)
+        return steps, mode_desc
+
+
+def run_sweep_model2(
+    mode=None,
+    sweep_target=None,
+    insets=None,
+    insets_b=None,
+    insets_l=None,
+    fixed_name=None,
+    fixed_val=None,
+    manual_pairs=None,
+    feed_lens_b=None,
+    feed_lens_l=None,
+    delta_l=None,
+    feed_len_b=None,
+    feed_len_l=None,
+    feed_delta_l=None,
+    inset_b=None,
+    inset_l=None,
     patch_l=None,
     patch_w=None,
     freq_min=None,
@@ -236,15 +461,23 @@ def run_sweep_model2(
     """
     Spustí dedikovaný parametrický sweep pro Model 2.
     """
-    mode = mode or os.getenv("SWEEP_MODE", "symmetric")
-    pairs, mode_desc = build_sweep_pairs(
-        mode,
+    steps, sweep_desc = build_sweep_steps(
+        sweep_target=sweep_target,
+        mode=mode,
         insets=insets,
         insets_b=insets_b,
         insets_l=insets_l,
         fixed_name=fixed_name,
         fixed_val=fixed_val,
         manual_pairs=manual_pairs,
+        feed_lens_b=feed_lens_b,
+        feed_lens_l=feed_lens_l,
+        delta_l=delta_l,
+        feed_len_b=feed_len_b,
+        feed_len_l=feed_len_l,
+        feed_delta_l=feed_delta_l,
+        inset_b=inset_b,
+        inset_l=inset_l,
     )
 
     driven_port = driven_port or os.getenv("SWEEP_DRIVEN_PORT") or os.getenv("DRIVEN_PORT", "all")
@@ -261,11 +494,11 @@ def run_sweep_model2(
     linear_max_its = linear_max_its if linear_max_its is not None else _resolve_env_int("SWEEP_LINEAR_MAX_ITS", "LINEAR_MAX_ITS", 100)
     export_each = export_each if export_each is not None else _resolve_env_bool("SWEEP_EXPORT_EACH", True)
 
-    total_steps = len(pairs)
+    total_steps = len(steps)
     print("=" * 70)
     print("ZAHÁJENÍ PARAMETRICKÉHO SWEEPU MODELU 2 (DVOUPOVRTOVÝ MODEL LHCP)")
     print("=" * 70)
-    print(f"  • Režim sweepování:          {mode_desc}")
+    print(f"  • Cíl a režim sweepu:         {sweep_desc}")
     print(f"  • Celkový počet kroků:        {total_steps}")
     print(f"  • Frekvenční rozsah:          {freq_min:.3f} - {freq_max:.3f} GHz (krok {freq_step:.4f} GHz)")
     print(f"  • Rozměry flíčku:             L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
@@ -277,19 +510,12 @@ def run_sweep_model2(
 
     successful_runs = 0
 
-    for i, (ib, il) in enumerate(pairs, start=1):
-        ib_val = float(np.round(ib, 2))
-        il_val = float(np.round(il, 2))
-        export_name = f"m2_ib{ib_val:.2f}_il{il_val:.2f}mm"
-        print(f"\n>>> [{i}/{total_steps}] Model 2 krok: inset_b = {ib_val:.2f} mm (Ey), inset_l = {il_val:.2f} mm (Ex) <<<")
+    for i, step in enumerate(steps, start=1):
+        export_name = step['run_name']
+        print(f"\n>>> [{i}/{total_steps}] Model 2 krok: {export_name} <<<")
 
         custom_params = {
             'antenna_model': 2,
-            'run_name': export_name,
-            'feed_inset_b': ib_val,
-            'feed_inset_l': il_val,
-            'inset_b': ib_val,
-            'inset_l': il_val,
             'patch_L': patch_l,
             'patch_W': patch_w,
             'driven_port': driven_port,
@@ -303,6 +529,7 @@ def run_sweep_model2(
             'linear_tol': linear_tol,
             'linear_max_its': linear_max_its,
         }
+        custom_params.update(step)
 
         try:
             main(custom_params=custom_params, skip_simulation=skip_simulation, clean=True)
@@ -317,7 +544,7 @@ def run_sweep_model2(
             time.sleep(1)
 
         except Exception as e:
-            print(f"[CHYBA] Krok s inset_b={ib_val}, inset_l={il_val} mm selhal: {e}")
+            print(f"[CHYBA] Krok {export_name} selhal: {e}")
 
     print("\n" + "=" * 70)
     print(f"SWEEP MODELU 2 DOKONČEN! Úspěšně proběhlo {successful_runs}/{total_steps} běhů.")
@@ -328,10 +555,12 @@ def run_sweep_model2(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Parametrický sweep Modelu 2 (Dvouportový LHCP)")
+    parser.add_argument("--sweep-target", choices=["inset", "feed_len_b", "feed_len_l", "feed_delta_l", "delta_l", "feed_lens"], default=None,
+                        help="Cíl sweepování: 'inset' (výchozí), 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
     parser.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None,
                         help="Režim sweepování: 'symmetric' (výchozí), 'single_fixed', 'grid', 'manual'")
     parser.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs",
-                        help="Explicitní dvojice zanoření ve formátu 'ib:il' (např. --pairs 4.8:5.2 5.0:5.2) nebo paralelní seznamy pomocí --insets-b a --insets-l")
+                        help="Explicitní dvojice ve formátu 'val1:val2' (např. --pairs 4.8:5.2 5.0:5.2)")
     parser.add_argument("--insets", type=float, nargs="+", default=None,
                         help="Hodnoty zanoření pro režimy symmetric a single_fixed")
     parser.add_argument("--insets-b", type=float, nargs="+", default=None,
@@ -342,6 +571,25 @@ if __name__ == "__main__":
                         help="Název fixovaného napaječe pro režim single_fixed")
     parser.add_argument("--fixed-val", type=float, default=None,
                         help="Hodnota fixovaného napaječe v mm pro režim single_fixed")
+
+    # Argumenty pro sweepování a fixaci délek napaječů
+    parser.add_argument("--delta-l", "--sweep-delta-l", type=float, nargs="+", default=None, dest="delta_l",
+                        help="Hodnoty fázovacího úseku Delta L v mm pro sweepování")
+    parser.add_argument("--feed-delta-l", type=float, default=None, dest="feed_delta_l",
+                        help="Fixní rozdíl délek přívodů Delta L v mm")
+    parser.add_argument("--feed-lens-b", type=float, nargs="+", default=None, dest="feed_lens_b",
+                        help="Hodnoty délky spodního přívodu pro sweepování")
+    parser.add_argument("--feed-lens-l", type=float, nargs="+", default=None, dest="feed_lens_l",
+                        help="Hodnoty délky levého přívodu pro sweepování")
+    parser.add_argument("--feed-len-b", type=float, default=None, dest="feed_len_b",
+                        help="Fixní délka spodního přívodu v mm")
+    parser.add_argument("--feed-len-l", type=float, default=None, dest="feed_len_l",
+                        help="Fixní délka levého přívodu v mm")
+    parser.add_argument("--inset-b", type=float, default=None, dest="inset_b",
+                        help="Fixní zanoření spodního napaječe v mm")
+    parser.add_argument("--inset-l", type=float, default=None, dest="inset_l",
+                        help="Fixní zanoření levého napaječe v mm")
+
     parser.add_argument("--patch-l", type=float, default=None, dest="patch_l")
     parser.add_argument("--patch-w", type=float, default=None, dest="patch_w")
     parser.add_argument("--freq-min", type=float, default=None, dest="freq_min")
@@ -359,12 +607,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
     run_sweep_model2(
         mode=args.mode,
+        sweep_target=args.sweep_target,
         insets=args.insets,
         insets_b=args.insets_b,
         insets_l=args.insets_l,
         fixed_name=args.fixed_name,
         fixed_val=args.fixed_val,
         manual_pairs=args.manual_pairs,
+        feed_lens_b=args.feed_lens_b,
+        feed_lens_l=args.feed_lens_l,
+        delta_l=args.delta_l,
+        feed_len_b=args.feed_len_b,
+        feed_len_l=args.feed_len_l,
+        feed_delta_l=args.feed_delta_l,
+        inset_b=args.inset_b,
+        inset_l=args.inset_l,
         patch_l=args.patch_l,
         patch_w=args.patch_w,
         freq_min=args.freq_min,

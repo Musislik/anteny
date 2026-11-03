@@ -48,6 +48,9 @@ TRACKED_METRICS_V1 = [
 TRACKED_PARAMS_V2 = [
     ('feed_inset_b', 'inset_b_mm', '{:.2f}'),
     ('feed_inset_l', 'inset_l_mm', '{:.2f}'),
+    ('feed_len_b', 'feed_len_b_mm', '{:.2f}'),
+    ('feed_len_l', 'feed_len_l_mm', '{:.2f}'),
+    ('feed_delta_l', 'delta_l_mm', '{:.2f}'),
     ('patch_L', 'patch_L_mm', '{:.2f}'),
 ]
 TRACKED_PARAMS_MODEL2 = TRACKED_PARAMS_V2
@@ -74,6 +77,9 @@ FIELDNAMES_V2 = [
     'run_name',
     'inset_b_mm',
     'inset_l_mm',
+    'feed_len_b_mm',
+    'feed_len_l_mm',
+    'delta_l_mm',
     'patch_L_mm',
     'f0_b_GHz',
     'f0_l_GHz',
@@ -625,10 +631,17 @@ def _record_run_model2(params, output_dir, run_name, export_zip, results_dir):
     farfield_path = os.path.join(output_dir, "farfield-rE.csv")
     farfield_metrics = extract_farfield_metrics(farfield_path, target_freq=f0_target, s11_min_db=s_min)
 
+    feed_len_b_val = params.get('feed_len_b', params.get('feed_length_b', params.get('L_feed_bottom')))
+    feed_len_l_val = params.get('feed_len_l', params.get('feed_length_l', params.get('L_ref')))
+    delta_l_val = params.get('feed_delta_l', params.get('delta_l', params.get('lambda_g_4')))
+
     row = {
         'run_name': run_name or params.get('run_name', 'run_m2'),
         'inset_b_mm': format_value(params.get('feed_inset_b', params.get('inset_b', 0.0)), '{:.2f}'),
         'inset_l_mm': format_value(params.get('feed_inset_l', params.get('inset_l', 0.0)), '{:.2f}'),
+        'feed_len_b_mm': format_value(feed_len_b_val, '{:.2f}'),
+        'feed_len_l_mm': format_value(feed_len_l_val, '{:.2f}'),
+        'delta_l_mm': format_value(delta_l_val, '{:.2f}'),
         'patch_L_mm': format_value(params.get('patch_L', 30.3), '{:.2f}'),
         'f0_b_GHz': format_value(s_metrics.get('f0_b_GHz'), '{:.3f}'),
         'f0_l_GHz': format_value(s_metrics.get('f0_l_GHz'), '{:.3f}'),
@@ -648,22 +661,46 @@ def _record_run_model2(params, output_dir, run_name, export_zip, results_dir):
     }
 
     file_exists = os.path.exists(csv_file) and os.path.getsize(csv_file) > 0
+    file_rewritten = False
 
-    with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDNAMES_V2, extrasaction='ignore')
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(row)
+    if file_exists:
+        try:
+            with open(csv_file, mode='r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                existing_headers = reader.fieldnames or []
+                existing_rows = list(reader)
+
+            missing_cols = [col for col in FIELDNAMES_V2 if col not in existing_headers]
+            if missing_cols:
+                with open(csv_file, mode='w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=FIELDNAMES_V2, extrasaction='ignore')
+                    writer.writeheader()
+                    for old_r in existing_rows:
+                        writer.writerow(old_r)
+                    writer.writerow(row)
+                file_rewritten = True
+        except Exception:
+            file_rewritten = False
+
+    if not file_rewritten:
+        with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=FIELDNAMES_V2, extrasaction='ignore')
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row)
 
     update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků Modelu 2 (Dvouportový LHCP)")
 
-    print("\n" + "=" * 105)
+    print("\n" + "=" * 115)
     print("VÝSLEDKY SIMULAČNÍHO KROKU MODELU 2 (Zaznamenáno do export/sweep_results_model2.csv):")
-    print("-" * 105)
+    print("-" * 115)
     info_parts = [
         f"Krok: {row['run_name']}",
         f"ib={row['inset_b_mm']} mm",
         f"il={row['inset_l_mm']} mm",
+        f"fl_b={row['feed_len_b_mm']} mm",
+        f"fl_l={row['feed_len_l_mm']} mm",
+        f"dL={row['delta_l_mm']} mm",
         f"f0_b={row['f0_b_GHz']} GHz",
         f"f0_l={row['f0_l_GHz']} GHz",
         f"S11={row['S11_min [dB]']} dB",
@@ -677,7 +714,7 @@ def _record_run_model2(params, output_dir, run_name, export_zip, results_dir):
         f"G_LHCP={row['Gain_LHCP [dBi]']} dBi",
     ]
     print(" | ".join([p for p in info_parts if p]))
-    print("=" * 105)
+    print("=" * 115)
 
     return row
 
@@ -737,12 +774,15 @@ def print_summary_table_model2(csv_file=None):
         print("Tabulka výsledků Modelu 2 je prázdná.")
         return
 
-    print("\n" + "=" * 145)
+    print("\n" + "=" * 165)
     print("KOMPLETNÍ SOUHRNNÁ TABULKA MODELU 2 (DVOUPOVRTOVÝ LHCP):")
     disp_cols = [
         ('run_name', 'Krok', 20),
         ('inset_b_mm', 'ib [mm]', 8),
         ('inset_l_mm', 'il [mm]', 8),
+        ('feed_len_b_mm', 'fl_b [mm]', 10),
+        ('feed_len_l_mm', 'fl_l [mm]', 10),
+        ('delta_l_mm', 'dL [mm]', 8),
         ('f0_b_GHz', 'f0_b', 8),
         ('f0_l_GHz', 'f0_l', 8),
         ('S11_min [dB]', 'S11 [dB]', 10),
@@ -755,7 +795,7 @@ def print_summary_table_model2(csv_file=None):
         ('Polarizace', 'Pol', 6),
         ('Gain_LHCP [dBi]', 'G_LHCP', 8),
     ]
-    print("=" * 145)
+    print("=" * 165)
     header_str = " | ".join([f"{title:^{width}}" for _, title, width in disp_cols])
     sep_str = "-+-".join(["-" * width for _, _, width in disp_cols])
     print(header_str)

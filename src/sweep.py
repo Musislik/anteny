@@ -53,6 +53,8 @@ if __name__ == "__main__":
         # Spustíme parser z sweep_model2
         import sweep_model2
         parser_m2 = argparse.ArgumentParser(description="Parametrický sweep Modelu 2 (Dvouportový LHCP)")
+        parser_m2.add_argument("--sweep-target", choices=["inset", "feed_len_b", "feed_len_l", "feed_delta_l", "delta_l", "feed_lens"], default=None,
+                                help="Cíl sweepování: 'inset' (výchozí), 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
         parser_m2.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
         parser_m2.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs",
                                help="Manuálně definované dvojice zanoření pro Model 2")
@@ -61,6 +63,24 @@ if __name__ == "__main__":
         parser_m2.add_argument("--insets-l", type=float, nargs="+", default=None)
         parser_m2.add_argument("--fixed-name", choices=["inset_b", "inset_l"], default=None)
         parser_m2.add_argument("--fixed-val", type=float, default=None)
+
+        # Argumenty pro sweepování a fixaci délek napaječů
+        parser_m2.add_argument("--delta-l", "--sweep-delta-l", type=float, nargs="+", default=None, dest="delta_l",
+                                help="Hodnoty fázovacího úseku Delta L v mm pro sweepování")
+        parser_m2.add_argument("--feed-delta-l", type=float, default=None, dest="feed_delta_l",
+                                help="Fixní hodnota rozdílu délek přívodů Delta L v mm")
+        parser_m2.add_argument("--feed-lens-b", type=float, nargs="+", default=None, dest="feed_lens_b",
+                                help="Hodnoty délky spodního přívodu pro sweepování")
+        parser_m2.add_argument("--feed-lens-l", type=float, nargs="+", default=None, dest="feed_lens_l",
+                                help="Hodnoty délky levého přívodu pro sweepování")
+        parser_m2.add_argument("--feed-len-b", type=float, default=None, dest="feed_len_b",
+                                help="Fixní délka spodního přívodu v mm")
+        parser_m2.add_argument("--feed-len-l", type=float, default=None, dest="feed_len_l",
+                                help="Fixní délka levého přívodu v mm")
+        parser_m2.add_argument("--inset-b", type=float, default=None, dest="inset_b",
+                                help="Fixní zanoření spodního napaječe v mm")
+        parser_m2.add_argument("--inset-l", type=float, default=None, dest="inset_l",
+                                help="Fixní zanoření levého napaječe v mm")
         parser_m2.add_argument("--patch-l", type=float, default=None, dest="patch_l")
         parser_m2.add_argument("--patch-w", type=float, default=None, dest="patch_w")
         parser_m2.add_argument("--freq-min", type=float, default=None, dest="freq_min")
@@ -72,16 +92,27 @@ if __name__ == "__main__":
         parser_m2.add_argument("--farfield-nsample", type=int, default=None, dest="farfield_nsample")
         parser_m2.add_argument("--no-export", dest="export_each", action="store_false", default=None)
         parser_m2.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true", default=False)
+        parser_m2.add_argument("--driven-port", choices=["all", "1", "2"], default=None,
+                                help="Volba buzeného portu pro Model 2: 'all' (obě větve LHCP), '1' (pouze spodní Ey), '2' (pouze levý Ex)")
         m2_args = parser_m2.parse_args(remaining_argv)
 
         run_sweep_model2(
             mode=m2_args.mode,
+            sweep_target=m2_args.sweep_target,
             insets=m2_args.insets,
             insets_b=m2_args.insets_b,
             insets_l=m2_args.insets_l,
             fixed_name=m2_args.fixed_name,
             fixed_val=m2_args.fixed_val,
             manual_pairs=m2_args.manual_pairs,
+            feed_lens_b=m2_args.feed_lens_b,
+            feed_lens_l=m2_args.feed_lens_l,
+            delta_l=m2_args.delta_l,
+            feed_len_b=m2_args.feed_len_b,
+            feed_len_l=m2_args.feed_len_l,
+            feed_delta_l=m2_args.feed_delta_l,
+            inset_b=m2_args.inset_b,
+            inset_l=m2_args.inset_l,
             patch_l=m2_args.patch_l,
             patch_w=m2_args.patch_w,
             freq_min=m2_args.freq_min,
@@ -93,6 +124,7 @@ if __name__ == "__main__":
             linear_max_its=m2_args.linear_max_its,
             export_each=m2_args.export_each,
             skip_simulation=m2_args.skip_simulation,
+            driven_port=m2_args.driven_port,
         )
 
     else:

@@ -38,28 +38,76 @@ def build_model_v2(params):
     inset_b = float(params.get('feed_inset_b', params.get('inset_b', params.get('feed_inset', params.get('inset', 0.0)))))
     inset_l = float(params.get('feed_inset_l', params.get('inset_l', params.get('feed_inset', params.get('inset', 0.0)))))
 
+    if inset_b < 0.0 or inset_l < 0.0:
+        raise ValueError(f"Hloubka zanoření (inset) musí být nezáporná: inset_b={inset_b}, inset_l={inset_l}")
+
     inset_gap_b = float(params.get('inset_gap_b', params.get('feed_inset_gap_b', params.get('inset_gap', params.get('feed_inset_gap', w_feed)))))
     inset_gap_l = float(params.get('inset_gap_l', params.get('feed_inset_gap_l', params.get('inset_gap', params.get('feed_inset_gap', w_feed)))))
 
-    # 3. Dimenzování substrátu
-    # Šířka substrátu W_sub (zajištění minimálního odstupu 10*h od hrany flíčku)
+    # 3. Dimenzování napaječů a substrátu
+    # Minimální doporučený odstup substrátu od flíčku (10*h od hrany flíčku, min. 15 mm)
     min_w_sub = W + 2.0 * max(15.0, 10.0 * h)
-    W_sub = float(params.get('sub_W', params.get('sub_w', 80.0)))
-    if W_sub < min_w_sub:
-        W_sub = float(np.round(min_w_sub, 1))
 
-    # Referenční délka levého přívodu (od x = -W_sub/2 k zářezu na x = -W/2 + inset_l)
-    L_ref = (W_sub / 2.0) - (W / 2.0) + inset_l
+    # Načtení případných explicitních délek napaječů
+    raw_len_l = params.get('feed_len_l', params.get('feed_length_l', params.get('L_feed_l', params.get('l_feed_l'))))
+    raw_len_b = params.get('feed_len_b', params.get('feed_length_b', params.get('L_feed_b', params.get('l_feed_b'))))
+    raw_delta_l = params.get('feed_delta_l', params.get('delta_l', params.get('phase_delay_mm', params.get('feed_delta'))))
 
-    # Prodloužená délka spodního přívodu o lambda_g/4 pro LHCP
-    L_feed_bottom = L_ref + lambda_g_4
+    # Základní šířka substrátu pro výpočet výchozího L_ref
+    W_sub_base = float(params.get('sub_W', params.get('sub_w', 80.0)))
+    if W_sub_base < min_w_sub:
+        W_sub_base = float(np.round(min_w_sub, 1))
 
-    # Umístění spodního portu a délka substrátu L_sub
-    # Spodní hrana je v y = -L/2 + inset_b - L_feed_bottom
-    # Substrát vycentrujeme nebo nastavíme symetricky: L_sub = 2 * abs(y_port)
-    y_port = -L / 2.0 + inset_b - L_feed_bottom
+    # Výchozí referenční délka levého přívodu (od x = -W_sub_base/2 k zářezu na x = -W/2 + inset_l)
+    L_ref_default = (W_sub_base / 2.0) - (W / 2.0) + inset_l
+
+    if raw_len_l is not None:
+        feed_len_l = float(raw_len_l)
+        L_ref = feed_len_l
+    else:
+        feed_len_l = L_ref_default
+        L_ref = L_ref_default
+
+    if raw_delta_l is not None:
+        feed_delta_l = float(raw_delta_l)
+    else:
+        feed_delta_l = lambda_g_4
+
+    if raw_len_b is not None:
+        feed_len_b = float(raw_len_b)
+        if raw_len_l is not None or raw_delta_l is None:
+            feed_delta_l = feed_len_b - feed_len_l
+    else:
+        feed_len_b = feed_len_l + feed_delta_l
+
+    L_feed_bottom = feed_len_b
+
+    if feed_len_b <= 0.0 or feed_len_l <= 0.0:
+        raise ValueError(f"Délky napaječů musí být kladné (> 0 mm): feed_len_b={feed_len_b}, feed_len_l={feed_len_l}")
+
+    if feed_len_l <= inset_l:
+        raise ValueError(
+            f"Délka levého napaječe feed_len_l={feed_len_l:.2f} mm musí být větší než zanoření inset_l={inset_l:.2f} mm "
+            f"(převis napaječe mimo flíček musí být kladný, jinak port leží uvnitř flíčku)."
+        )
+    if feed_len_b <= inset_b:
+        raise ValueError(
+            f"Délka spodního napaječe feed_len_b={feed_len_b:.2f} mm musí být větší než zanoření inset_b={inset_b:.2f} mm "
+            f"(převis napaječe mimo flíček musí být kladný, jinak port leží uvnitř flíčku)."
+        )
+
+    # Umístění portů:
+    # Levý port (Port 2): x_port = -W/2 + inset_l - feed_len_l
+    # Spodní port (Port 1): y_port = -L/2 + inset_b - feed_len_b
+    x_port = -W / 2.0 + inset_l - feed_len_l
+    y_port = -L / 2.0 + inset_b - feed_len_b
+
+    # Dynamické přizpůsobení rozměrů substrátu tak, aby oba porty ležely na hraně substrátu
+    # a byl zachován symetrický odstup substrátu od flíčku:
+    # Levá hrana je na -W_sub/2 = x_port => W_sub = 2 * abs(x_port)
+    # Spodní hrana je na -L_sub/2 = y_port => L_sub = 2 * abs(y_port)
+    W_sub = 2.0 * abs(x_port)
     L_sub = 2.0 * abs(y_port)
-    x_port = -W_sub / 2.0
 
     # Uložení odvozených rozměrů do params
     params['w1'] = float(np.round(w_feed, 3))
@@ -78,6 +126,15 @@ def build_model_v2(params):
     params['feed_inset_l'] = params['inset_l']
     params['inset_gap_b'] = float(np.round(inset_gap_b, 3))
     params['inset_gap_l'] = float(np.round(inset_gap_l, 3))
+    params['feed_len_b'] = float(np.round(feed_len_b, 3))
+    params['feed_len_l'] = float(np.round(feed_len_l, 3))
+    params['feed_length_b'] = params['feed_len_b']
+    params['feed_length_l'] = params['feed_len_l']
+    params['L_feed_b'] = params['feed_len_b']
+    params['L_feed_l'] = params['feed_len_l']
+    params['feed_delta_l'] = float(np.round(feed_delta_l, 3))
+    params['delta_l'] = params['feed_delta_l']
+    params['phase_delay_mm'] = params['feed_delta_l']
     params['L_ref'] = float(np.round(L_ref, 3))
     params['L_feed_bottom'] = float(np.round(L_feed_bottom, 3))
     params['lambda_g_4'] = float(np.round(lambda_g_4, 3))

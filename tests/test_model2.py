@@ -146,6 +146,7 @@ def test_palace_builder_configs():
         'freq_min': 2.32,
         'freq_max': 2.345,
         'freq_step': 0.005,
+        'driven_port': 'simultaneous',
     }
     build_palace_config(params_v2)
     with open("data/config.json", "r") as f:
@@ -243,8 +244,9 @@ def test_tracker_model2_record():
         with open(csv_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
         assert len(lines) == 2, "V CSV musí být záhlaví a 1 řádek dat"
-        assert "run_name,inset_b_mm,inset_l_mm,patch_L_mm" in lines[0]
-        assert "test_m2,3.00,2.50,30.30" in lines[1]
+        assert "run_name,inset_b_mm,inset_l_mm,feed_len_b_mm,feed_len_l_mm,delta_l_mm,patch_L_mm" in lines[0]
+        assert "test_m2,3.00,2.50" in lines[1]
+        assert "30.30" in lines[1]
         assert row['Polarizace'] == "LHCP"
 
 
@@ -470,6 +472,238 @@ def test_tracker_model2_record_with_gain_max():
         print_summary_table_model2(csv_file=csv_path)
 
 
+def test_geometry_model2_feed_lengths():
+    """Test parametrického zadávání délek přívodů a dynamického dimenzování substrátu."""
+    import gmsh
+    gmsh.clear()
+
+    # 1. Test explicitních délek přívodů
+    params = {
+        'patch_L': 30.3,
+        'patch_W': 30.3,
+        'sub_h': 1.52,
+        'eps_r': 4.3,
+        'air_margin': 30.0,
+        'feed_inset_b': 3.0,
+        'feed_inset_l': 2.5,
+        'feed_len_b': 40.0,
+        'feed_len_l': 20.0,
+    }
+    sub_tag, air_tag = build_model_v2(params)
+    assert sub_tag is not None
+    assert air_tag is not None
+
+    # Ověření uložených parametrů
+    assert np.isclose(params['feed_len_b'], 40.0)
+    assert np.isclose(params['feed_len_l'], 20.0)
+    assert np.isclose(params['feed_delta_l'], 20.0)
+    assert np.isclose(params['L_feed_bottom'], 40.0)
+
+    # Ověření poloh portů:
+    # x_port = -W/2 + inset_l - feed_len_l = -15.15 + 2.5 - 20.0 = -32.65
+    expected_x_port = -30.3 / 2.0 + 2.5 - 20.0
+    expected_y_port = -30.3 / 2.0 + 3.0 - 40.0
+    assert np.isclose(params['x_port'], expected_x_port, atol=1e-3)
+    assert np.isclose(params['y_port'], expected_y_port, atol=1e-3)
+
+    # Ověření dynamických rozměrů substrátu:
+    assert np.isclose(params['sub_W'], 2.0 * abs(expected_x_port), atol=1e-2)
+    assert np.isclose(params['sub_L'], 2.0 * abs(expected_y_port), atol=1e-2)
+
+    gmsh.clear()
+
+    # 2. Test zadání feed_delta_l (bez explicitního feed_len_b)
+    params_dl = {
+        'patch_L': 30.3,
+        'patch_W': 30.3,
+        'sub_h': 1.52,
+        'eps_r': 4.3,
+        'air_margin': 30.0,
+        'feed_inset_b': 0.0,
+        'feed_inset_l': 0.0,
+        'sub_W': 80.0,
+        'feed_delta_l': 17.5,
+    }
+    build_model_v2(params_dl)
+    # L_ref = (80 / 2) - (30.3 / 2) = 24.85
+    expected_l_ref = 40.0 - 15.15
+    assert np.isclose(params_dl['feed_len_l'], expected_l_ref, atol=1e-3)
+    assert np.isclose(params_dl['feed_delta_l'], 17.5, atol=1e-3)
+    assert np.isclose(params_dl['feed_len_b'], expected_l_ref + 17.5, atol=1e-3)
+
+    gmsh.clear()
+
+    # 3. Test chyby při neplatné délce (<= 0)
+    try:
+        build_model_v2({
+            'patch_L': 30.3,
+            'patch_W': 30.3,
+            'sub_h': 1.52,
+            'eps_r': 4.3,
+            'air_margin': 30.0,
+            'feed_len_b': -5.0,
+            'feed_len_l': 20.0,
+        })
+        assert False, "Měla být vyhozena výjimka ValueError při záporné délce"
+    except ValueError:
+        pass
+
+    gmsh.clear()
+
+    # 4. Test chyby při feed_len_l <= inset_l
+    try:
+        build_model_v2({
+            'patch_L': 30.3,
+            'patch_W': 30.3,
+            'sub_h': 1.52,
+            'eps_r': 4.3,
+            'air_margin': 30.0,
+            'feed_inset_b': 2.0,
+            'feed_inset_l': 10.0,
+            'feed_len_b': 30.0,
+            'feed_len_l': 10.0,
+        })
+        assert False, "Měla být vyhozena výjimka ValueError při feed_len_l <= inset_l"
+    except ValueError as e:
+        assert "feed_len_l" in str(e)
+
+    gmsh.clear()
+
+    # 5. Test chyby při feed_len_b <= inset_b
+    try:
+        build_model_v2({
+            'patch_L': 30.3,
+            'patch_W': 30.3,
+            'sub_h': 1.52,
+            'eps_r': 4.3,
+            'air_margin': 30.0,
+            'feed_inset_b': 12.0,
+            'feed_inset_l': 2.0,
+            'feed_len_b': 10.0,
+            'feed_len_l': 20.0,
+        })
+        assert False, "Měla být vyhozena výjimka ValueError při feed_len_b <= inset_b"
+    except ValueError as e:
+        assert "feed_len_b" in str(e)
+
+    gmsh.clear()
+
+    # 6. Test chyby při záporném zanoření (inset < 0)
+    try:
+        build_model_v2({
+            'patch_L': 30.3,
+            'patch_W': 30.3,
+            'sub_h': 1.52,
+            'eps_r': 4.3,
+            'air_margin': 30.0,
+            'feed_inset_b': -2.0,
+            'feed_inset_l': 2.0,
+            'feed_len_b': 30.0,
+            'feed_len_l': 20.0,
+        })
+        assert False, "Měla být vyhozena výjimka ValueError při záporném inset_b"
+    except ValueError as e:
+        assert "inset" in str(e).lower()
+
+    gmsh.clear()
+
+
+def test_tracker_model2_feed_lengths_and_migration():
+    """Test záznamu délek přívodů do tabulky a automatické migrace starších CSV bez nových sloupců."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        res_dir = os.path.join(tmp_dir, "export")
+        postpro_dir = os.path.join(tmp_dir, "postpro")
+        os.makedirs(res_dir, exist_ok=True)
+        os.makedirs(postpro_dir, exist_ok=True)
+
+        csv_path = os.path.join(res_dir, "sweep_results_model2.csv")
+
+        # 1. Vytvoříme starší CSV se starou hlavičkou (bez feed_len_b_mm, feed_len_l_mm, delta_l_mm)
+        old_headers = [
+            'run_name', 'inset_b_mm', 'inset_l_mm', 'patch_L_mm',
+            'f0_b_GHz', 'f0_l_GHz', 'S11_min [dB]', 'S22_min [dB]', 'export_zip'
+        ]
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            f.write(",".join(old_headers) + "\n")
+            f.write("old_run,3.00,3.00,30.30,2.330,2.330,-20.00,-20.00,old.zip\n")
+
+        # 2. Zapíšeme nový běh s novými sloupci délek přívodů
+        params = {
+            'antenna_model': 2,
+            'feed_inset_b': 4.0,
+            'feed_inset_l': 4.5,
+            'feed_len_b': 42.5,
+            'feed_len_l': 23.5,
+            'feed_delta_l': 19.0,
+            'patch_L': 30.3,
+        }
+        record_run(params, output_dir=postpro_dir, run_name="migrated_run", results_dir=res_dir)
+
+        # 3. Ověříme, že CSV soubor byl korektně migrován a obsahuje jak starý, tak nový záznam
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            import csv
+            reader = csv.DictReader(f)
+            headers = reader.fieldnames
+            rows = list(reader)
+
+        assert "feed_len_b_mm" in headers
+        assert "feed_len_l_mm" in headers
+        assert "delta_l_mm" in headers
+        assert len(rows) == 2
+
+        # Starý záznam zachován
+        assert rows[0]['run_name'] == "old_run"
+        assert rows[0]['inset_b_mm'] == "3.00"
+
+        # Nový záznam má správné hodnoty délek přívodů
+        assert rows[1]['run_name'] == "migrated_run"
+        assert rows[1]['feed_len_b_mm'] == "42.50"
+        assert rows[1]['feed_len_l_mm'] == "23.50"
+        assert rows[1]['delta_l_mm'] == "19.00"
+
+
+def test_sweep_model2_feed_targets():
+    """Test generování kroků pro sweepování délek přívodů a Delta L v sweep_model2.py."""
+    from sweep_model2 import build_sweep_steps
+
+    # 1. Sweep Delta L
+    steps_dl, desc_dl = build_sweep_steps(sweep_target="delta_l", delta_l=[16.5, 18.66, 20.0])
+    assert len(steps_dl) == 3
+    assert steps_dl[0]['run_name'] == "m2_dl16.50mm"
+    assert steps_dl[1]['run_name'] == "m2_dl18.66mm"
+    assert steps_dl[0]['delta_l'] == 16.5
+
+    # 2. Sweep feed_len_b
+    steps_b, desc_b = build_sweep_steps(sweep_target="feed_len_b", feed_lens_b=[38.0, 42.0])
+    assert len(steps_b) == 2
+    assert steps_b[0]['run_name'] == "m2_flb38.00mm"
+    assert steps_b[1]['run_name'] == "m2_flb42.00mm"
+
+    # 3. Sweep feed_len_l
+    steps_l, desc_l = build_sweep_steps(sweep_target="feed_len_l", feed_lens_l=[22.0, 25.0])
+    assert len(steps_l) == 2
+    assert steps_l[0]['run_name'] == "m2_fll22.00mm"
+
+    # 4. Sweep feed_lens (grid)
+    steps_lens, desc_lens = build_sweep_steps(sweep_target="feed_lens", mode="grid",
+                                              feed_lens_b=[40.0, 45.0], feed_lens_l=[20.0, 25.0])
+    assert len(steps_lens) == 4
+    assert steps_lens[0]['run_name'] == "m2_flb40.00_fll20.00mm"
+    assert steps_lens[3]['run_name'] == "m2_flb45.00_fll25.00mm"
+
+    # 5. Sweep inset s fixním feed_delta_l
+    steps_inset_dl, desc_inset_dl = build_sweep_steps(
+        sweep_target="inset",
+        insets=[3.0, 4.0],
+        feed_delta_l=18.0
+    )
+    assert len(steps_inset_dl) == 2
+    assert steps_inset_dl[0]['run_name'] == "m2_ib3.00_il3.00mm"
+    assert steps_inset_dl[1]['run_name'] == "m2_ib4.00_il4.00mm"
+    assert steps_inset_dl[0]['feed_delta_l'] == 18.0
+    assert steps_inset_dl[1]['feed_delta_l'] == 18.0
+
+
 if __name__ == "__main__":
     tests = [
         test_rf_calculations,
@@ -484,6 +718,9 @@ if __name__ == "__main__":
         test_tracker_model2_port_s_priority,
         test_farfield_metrics_fgainmax_and_gain_max,
         test_tracker_model2_record_with_gain_max,
+        test_geometry_model2_feed_lengths,
+        test_tracker_model2_feed_lengths_and_migration,
+        test_sweep_model2_feed_targets,
     ]
     passed = 0
     failed = 0

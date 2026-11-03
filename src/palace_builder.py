@@ -16,16 +16,21 @@ def build_palace_config(params):
         # Volba buzení portů pro Model 2:
         # '1', 'b', 'bottom', 'ey' -> budit pouze Port 1 (spodní, Ey) pro čisté S11 a S21
         # '2', 'l', 'left', 'ex'   -> budit pouze Port 2 (levý, Ex) pro čisté S22 a S12
-        # 'all', 'both'            -> budit oba porty současně (LHCP vyzařování)
+        # 'simultaneous', 'dual'   -> budit oba porty současně
+        # 'all', 'both', 'matrix'  -> výchozí 2-krokové buzení z main.py (staticky v config.json buzen Port 1)
         if driven_mode in ('1', 'b', 'bottom', 'ey', 'port1'):
             exc1 = True
             exc2 = False
         elif driven_mode in ('2', 'l', 'left', 'ex', 'port2'):
             exc1 = False
             exc2 = True
-        else:
+        elif driven_mode in ('simultaneous', 'dual'):
             exc1 = True
             exc2 = True
+        else:
+            # Pro 'all', 'both', 'matrix' je v samostatném config.json přednastaven Port 1
+            exc1 = True
+            exc2 = False
 
         lumped_ports = [
             {
