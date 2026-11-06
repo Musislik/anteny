@@ -53,8 +53,8 @@ if __name__ == "__main__":
         # Spustíme parser z sweep_model2
         import sweep_model2
         parser_m2 = argparse.ArgumentParser(description="Parametrický sweep Modelu 2 (Dvouportový LHCP)")
-        parser_m2.add_argument("--sweep-target", choices=["inset", "feed_len_b", "feed_len_l", "feed_delta_l", "delta_l", "feed_lens"], default=None,
-                                help="Cíl sweepování: 'inset' (výchozí), 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
+        parser_m2.add_argument("--sweep-target", choices=["inset", "patch_l", "feed_len_b", "feed_len_l", "feed_delta_l", "delta_l", "feed_lens"], default=None,
+                                help="Cíl sweepování: 'inset' (výchozí), 'patch_l', 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
         parser_m2.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
         parser_m2.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs",
                                help="Manuálně definované dvojice zanoření pro Model 2")
@@ -63,6 +63,10 @@ if __name__ == "__main__":
         parser_m2.add_argument("--insets-l", type=float, nargs="+", default=None)
         parser_m2.add_argument("--fixed-name", choices=["inset_b", "inset_l"], default=None)
         parser_m2.add_argument("--fixed-val", type=float, default=None)
+
+        # Argumenty pro sweepování délky flíčku
+        parser_m2.add_argument("--patch-lengths", type=float, nargs="+", default=None, dest="patch_lengths",
+                                help="Hodnoty délky flíčku patch_L v mm pro sweepování")
 
         # Argumenty pro sweepování a fixaci délek napaječů
         parser_m2.add_argument("--delta-l", "--sweep-delta-l", type=float, nargs="+", default=None, dest="delta_l",
@@ -115,6 +119,7 @@ if __name__ == "__main__":
             inset_l=m2_args.inset_l,
             patch_l=m2_args.patch_l,
             patch_w=m2_args.patch_w,
+            patch_lengths=m2_args.patch_lengths,
             freq_min=m2_args.freq_min,
             freq_max=m2_args.freq_max,
             freq_step=m2_args.freq_step,

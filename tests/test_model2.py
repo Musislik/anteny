@@ -704,6 +704,84 @@ def test_sweep_model2_feed_targets():
     assert steps_inset_dl[1]['feed_delta_l'] == 18.0
 
 
+def test_sweep_model2_patch_lengths():
+    """Test generování kroků pro sweepování délky flíčku (patch_l) pro Model 2."""
+    from sweep_model2 import build_sweep_steps
+
+    # 1. Explicitní seznam patch_lengths s sweep_target="patch_l"
+    steps, desc = build_sweep_steps(sweep_target="patch_l", patch_lengths=[28.6, 28.8, 29.0])
+    assert len(steps) == 3, f"Očekávány 3 kroky, vráceno {len(steps)}"
+    assert steps[0]['run_name'] == "m2_patchL_28.60mm"
+    assert steps[0]['patch_L'] == 28.6
+    assert steps[0]['patch_W'] == 28.6
+    assert steps[1]['run_name'] == "m2_patchL_28.80mm"
+    assert steps[1]['patch_L'] == 28.8
+    assert steps[1]['patch_W'] == 28.8
+    assert steps[2]['run_name'] == "m2_patchL_29.00mm"
+    assert steps[2]['patch_L'] == 29.0
+    assert steps[2]['patch_W'] == 29.0
+    assert "patch_l" in desc
+
+    # 2. Zachování fixních zanoření a fixních délek přívodů
+    steps_fixed, _ = build_sweep_steps(
+        sweep_target="patch_l",
+        patch_lengths=[28.6],
+        inset_b=4.8,
+        inset_l=5.2,
+        feed_len_b=43.51,
+        feed_len_l=24.85,
+        feed_delta_l=18.66,
+    )
+    assert len(steps_fixed) == 1
+    s0 = steps_fixed[0]
+    assert s0['inset_b'] == 4.8
+    assert s0['inset_l'] == 5.2
+    assert s0['feed_inset_b'] == 4.8
+    assert s0['feed_inset_l'] == 5.2
+    assert s0['feed_len_b'] == 43.51
+    assert s0['feed_len_l'] == 24.85
+    assert s0['feed_delta_l'] == 18.66
+
+    # 3. Explicitně zadaná šířka flíčku patch_w (nečtvercový flíček)
+    steps_pw, _ = build_sweep_steps(sweep_target="patch_l", patch_lengths=[28.6], patch_w=29.0)
+    assert steps_pw[0]['patch_L'] == 28.6
+    assert steps_pw[0]['patch_W'] == 29.0
+
+    # 4. Načtení z proměnné prostředí SWEEP_PATCH_LENGTHS
+    old_env = os.environ.get("SWEEP_PATCH_LENGTHS")
+    old_target = os.environ.get("SWEEP_TARGET")
+    try:
+        os.environ["SWEEP_PATCH_LENGTHS"] = "28.5, 29.1"
+        steps_env, desc_env = build_sweep_steps(sweep_target="patch_l")
+        assert len(steps_env) == 2
+        assert steps_env[0]['patch_L'] == 28.5
+        assert steps_env[1]['patch_L'] == 29.1
+
+        # Automatická detekce z proměnné prostředí SWEEP_PATCH_LENGTHS bez explicitního sweep_target
+        if "SWEEP_TARGET" in os.environ:
+            del os.environ["SWEEP_TARGET"]
+        steps_auto_env, desc_auto_env = build_sweep_steps()
+        assert len(steps_auto_env) == 2
+        assert steps_auto_env[0]['patch_L'] == 28.5
+        assert steps_auto_env[1]['patch_L'] == 29.1
+    finally:
+        if old_env is not None:
+            os.environ["SWEEP_PATCH_LENGTHS"] = old_env
+        else:
+            os.environ.pop("SWEEP_PATCH_LENGTHS", None)
+        if old_target is not None:
+            os.environ["SWEEP_TARGET"] = old_target
+        else:
+            os.environ.pop("SWEEP_TARGET", None)
+
+    # 5. Automatická detekce z parametru patch_lengths bez zadání sweep_target
+    steps_auto, desc_auto = build_sweep_steps(patch_lengths=[28.7, 28.9])
+    assert len(steps_auto) == 2
+    assert steps_auto[0]['patch_L'] == 28.7
+    assert steps_auto[1]['patch_L'] == 28.9
+    assert "patch_l" in desc_auto
+
+
 if __name__ == "__main__":
     tests = [
         test_rf_calculations,
@@ -721,6 +799,7 @@ if __name__ == "__main__":
         test_geometry_model2_feed_lengths,
         test_tracker_model2_feed_lengths_and_migration,
         test_sweep_model2_feed_targets,
+        test_sweep_model2_patch_lengths,
     ]
     passed = 0
     failed = 0

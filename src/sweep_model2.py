@@ -246,10 +246,14 @@ def build_sweep_steps(
     feed_delta_l=None,
     inset_b=None,
     inset_l=None,
+    patch_lengths=None,
+    patch_l=None,
+    patch_w=None,
 ):
     """
     Sestaví seznam jednotlivých kroků sweepu pro Model 2 na základě cíle sweepu (sweep_target):
       - 'inset': sweepování zanoření (výchozí)
+      - 'patch_l': sweepování délky flíčku (L / W)
       - 'delta_l': sweepování fázovacího úseku Delta L
       - 'feed_len_b': sweepování délky spodního napaječe
       - 'feed_len_l': sweepování délky levého napaječe
@@ -257,6 +261,8 @@ def build_sweep_steps(
     """
     if sweep_target is not None:
         target = sweep_target
+    elif patch_lengths is not None:
+        target = "patch_l"
     elif delta_l is not None and (len(delta_l) > 1 or (insets is None and insets_b is None and insets_l is None and manual_pairs is None and feed_lens_b is None and feed_lens_l is None)):
         target = "delta_l"
     elif feed_lens_b is not None and feed_lens_l is not None:
@@ -269,6 +275,8 @@ def build_sweep_steps(
         target = "inset"
     elif os.getenv("SWEEP_TARGET"):
         target = os.getenv("SWEEP_TARGET")
+    elif os.getenv("SWEEP_PATCH_LENGTHS"):
+        target = "patch_l"
     elif os.getenv("SWEEP_DELTA_L"):
         target = "delta_l"
     elif os.getenv("SWEEP_FEED_LENS_B") and os.getenv("SWEEP_FEED_LENS_L"):
@@ -281,7 +289,9 @@ def build_sweep_steps(
         target = "inset"
     target = str(target).lower().strip()
 
-    if target in ("delta_l", "feed_delta_l", "delta", "phase_delay"):
+    if target in ("patch_l", "patch", "patch_length", "patch_lengths"):
+        target = "patch_l"
+    elif target in ("delta_l", "feed_delta_l", "delta", "phase_delay"):
         target = "delta_l"
     elif target in ("feed_len_b", "feed_lens_b", "flb", "len_b"):
         target = "feed_len_b"
@@ -303,7 +313,32 @@ def build_sweep_steps(
 
     steps = []
 
-    if target == "delta_l":
+    if target == "patch_l":
+        vals = patch_lengths or _parse_float_list(os.getenv("SWEEP_PATCH_LENGTHS")) or [28.4, 28.6, 28.8, 29.0, 29.2]
+        for pl in vals:
+            pl_val = float(np.round(pl, 2))
+            pw_val = float(patch_w) if patch_w is not None else pl_val
+            step = {
+                'run_name': f"m2_patchL_{pl_val:.2f}mm",
+                'patch_L': pl_val,
+                'patch_W': pw_val,
+                'feed_inset_b': fixed_ib,
+                'feed_inset_l': fixed_il,
+                'inset_b': fixed_ib,
+                'inset_l': fixed_il,
+            }
+            if fixed_flb is not None:
+                step['feed_len_b'] = fixed_flb
+            if fixed_fll is not None:
+                step['feed_len_l'] = fixed_fll
+            if fixed_dl is not None:
+                step['feed_delta_l'] = fixed_dl
+                step['delta_l'] = fixed_dl
+            steps.append(step)
+        desc = f"Délka flíčku patch_L (sweep_target=patch_l): {vals} mm (celkem {len(steps)} kroků)"
+        return steps, desc
+
+    elif target == "delta_l":
         vals = delta_l or _parse_float_list(os.getenv("SWEEP_DELTA_L")) or DEFAULT_DELTA_L_VALUES
         for dl in vals:
             dl_val = float(np.round(dl, 2))
@@ -445,6 +480,7 @@ def run_sweep_model2(
     inset_l=None,
     patch_l=None,
     patch_w=None,
+    patch_lengths=None,
     freq_min=None,
     freq_max=None,
     freq_step=None,
@@ -478,6 +514,9 @@ def run_sweep_model2(
         feed_delta_l=feed_delta_l,
         inset_b=inset_b,
         inset_l=inset_l,
+        patch_lengths=patch_lengths,
+        patch_l=patch_l,
+        patch_w=patch_w,
     )
 
     driven_port = driven_port or os.getenv("SWEEP_DRIVEN_PORT") or os.getenv("DRIVEN_PORT", "all")
@@ -501,7 +540,11 @@ def run_sweep_model2(
     print(f"  • Cíl a režim sweepu:         {sweep_desc}")
     print(f"  • Celkový počet kroků:        {total_steps}")
     print(f"  • Frekvenční rozsah:          {freq_min:.3f} - {freq_max:.3f} GHz (krok {freq_step:.4f} GHz)")
-    print(f"  • Rozměry flíčku:             L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
+    if any('patch_L' in s for s in steps):
+        p_lengths = [s['patch_L'] for s in steps]
+        print(f"  • Rozměry flíčku (sweep L):   {p_lengths} mm")
+    else:
+        print(f"  • Rozměry flíčku:             L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
     print(f"  • AMR zjemnění / Solver Tol:  {amr_max_its} it. (Tol {amr_threshold}) / {linear_tol}")
     print(f"  • Ukládání 3D polí:           každých {save_step} kroků")
     print(f"  • Export ParaView balíčků:    {'ANO' if export_each else 'NE'}")
@@ -555,8 +598,8 @@ def run_sweep_model2(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Parametrický sweep Modelu 2 (Dvouportový LHCP)")
-    parser.add_argument("--sweep-target", choices=["inset", "feed_len_b", "feed_len_l", "feed_delta_l", "delta_l", "feed_lens"], default=None,
-                        help="Cíl sweepování: 'inset' (výchozí), 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
+    parser.add_argument("--sweep-target", choices=["inset", "patch_l", "feed_len_b", "feed_len_l", "feed_delta_l", "delta_l", "feed_lens"], default=None,
+                        help="Cíl sweepování: 'inset' (výchozí), 'patch_l', 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
     parser.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None,
                         help="Režim sweepování: 'symmetric' (výchozí), 'single_fixed', 'grid', 'manual'")
     parser.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs",
@@ -571,6 +614,10 @@ if __name__ == "__main__":
                         help="Název fixovaného napaječe pro režim single_fixed")
     parser.add_argument("--fixed-val", type=float, default=None,
                         help="Hodnota fixovaného napaječe v mm pro režim single_fixed")
+
+    # Argumenty pro sweepování délky flíčku
+    parser.add_argument("--patch-lengths", type=float, nargs="+", default=None, dest="patch_lengths",
+                        help="Hodnoty délky flíčku patch_L v mm pro sweepování")
 
     # Argumenty pro sweepování a fixaci délek napaječů
     parser.add_argument("--delta-l", "--sweep-delta-l", type=float, nargs="+", default=None, dest="delta_l",
@@ -624,6 +671,7 @@ if __name__ == "__main__":
         inset_l=args.inset_l,
         patch_l=args.patch_l,
         patch_w=args.patch_w,
+        patch_lengths=args.patch_lengths,
         freq_min=args.freq_min,
         freq_max=args.freq_max,
         freq_step=args.freq_step,
