@@ -195,10 +195,43 @@ Při detailní analýze S-parametrů nejlepší konfigurace ($L = W = 28.80\text
 - **Nezvětšovat zanoření obou portů symetricky** – levý port je již na absolutním optimu ($98\,\Omega$), další zanoření by ho rozladilo a stáhlo rezonanci pod $2.320\text{ GHz}$.
 - **Přechod na asymetrický sweep (`SWEEP_MODE=single_fixed`):** Fixovat levý napaječ na $y_{0l} = 5.2\text{ až }5.4\text{ mm}$ a ladit samostatně pouze spodní zanoření $y_{0b} \in [4.8, 5.6]\text{ mm}$ pro dorovnání impedance na $100\,\Omega$.
 
-3.11.:
   * Rozdělení úkolu na jednodušší sekce
   * Vybral jsem zanoření 5,6mm (spodní) a 5,2 mm
   * Pokus o omezení kapacitní složky zvětšením mezery spodního napaječe - neúspěšně. 
    * z grafů S parametrů lze vidět, že imaginární složka vstupní impedance se nemění -> není způsobena příliš úzkou mezerou. 
-   * Je zde ale vidět změna reálné složky impedance -> to je asi způsobeno změnou proudu u vstupu. Ignorováno, doladíse zanořením
-   * dalším postupem je kompenzace imag. složky změnou délky napaječe
+   * Je zde ale vidět změna reálné složky impedance -> to je asi způsobeno změnou proudu u vstupu. Ignorováno, doladí se zanořením
+  * dalším postupem je kompenzace imag. složky změnou délky napaječe - to se nepovedlo. Rezonance je úplně mimo lambda/4. Sice to rezonuje, ale špatně (antena3_4_1)
+  * Imag. složku vykompenzuji změnou délky flíčku (antena3_5_1) - nová délka 29,2 mm
+   * nyní musím přizpůsobit reálnou složku impedance změnou zanořením
+     * myslel jsem, že to musím zanořit méně, ale lambda/4 je impedanční invertor, takže zanoření musí být větší (to jsem nechtěl)
+     * bohužel se nedaří - pro zanořen 7mm to pořád není dost (reálná složka je cca na 78 ohmech pro nejnižší frekvenci v pásmu)
+  * Plánování jak pokračovat: viz nová strategie v sekci 10.
+
+---
+
+## 10. Nová strategie restartu: Návrat k nulovému zanoření a impedanční transformátor
+
+Na základě zjištění z běhů antena3_1_1 až antena3_6_1, kde hluboké zanoření ($y_0 \ge 5.6\text{ až }7.0\text{ mm}$) deformovalo rezonanci a čtvrtvlnný fázovací úsek $\lambda_g/4$ působil jako impedanční invertor citlivý na jakoukoli odchylku impedance zářezu, je definován nový systematický postup ladění:
+
+### 10.1 Klíčové pilíře postupu
+1. **Restart od čistého flíčku bez zanoření ($y_0 = 0\text{ mm}$):**
+   - Nulové zanoření eliminuje parazitní štěrbinové reaktance i deformace proudových drah na vyzařujícím flíčku.
+   - Flíček si zachová čisté, vzájemně ortogonální módy $TM_{10}$ a $TM_{01}$ s minimální vzájemnou vazbou ($S_{21}$).
+   - Vstupní impedance na hraně flíčku je vysoká a reálná ($R_{\text{edge}} \approx 180\text{ až }220\,\Omega$).
+
+2. **Možnost vřazení impedančního transformátoru do napaječe:**
+   - Před vstupem do flíčku se otevře možnost zařazení mikropáskového impedančního transformátoru (např. čtvrtvlnného úseku $\lambda_g/4$ se změněnou šířkou mikropásku / impedancí $Z_T = \sqrt{Z_0 \cdot R_{\text{edge}}} \approx 135\text{ až }148\,\Omega$).
+   - Transformátor přizpůsobí vysokou impedanci hrany flíčku $R_{\text{edge}}$ na cílovou úroveň napájecího vedení ($100\,\Omega$, resp. $50\,\Omega$) přímo na přívodním mikropásku bez nutnosti vyřezávat drážky do flíčku.
+
+3. **Fázované, postupné ladění portů v samostatném buzení:**
+   - **Krok A (Port 2 – referenční přímé rameno, pole $E_x$):**
+     - Buzení pouze portu 2 (`DRIVEN_PORT=2`), port 1 zakončen $100\,\Omega$ zátěží.
+     - Naladění základního rozměru flíčku $L$ tak, aby rezonance $f_{0,l}$ ležela přesně na $f_c = 2.3325\text{ GHz}$.
+     - Přizpůsobení reálné složky na $100\,\Omega$ ($S_{22} < -20\text{ dB}$) pomocí transformátoru / změny šířky napaječe.
+   - **Krok B (Port 1 – fázovací rameno $\lambda_g/4$, pole $E_y$):**
+     - Buzení pouze portu 1 (`DRIVEN_PORT=1`), port 2 zakončen $100\,\Omega$ zátěží.
+     - Spodní rameno obsahuje fázovací prodloužení $\Delta L = \lambda_g/4$ (zajišťující posuv $-90^\circ$).
+     - Kontrola a doladění délky a transformace spodního ramene tak, aby po průchodu transformátorem a fázovačem bylo dosaženo $S_{11} < -20\text{ dB}$ ($Z_{\text{in1}} \to 100\,\Omega$).
+   - **Krok C (Simultánní buzení a verifikace LHCP):**
+     - Přepnutí na plné simultánní buzení (`DRIVEN_PORT=all`).
+     - Finální kontrola osového poměru ($AR < 1.5\text{ dB}$), zisku ($G_{\text{LHCP}} \ge 5.5\text{ dBi}$) a potlačení RHCP v celém pásmu $2.320\text{ – }2.345\text{ GHz}$.
