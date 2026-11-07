@@ -235,3 +235,40 @@ Na základě zjištění z běhů antena3_1_1 až antena3_6_1, kde hluboké zano
    - **Krok C (Simultánní buzení a verifikace LHCP):**
      - Přepnutí na plné simultánní buzení (`DRIVEN_PORT=all`).
      - Finální kontrola osového poměru ($AR < 1.5\text{ dB}$), zisku ($G_{\text{LHCP}} \ge 5.5\text{ dBi}$) a potlačení RHCP v celém pásmu $2.320\text{ – }2.345\text{ GHz}$.
+
+
+---
+
+## 11. Rozhodnutí o volbě architektury: Cesta B (Hybridní dvoustupňové přizpůsobení) a zahájení implementace Modelu 3
+
+Na základě diskuse a analýzy možností přizpůsobení byla pro realizaci a další optimalizaci antény zvolena **Cesta B (Hybridní dvoustupňové přizpůsobení)**.
+
+### 11.1 Důvody volby Cesty B oproti Cestě A (Čistý transformátor bez zářezu)
+1. **Technologická vyrobitelnost DPS:**
+   - Při nulovém zanoření ($y_0 = 0$) dosahuje hrana flíčku impedance $R_{\text{edge}} \approx 200\,\Omega$. Pro přizpůsobení přímo na $100\,\Omega$ by byl nutný čtvrtvlnný transformátor s impedancí $Z_T = \sqrt{100 \cdot 200} \approx 141.4\,\Omega$. Na substrátu FR-4 ($h = 1.52\text{ mm}, \varepsilon_r = 4.3$) to odpovídá extrémně úzkému mikropásku $w_T < 0.20\text{ mm}$, což leží na technologické hraně běžné výroby a přináší riziko velkého rozptylu parametrů vlivem podleptání.
+   - **Cesta B kombinuje mělký zářez se širším transformátorem:** Zvolením mělkého zanoření $y_0 \approx 2.5\text{ mm}$ klesá impedance v zářezu na $R_{\text{patch}}(y_0) \approx 140\,\Omega$. Požadovaná impedance čtvrtvlnného transformátoru je pak $Z_T = \sqrt{100 \cdot 140} \approx 118.7\,\Omega$, čemuž odpovídá bezpečná a spolehlivě vyrobitelná šířka mikropásku **$w_T \approx 0.42\text{ mm}$**.
+2. **Zachování čistoty vyzařujících módů flíčku:**
+   - Mělký zářez ($y_0 = 2.5\text{ mm}$, tj. pouhých cca $8.7\,\%$ délky flíčku $L$) na rozdíl od hlubokých zářezů ($y_0 \ge 5.6\text{ mm}$) nenarušuje proudové dráhy hlavních ortogonálních módů $TM_{10}$ a $TM_{01}$. Nedochází k parazitnímu štěpení rezonancí ani ke vzniku silných lokálních reaktancí.
+3. **Vyřešení asymetrie portů a eliminace impedanční inverze:**
+   - Transformátor $w_T, l_T$ přizpůsobuje impedanci flíčku na $100\,\Omega$ **před** vstupem do vnějšího napájecího mikropásku.
+   - Vnější fázovací úsek $\Delta L \approx \lambda_g/4 \approx 18.66\text{ mm}$ na spodním rameni (Port 1) je tak zařazen v již dokonale přizpůsobeném $100\,\Omega$ vedení ($Z_L = Z_0 = 100\,\Omega$). Vedení pracuje v režimu postupné vlny s minimálním odrazem, úsek $\Delta L$ nepůsobí jako citlivý impedanční invertor a přináší čistý fázový posuv $-90^\circ$ bez rozhození vstupní reálné impedance. Obě ramena (Port 1 i Port 2) si zachovávají symetrickou vstupní impedanci $Z_{\text{in}} \approx 100\,\Omega$.
+4. **Možnosti nezávislého ladění:**
+   - Architektura poskytuje jasně oddělené ladicí parametry: rozměr $L$ (střední rezonance), $y_0$ a $w_T$ (impedanční přizpůsobení obou portů na $100\,\Omega$), a $\Delta L$ (fázové vyvážení pro minimum osového poměru $AR < 1.5\text{ dB}$).
+
+### 11.2 Nominální návrhové parametry Modelu 3
+- **Vyzařující flíček:** $L = W = 28.80\text{ mm}$ (čtvercový tvar symetrický pro obě polarizace).
+- **Mělký zářez:** $y_{0b} = y_{0l} = 2.50\text{ mm}$, mezera $g = 0.50\text{ mm}$.
+- **Vnitřní čtvrtvlnný transformátor:**
+  - Šířka: $w_T = 0.42\text{ mm}$ ($Z_T \approx 118.7\,\Omega$).
+  - Délka: $l_T = 18.88\text{ mm}$ ($\approx \lambda_g/4$ pro vlnu v $118.7\,\Omega$ mikropásku při $f_c = 2.3325\text{ GHz}$).
+- **Vnější $100\,\Omega$ mikropáskový napaječ:**
+  - Šířka: $w_{\text{feed}} = 0.694\text{ mm}$ ($Z_0 = 100.0\,\Omega$, $\varepsilon_{\text{eff}} \approx 2.966$).
+  - Fázovací prodloužení spodního ramene: $\Delta L = 18.66\text{ mm}$ ($\lambda_g/4$ v $100\,\Omega$ mikropásku).
+- **Porty:** Dva lumped porty s impedancí $100\,\Omega$, Port 1 (spodní, pole $E_y$) a Port 2 (levý, pole $E_x$).
+
+### 11.3 Zahájení implementace Modelu 3
+Zahájena realizace modulů:
+- `src/geometry_v3.py` – parametrický model antény v OpenCASCADE s dvoustupňovým vedením.
+- Integrace do `src/geometry.py`, `src/mesh.py`, `src/palace_builder.py`, `src/visualization.py`, `src/main.py`.
+- Integrace do sweepovacího rámce (`src/sweep_model3.py`, `src/sweep.py`).
+- Testy funkčnosti sítě a geometrie (`tests/test_model3.py`).

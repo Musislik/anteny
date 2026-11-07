@@ -24,7 +24,10 @@ def run_sweep(**kwargs):
     """Univerzální rozhraní pro spuštění sweepu zvoleného modelu antény."""
     model_version = int(kwargs.get('antenna_model') or os.getenv("ANTENNA_MODEL", "1"))
     
-    if model_version == 2:
+    if model_version == 3:
+        from sweep_model3 import run_sweep_model3
+        return run_sweep_model3(**kwargs)
+    elif model_version == 2:
         from sweep_model2 import run_sweep_model2
         return run_sweep_model2(**kwargs)
     else:
@@ -37,17 +40,85 @@ if __name__ == "__main__":
     env_model = int(os.getenv("ANTENNA_MODEL", "1"))
     
     parser = argparse.ArgumentParser(
-        description="Dispečer parametrického sweepu antény (Model 1: T-dělič / Model 2: 2-port LHCP)",
+        description="Dispečer parametrického sweepu antény (Model 1: T-dělič / Model 2: 2-port LHCP / Model 3: Hybridní přizpůsobení)",
         add_help=False,
         allow_abbrev=False
     )
-    parser.add_argument("--model", type=int, choices=[1, 2], default=env_model, dest="antenna_model",
-                        help="Verze modelu antény (1: T-dělič, 2: dvouportový LHCP). Výchozí z ANTENNA_MODEL.")
+    parser.add_argument("--model", type=int, choices=[1, 2, 3], default=env_model, dest="antenna_model",
+                        help="Verze modelu antény (1: T-dělič, 2: dvouportový LHCP, 3: hybridní přizpůsobení). Výchozí z ANTENNA_MODEL.")
     known_args, remaining_argv = parser.parse_known_args()
 
     selected_model = known_args.antenna_model
 
-    if selected_model == 2:
+    if selected_model == 3:
+        from sweep_model3 import run_sweep_model3
+        import sweep_model3
+        parser_m3 = argparse.ArgumentParser(description="Parametrický sweep Modelu 3 (Hybridní dvoustupňové přizpůsobení)")
+        parser_m3.add_argument("--sweep-target", choices=["inset", "y0", "trans_w", "w_t", "trans_l", "l_t", "delta_l", "patch_l"], default=None,
+                                help="Cíl sweepování: 'inset' (y0, výchozí), 'trans_w' (w_T), 'trans_l' (l_T), 'delta_l', 'patch_l'")
+        parser_m3.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
+        parser_m3.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")
+        parser_m3.add_argument("--insets", type=float, nargs="+", default=None)
+        parser_m3.add_argument("--insets-b", type=float, nargs="+", default=None)
+        parser_m3.add_argument("--insets-l", type=float, nargs="+", default=None)
+        parser_m3.add_argument("--fixed-name", choices=["inset_b", "inset_l"], default=None)
+        parser_m3.add_argument("--fixed-val", type=float, default=None)
+        parser_m3.add_argument("--trans-w-list", "--w-t-list", type=float, nargs="+", default=None, dest="trans_w_list")
+        parser_m3.add_argument("--trans-l-list", "--l-t-list", type=float, nargs="+", default=None, dest="trans_l_list")
+        parser_m3.add_argument("--delta-l", "--sweep-delta-l", type=float, nargs="+", default=None, dest="delta_l")
+        parser_m3.add_argument("--patch-lengths", type=float, nargs="+", default=None, dest="patch_lengths")
+        parser_m3.add_argument("--trans-w", "--w-t", type=float, default=None, dest="trans_w")
+        parser_m3.add_argument("--trans-l", "--l-t", type=float, default=None, dest="trans_l")
+        parser_m3.add_argument("--inset-b", type=float, default=None, dest="inset_b")
+        parser_m3.add_argument("--inset-l", type=float, default=None, dest="inset_l")
+        parser_m3.add_argument("--feed-delta-l", type=float, default=None, dest="feed_delta_l")
+        parser_m3.add_argument("--patch-l", type=float, default=None, dest="patch_l")
+        parser_m3.add_argument("--patch-w", type=float, default=None, dest="patch_w")
+        parser_m3.add_argument("--freq-min", type=float, default=None, dest="freq_min")
+        parser_m3.add_argument("--freq-max", type=float, default=None, dest="freq_max")
+        parser_m3.add_argument("--freq-step", type=float, default=None, dest="freq_step")
+        parser_m3.add_argument("--amr-its", type=int, default=None, dest="amr_max_its")
+        parser_m3.add_argument("--linear-tol", type=float, default=None, dest="linear_tol")
+        parser_m3.add_argument("--linear-its", type=int, default=None, dest="linear_max_its")
+        parser_m3.add_argument("--farfield-nsample", type=int, default=None, dest="farfield_nsample")
+        parser_m3.add_argument("--no-export", dest="export_each", action="store_false", default=None)
+        parser_m3.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true", default=False)
+        parser_m3.add_argument("--driven-port", choices=["all", "1", "2"], default=None)
+        m3_args = parser_m3.parse_args(remaining_argv)
+
+        run_sweep_model3(
+            mode=m3_args.mode,
+            sweep_target=m3_args.sweep_target,
+            insets=m3_args.insets,
+            insets_b=m3_args.insets_b,
+            insets_l=m3_args.insets_l,
+            fixed_name=m3_args.fixed_name,
+            fixed_val=m3_args.fixed_val,
+            manual_pairs=m3_args.manual_pairs,
+            trans_w_list=m3_args.trans_w_list,
+            trans_l_list=m3_args.trans_l_list,
+            delta_l=m3_args.delta_l,
+            patch_lengths=m3_args.patch_lengths,
+            trans_w=m3_args.trans_w,
+            trans_l=m3_args.trans_l,
+            inset_b=m3_args.inset_b,
+            inset_l=m3_args.inset_l,
+            feed_delta_l=m3_args.feed_delta_l,
+            patch_l=m3_args.patch_l,
+            patch_w=m3_args.patch_w,
+            freq_min=m3_args.freq_min,
+            freq_max=m3_args.freq_max,
+            freq_step=m3_args.freq_step,
+            amr_max_its=m3_args.amr_max_its,
+            farfield_nsample=m3_args.farfield_nsample,
+            linear_tol=m3_args.linear_tol,
+            linear_max_its=m3_args.linear_max_its,
+            export_each=m3_args.export_each,
+            skip_simulation=m3_args.skip_simulation,
+            driven_port=m3_args.driven_port,
+        )
+
+    elif selected_model == 2:
         from sweep_model2 import run_sweep_model2
         sys.argv = [sys.argv[0]] + remaining_argv
         # Spustíme parser z sweep_model2

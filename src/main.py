@@ -80,7 +80,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     # Načtení případného .env souboru
     load_env()
 
-    # Model antény (1 = původní T-dělič 50 Ohm, 2 = nový dvouportový model 100 Ohm LHCP)
+    # Model antény (1 = původní T-dělič 50 Ohm, 2 = dvouportový model 100 Ohm LHCP, 3 = hybridní dvoustupňové přizpůsobení)
     antenna_model = _resolve_param('antenna_model', 'ANTENNA_MODEL', 1, custom_params, int)
 
     # 1. Parametrizace materiálů a frekvenčního pásma
@@ -103,15 +103,16 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     farfield_nsample = _resolve_param('farfield_nsample', 'FARFIELD_NSAMPLE', 16200, custom_params, int)
     save_step = _resolve_param('save_step', 'SAVE_STEP', 1, custom_params, int)
     
-    default_port_z0 = 100.0 if antenna_model == 2 else PORT_Z0
+    default_port_z0 = 100.0 if antenna_model in (2, 3) else PORT_Z0
     port_impedance = _resolve_param('port_impedance', 'PORT_IMPEDANCE', default_port_z0, custom_params, float)
     linear_tol = _resolve_param('linear_tol', 'LINEAR_TOL', 1e-6, custom_params, float)
     linear_max_its = _resolve_param('linear_max_its', 'LINEAR_MAX_ITS', 100, custom_params, int)
 
     print(f"--- Model {antenna_model} | Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, Port Z0 {port_impedance:.1f} Ohm ---")
 
-    # Geometrie flíčku
-    patch_l = _resolve_param('patch_L', 'PATCH_L', 30.3, custom_params, float)
+    # Geometrie flíčku (výchozí 28.8 mm pro Model 2 a 3, 30.3 mm pro Model 1)
+    default_patch_l = 28.8 if antenna_model in (2, 3) else 30.3
+    patch_l = _resolve_param('patch_L', 'PATCH_L', default_patch_l, custom_params, float)
     patch_w = _resolve_param('patch_W', 'PATCH_W', patch_l, custom_params, float)
 
     # Rozměry vzduchového boxu: vzdálenost stěn >= lambda_0 / 4 při nejnižší frekvenci
@@ -143,7 +144,89 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         'design_freq_ghz': DESIGN_FREQ_GHZ,
     }
 
-    if antenna_model == 2:
+    if antenna_model == 3:
+        # MODEL 3: Hybridní dvoustupňové přizpůsobení (Cesta B)
+        # Šířka a délka čtvrtvlnného transformátoru
+        trans_w = _resolve_param('trans_w', 'TRANS_W', 0.42, custom_params, float)
+        trans_w_b = _resolve_param('trans_w_b', 'TRANS_W_B', trans_w, custom_params, float)
+        trans_w_l = _resolve_param('trans_w_l', 'TRANS_W_L', trans_w, custom_params, float)
+        params['trans_w'] = trans_w
+        params['trans_w_b'] = trans_w_b
+        params['trans_w_l'] = trans_w_l
+        params['w_T'] = trans_w
+
+        trans_l = _resolve_param('trans_l', 'TRANS_L', None, custom_params, float)
+        trans_l_b = _resolve_param('trans_l_b', 'TRANS_L_B', trans_l, custom_params, float)
+        trans_l_l = _resolve_param('trans_l_l', 'TRANS_L_L', trans_l, custom_params, float)
+        if trans_l is not None:
+            params['trans_l'] = trans_l
+            params['l_T'] = trans_l
+        if trans_l_b is not None:
+            params['trans_l_b'] = trans_l_b
+        if trans_l_l is not None:
+            params['trans_l_l'] = trans_l_l
+
+        # Mělký zářez
+        feed_inset_b = _resolve_param('feed_inset_b', 'FEED_INSET_B', None, custom_params, float)
+        if feed_inset_b is None:
+            feed_inset_b = _resolve_param('inset_b', 'INSET_B', None, custom_params, float)
+        if feed_inset_b is None:
+            feed_inset_b = _resolve_param('feed_inset', 'FEED_INSET', 2.5, custom_params, float)
+
+        feed_inset_l = _resolve_param('feed_inset_l', 'FEED_INSET_L', None, custom_params, float)
+        if feed_inset_l is None:
+            feed_inset_l = _resolve_param('inset_l', 'INSET_L', None, custom_params, float)
+        if feed_inset_l is None:
+            feed_inset_l = _resolve_param('feed_inset', 'FEED_INSET', 2.5, custom_params, float)
+
+        feed_gap_b = _resolve_param('feed_inset_gap_b', 'FEED_INSET_GAP_B', None, custom_params, float)
+        if feed_gap_b is None:
+            feed_gap_b = _resolve_param('inset_gap_b', 'INSET_GAP_B', None, custom_params, float)
+        if feed_gap_b is None:
+            feed_gap_b = _resolve_param('feed_inset_gap', 'FEED_INSET_GAP', 0.5, custom_params, float)
+
+        feed_gap_l = _resolve_param('feed_inset_gap_l', 'FEED_INSET_GAP_L', None, custom_params, float)
+        if feed_gap_l is None:
+            feed_gap_l = _resolve_param('inset_gap_l', 'INSET_GAP_L', None, custom_params, float)
+        if feed_gap_l is None:
+            feed_gap_l = _resolve_param('feed_inset_gap', 'FEED_INSET_GAP', 0.5, custom_params, float)
+
+        params['feed_inset_b'] = feed_inset_b
+        params['feed_inset_l'] = feed_inset_l
+        params['inset_b'] = feed_inset_b
+        params['inset_l'] = feed_inset_l
+        params['inset_gap_b'] = feed_gap_b
+        params['inset_gap_l'] = feed_gap_l
+
+        driven_port = _resolve_param('driven_port', 'DRIVEN_PORT', 'all', custom_params, str)
+        params['driven_port'] = driven_port
+
+        # Explicitní délky přívodů a fázovacího úseku
+        feed_len_b = _resolve_param('feed_len_b', 'FEED_LEN_B', None, custom_params, float)
+        feed_len_l = _resolve_param('feed_len_l', 'FEED_LEN_L', None, custom_params, float)
+        feed_delta_l = _resolve_param('feed_delta_l', 'FEED_DELTA_L', None, custom_params, float)
+        if feed_delta_l is None:
+            feed_delta_l = _resolve_param('delta_l', 'DELTA_L', None, custom_params, float)
+
+        if feed_len_b is not None:
+            params['feed_len_b'] = feed_len_b
+        if feed_len_l is not None:
+            params['feed_len_l'] = feed_len_l
+        if feed_delta_l is not None:
+            params['feed_delta_l'] = feed_delta_l
+
+        len_info = []
+        if feed_len_b is not None:
+            len_info.append(f"feed_len_b={feed_len_b:.2f}mm")
+        if feed_len_l is not None:
+            len_info.append(f"feed_len_l={feed_len_l:.2f}mm")
+        if feed_delta_l is not None:
+            len_info.append(f"delta_l={feed_delta_l:.2f}mm")
+        len_str = f", {', '.join(len_info)}" if len_info else ""
+
+        print(f"--- Model 3 (Hybrid Matching): w_T={trans_w:.2f} mm, y0b={feed_inset_b:.2f} mm, y0l={feed_inset_l:.2f} mm, Buzení = {driven_port}{len_str} ---")
+
+    elif antenna_model == 2:
         # MODEL 2: Nezávislá zanoření inset_b a inset_l
         feed_inset_b = _resolve_param('feed_inset_b', 'FEED_INSET_B', None, custom_params, float)
         if feed_inset_b is None:
@@ -279,12 +362,12 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     output_dir = os.path.join(data_dir, "postpro")
 
     driven_mode = str(params.get('driven_port', os.getenv('DRIVEN_PORT', 'all'))).lower().strip()
-    is_model2_matrix = (
-        antenna_model == 2
+    is_model_matrix = (
+        antenna_model in (2, 3)
         and driven_mode in ('all', 'both', 'matrix', 'full', 's_matrix')
     )
 
-    if is_model2_matrix:
+    if is_model_matrix:
         print("--- Spouštím dvoukrokovou simulaci pro kompletní 2-portovou S-matici (Port 1 a Port 2) ---")
 
         # 1. KROK: Port 1 (spodní, Ey)
@@ -329,7 +412,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         build_palace_config(params)
 
     else:
-        # Běžný jednorázový běh (Model 1, nebo explicitně zadaný jeden port u Modelu 2)
+        # Běžný jednorázový běh (Model 1, nebo explicitně zadaný jeden port u Modelu 2 a 3)
         build_palace_config(params)
         try:
             run_palace()
@@ -343,7 +426,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     print("--- 5. Zpracování výsledků ---")
     
     # Zpracování výsledků podle modelu antény
-    if antenna_model == 2:
+    if antenna_model in (2, 3):
         _process_results_model2(params, output_dir, data_dir, run_name)
     else:
         _process_results_model1(params, output_dir, data_dir, run_name)
@@ -434,7 +517,7 @@ def _process_results_model2(params, output_dir, data_dir, run_name):
                 plt.plot(freqs, s21_db, label='S21 (Vazba 1->2)', color='darkgreen', lw=1.5, linestyle=':')
             elif s12_db is not None:
                 plt.plot(freqs, s12_db, label='S12 (Vazba 2->1)', color='darkgreen', lw=1.5, linestyle=':')
-            plt.title('Činitele odrazu S11 a S22 - Model 2 (100 Ω LHCP)')
+            plt.title(f'Činitele odrazu S11 a S22 - Model {params.get("antenna_model", 2)} (100 Ω LHCP)')
             plt.xlabel('Frekvence [GHz]')
             plt.ylabel('S-parametry [dB]')
             plt.grid(True)
@@ -450,7 +533,7 @@ def _process_results_model2(params, output_dir, data_dir, run_name):
         except Exception as e:
             print(f"Upozornění při vykreslování S-parametrů grafu: {e}")
 
-    # Záznam do tabulky Modelu 2
+    # Záznam do tabulky Modelu
     dummy_csv = os.path.join(output_dir, "port-S.csv")
     analyze_and_log_run(params, dummy_csv, run_name=run_name)
 
@@ -459,8 +542,8 @@ def _process_results_model2(params, output_dir, data_dir, run_name):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="LHCP Patch Antenna Simulation & CAD Model Generation")
-    parser.add_argument("--model", type=int, choices=[1, 2], default=None, dest="antenna_model",
-                        help="Verze modelu antény: 1 (T-dělič 50 Ohm), 2 (dvouportový 100 Ohm LHCP). Výchozí: 1 nebo z ANTENNA_MODEL")
+    parser.add_argument("--model", type=int, choices=[1, 2, 3], default=None, dest="antenna_model",
+                        help="Verze modelu antény: 1 (T-dělič 50 Ohm), 2 (dvouportový 100 Ohm LHCP), 3 (hybridní dvoustupňový). Výchozí: 1 nebo z ANTENNA_MODEL")
     parser.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true",
                         help="Generovat pouze model, CAD STEP soubor a síť lokálně bez spouštění simulace v Dockeru")
     parser.add_argument("--clean", dest="clean", action="store_true",
@@ -494,27 +577,31 @@ if __name__ == "__main__":
 
     # Parametrizace geometrie patche a zanoření
     parser.add_argument("--patch-l", type=float, default=None, dest="patch_L",
-                        help="Délka flíčku patche v mm (výchozí: 30.3 nebo z PATCH_L)")
+                        help="Délka flíčku patche v mm (výchozí: 30.3 pro M1, 28.8 pro M2/M3 nebo z PATCH_L)")
     parser.add_argument("--patch-w", type=float, default=None, dest="patch_W",
                         help="Šířka flíčku patche v mm (výchozí: z PATCH_W nebo rovno patch-l)")
     parser.add_argument("--inset", "--feed-inset", type=float, default=None, dest="feed_inset",
                         help="Hloubka zanoření napaječe do flíčku v mm (výchozí: 0.0 nebo z FEED_INSET)")
     parser.add_argument("--inset-b", type=float, default=None, dest="feed_inset_b",
-                        help="Hloubka zanoření spodního napaječe pro Model 2 (výchozí: FEED_INSET_B nebo FEED_INSET)")
+                        help="Hloubka zanoření spodního napaječe pro Model 2 a 3 (výchozí: FEED_INSET_B nebo FEED_INSET)")
     parser.add_argument("--inset-l", type=float, default=None, dest="feed_inset_l",
-                        help="Hloubka zanoření levého napaječe pro Model 2 (výchozí: FEED_INSET_L nebo FEED_INSET)")
+                        help="Hloubka zanoření levého napaječe pro Model 2 a 3 (výchozí: FEED_INSET_L nebo FEED_INSET)")
     parser.add_argument("--inset-gap-b", type=float, default=None, dest="feed_inset_gap_b",
                         help="Šířka mezery zářezu spodního napaječe (výchozí: FEED_INSET_GAP_B)")
     parser.add_argument("--inset-gap-l", type=float, default=None, dest="feed_inset_gap_l",
                         help="Šířka mezery zářezu levého napaječe (výchozí: FEED_INSET_GAP_L)")
     parser.add_argument("--feed-len-b", "--feed-length-b", type=float, default=None, dest="feed_len_b",
-                        help="Délka spodního přívodu pro Model 2 v mm (výchozí: z W_sub + lambda_g/4 nebo FEED_LEN_B)")
+                        help="Délka spodního přívodu pro Model 2 a 3 v mm (výchozí: z W_sub + lambda_g/4 nebo FEED_LEN_B)")
     parser.add_argument("--feed-len-l", "--feed-length-l", type=float, default=None, dest="feed_len_l",
-                        help="Délka levého přívodu pro Model 2 v mm (výchozí: L_ref nebo FEED_LEN_L)")
+                        help="Délka levého přívodu pro Model 2 a 3 v mm (výchozí: L_ref nebo FEED_LEN_L)")
     parser.add_argument("--feed-delta-l", "--delta-l", type=float, default=None, dest="feed_delta_l",
-                        help="Rozdíl délek přívodů Delta L = L_feed_b - L_feed_l pro Model 2 v mm (výchozí: lambda_g/4 nebo FEED_DELTA_L)")
+                        help="Rozdíl délek přívodů Delta L = L_feed_b - L_feed_l pro Model 2 a 3 v mm (výchozí: lambda_g/4 nebo FEED_DELTA_L)")
+    parser.add_argument("--trans-w", "--w-t", "--w-trans", type=float, default=None, dest="trans_w",
+                        help="Šířka čtvrtvlnného transformátoru pro Model 3 v mm (výchozí: 0.42 nebo TRANS_W)")
+    parser.add_argument("--trans-l", "--l-t", "--l-trans", type=float, default=None, dest="trans_l",
+                        help="Délka čtvrtvlnného transformátoru pro Model 3 v mm (výchozí: auto lambda_g/4 nebo TRANS_L)")
     parser.add_argument("--driven-port", type=str, default=None, dest="driven_port",
-                        help="Volba buzeného portu pro Model 2: '1' (spodní), '2' (levý), 'all' (oba současně pro LHCP). Výchozí: all")
+                        help="Volba buzeného portu pro Model 2 a 3: '1' (spodní), '2' (levý), 'all' (oba současně pro LHCP). Výchozí: all")
 
     args = parser.parse_args()
 
@@ -522,7 +609,7 @@ if __name__ == "__main__":
     for param in ['antenna_model', 'freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
                   'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its',
                   'patch_L', 'patch_W', 'feed_inset', 'feed_inset_b', 'feed_inset_l', 'feed_inset_gap_b', 'feed_inset_gap_l',
-                  'feed_len_b', 'feed_len_l', 'feed_delta_l', 'driven_port']:
+                  'feed_len_b', 'feed_len_l', 'feed_delta_l', 'trans_w', 'trans_l', 'driven_port']:
         val = getattr(args, param, None)
         if val is not None:
             cli_params[param] = val

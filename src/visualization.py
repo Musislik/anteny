@@ -37,7 +37,50 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
     # Patch (měď - oranžová)
     add_rect(ax, -W/2, -L/2, W, L, h, color='orange', alpha=0.9)
 
-    if model_version == 2:
+    if model_version == 3:
+        # MODEL 3: Hybridní dvoustupňové přizpůsobení (Cesta B)
+        w_feed = float(params.get('w_feed', params.get('w2', 0.694)))
+        w_T_b = float(params.get('trans_w_b', params.get('w_T_b', params.get('trans_w', params.get('w_T', 0.42)))))
+        w_T_l = float(params.get('trans_w_l', params.get('w_T_l', params.get('trans_w', params.get('w_T', 0.42)))))
+        l_T_b = float(params.get('trans_l_b', params.get('l_T_b', params.get('trans_l', params.get('l_T', 18.88)))))
+        l_T_l = float(params.get('trans_l_l', params.get('l_T_l', params.get('trans_l', params.get('l_T', 18.88)))))
+        inset_b = float(params.get('feed_inset_b', params.get('inset_b', 2.5)))
+        inset_l = float(params.get('feed_inset_l', params.get('inset_l', 2.5)))
+        y_port = float(params.get('y_port', -L_sub / 2.0))
+        x_port = float(params.get('x_port', -W_sub / 2.0))
+        feed_delta_l = float(params.get('feed_delta_l', params.get('delta_l', 18.66)))
+
+        # Spodní rameno (Port 1):
+        # 1. Transformátor
+        y_junc_b = -L / 2.0 + inset_b - l_T_b
+        add_rect(ax, -w_T_b/2, y_junc_b, w_T_b, l_T_b, h, color='gold', alpha=0.95)
+        # 2. Vnější 100 Ohm vedení
+        add_rect(ax, -w_feed/2, y_port, w_feed, y_junc_b - y_port, h, color='darkorange', alpha=0.95)
+
+        # Levý přívod (Port 2):
+        # 1. Transformátor
+        x_junc_l = -W / 2.0 + inset_l - l_T_l
+        add_rect(ax, x_junc_l, -w_T_l/2, l_T_l, w_T_l, h, color='gold', alpha=0.95)
+        # 2. Vnější 100 Ohm vedení
+        add_rect(ax, x_port, -w_feed/2, x_junc_l - x_port, w_feed, h, color='darkorange', alpha=0.95)
+
+        # Port 1 (spodní hrana substrátu, XZ rovina)
+        port1_verts = [[
+            (-w_feed/2, y_port, 0), (+w_feed/2, y_port, 0),
+            (+w_feed/2, y_port, h), (-w_feed/2, y_port, h)
+        ]]
+        ax.add_collection3d(Poly3DCollection(port1_verts, facecolors='red', alpha=0.9, edgecolors='k'))
+
+        # Port 2 (levá hrana substrátu, YZ rovina)
+        port2_verts = [[
+            (x_port, -w_feed/2, 0), (x_port, +w_feed/2, 0),
+            (x_port, +w_feed/2, h), (x_port, -w_feed/2, h)
+        ]]
+        ax.add_collection3d(Poly3DCollection(port2_verts, facecolors='crimson', alpha=0.9, edgecolors='k'))
+
+        plot_title = f'Model 3 (Hybrid Matching): L={L:.1f}mm, y0={inset_b:.2f}mm, w_T={w_T_b:.2f}mm, l_T={l_T_b:.1f}mm, dL={feed_delta_l:.1f}mm'
+
+    elif model_version == 2:
         # MODEL 2: Dva nezávislé přímé přívody (100 Ohm)
         w = float(params.get('w_feed', params.get('w2', 0.69)))
         inset_b = float(params.get('feed_inset_b', params.get('inset_b', 0.0)))

@@ -9,11 +9,11 @@ DEFAULT_PORT_IMPEDANCE_V2 = 100.0
 def build_palace_config(params):
     model_version = int(params.get('antenna_model', 1))
     
-    if model_version == 2:
+    if model_version in (2, 3):
         port_r = float(params.get('port_impedance', DEFAULT_PORT_IMPEDANCE_V2))
         driven_mode = str(params.get('driven_port', os.getenv('DRIVEN_PORT', 'all'))).lower().strip()
 
-        # Volba buzení portů pro Model 2:
+        # Volba buzení portů pro Model 2 a Model 3:
         # '1', 'b', 'bottom', 'ey' -> budit pouze Port 1 (spodní, Ey) pro čisté S11 a S21
         # '2', 'l', 'left', 'ex'   -> budit pouze Port 2 (levý, Ex) pro čisté S22 a S12
         # 'simultaneous', 'dual'   -> budit oba porty současně
