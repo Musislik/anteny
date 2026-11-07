@@ -120,7 +120,7 @@ def build_palace_config(params):
             "LumpedPort": lumped_ports
         },
         "Solver": {
-            "Order": 2,
+            "Order": int(params.get('solver_order', os.getenv('SOLVER_ORDER', 2))),
             "Driven": {
                 "MinFreq": params['freq_min'],
                 "MaxFreq": params['freq_max'],

@@ -365,7 +365,14 @@ def run_sweep_model3(
     s_fmax = float(freq_max if freq_max is not None else os.getenv("SWEEP_FREQ_MAX", os.getenv("FREQ_MAX", "2.345")))
     s_fstep = float(freq_step if freq_step is not None else os.getenv("SWEEP_FREQ_STEP", os.getenv("FREQ_STEP", "0.001")))
     s_amr = int(amr_max_its if amr_max_its is not None else os.getenv("SWEEP_AMR_MAX_ITS", os.getenv("AMR_MAX_ITS", "0")))
-    s_ff_nsample = int(farfield_nsample if farfield_nsample is not None else os.getenv("SWEEP_FARFIELD_NSAMPLE", os.getenv("FARFIELD_NSAMPLE", "16200")))
+    s_amr_tol = float(os.getenv("SWEEP_AMR_THRESHOLD", os.getenv("AMR_THRESHOLD", "0.15")))
+    s_mesh_size_min = float(os.getenv("SWEEP_MESH_SIZE_MIN", os.getenv("MESH_SIZE_MIN", "0.28")))
+    s_mesh_size_max = float(os.getenv("SWEEP_MESH_SIZE_MAX", os.getenv("MESH_SIZE_MAX", "6.0")))
+    s_mesh_dist_min = float(os.getenv("SWEEP_MESH_DIST_MIN", os.getenv("MESH_DIST_MIN", "0.4")))
+    s_mesh_dist_max = float(os.getenv("SWEEP_MESH_DIST_MAX", os.getenv("MESH_DIST_MAX", "4.5")))
+    s_linear_tol = float(linear_tol if linear_tol is not None else os.getenv("SWEEP_LINEAR_TOL", os.getenv("LINEAR_TOL", "1e-5")))
+    s_linear_max_its = int(linear_max_its if linear_max_its is not None else os.getenv("SWEEP_LINEAR_MAX_ITS", os.getenv("LINEAR_MAX_ITS", "150")))
+    s_ff_nsample = int(farfield_nsample if farfield_nsample is not None else os.getenv("SWEEP_FARFIELD_NSAMPLE", os.getenv("FARFIELD_NSAMPLE", "4050")))
     s_save_step = int(os.getenv("SWEEP_SAVE_STEP", "0" if s_amr == 0 else "1"))
     s_driven_port = str(driven_port if driven_port is not None else os.getenv("SWEEP_DRIVEN_PORT", os.getenv("DRIVEN_PORT", "all"))).lower().strip()
 
@@ -373,7 +380,7 @@ def run_sweep_model3(
     print("SPUŠTĚNÍ PARAMETRICKÉHO SWEEPU MODELU 3 (HYBRIDNÍ PŘIZPŮSOBENÍ, CESTA B):")
     print(f"Cíl sweepování: {sweep_desc}")
     print(f"Frekvence: {s_fmin:.3f} až {s_fmax:.3f} GHz (krok {s_fstep:.4f} GHz)")
-    print(f"AMR zjemnění: {s_amr} iterací, Dálkové pole: {s_ff_nsample} bodů, Buzení portů: {s_driven_port}")
+    print(f"Síť Gmsh: h_min = {s_mesh_size_min:.2f} mm, h_max = {s_mesh_size_max:.2f} mm | AMR zjemnění: {s_amr} iterací, Dálkové pole: {s_ff_nsample} bodů, Buzení portů: {s_driven_port}")
     print("=" * 105 + "\n")
 
     t_start = time.time()
@@ -388,17 +395,20 @@ def run_sweep_model3(
             'freq_min': s_fmin,
             'freq_max': s_fmax,
             'freq_step': s_fstep,
+            'mesh_size_min': s_mesh_size_min,
+            'mesh_size_max': s_mesh_size_max,
+            'mesh_dist_min': s_mesh_dist_min,
+            'mesh_dist_max': s_mesh_dist_max,
             'amr_max_its': s_amr,
+            'amr_threshold': s_amr_tol,
             'farfield_nsample': s_ff_nsample,
             'save_step': s_save_step,
             'driven_port': s_driven_port,
+            'linear_tol': s_linear_tol,
+            'linear_max_its': s_linear_max_its,
         }
         if patch_w is not None:
             custom_cfg['patch_W'] = float(patch_w)
-        if linear_tol is not None:
-            custom_cfg['linear_tol'] = float(linear_tol)
-        if linear_max_its is not None:
-            custom_cfg['linear_max_its'] = int(linear_max_its)
 
         custom_cfg.update(step_params)
 
