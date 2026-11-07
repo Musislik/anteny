@@ -96,14 +96,14 @@ def resolve_export_path(root_dir, output_name=None, default_base="antena_export"
     return os.path.join(target_dir, f"{stem}_{next_num}.zip")
 
 
-def export_paraview_package(output_name=None, output_zip=None):
+def export_paraview_package(output_name=None, output_zip=None, run_name=None, **kwargs):
     root_dir, data_dir = load_env()
     os.chdir(root_dir)
 
     # Zajistíme propojení na poslední AMR iteraci
     ensure_paraview_linked(data_dir)
 
-    target_name = output_name if output_name is not None else output_zip
+    target_name = output_name if output_name is not None else (output_zip if output_zip is not None else run_name)
     output_zip = resolve_export_path(root_dir, target_name)
 
     # 1. Kontrola dostupných dat v DATA_DIR

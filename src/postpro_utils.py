@@ -58,10 +58,14 @@ def load_env(env_path=None):
     # Pokud neexistuje (např. hostitelská cesta jako /mnt/data-nosync/... spuštěná uvnitř Docker kontejneru),
     # použijeme lokální složku projektu data/ (v kontejneru odpovídá /workspace/data).
     if env_data_dir:
-        if os.path.exists("/.dockerenv") and not os.path.exists(env_data_dir):
+        is_container = os.path.exists("/.dockerenv") or os.path.exists("/workspace")
+        if not os.path.exists(env_data_dir) and (is_container or not os.path.isabs(env_data_dir)):
             data_dir = os.path.abspath(os.path.join(root_dir, "data"))
         elif os.path.isabs(env_data_dir):
-            data_dir = os.path.abspath(env_data_dir)
+            if not os.path.exists(env_data_dir) and os.path.exists(os.path.join(root_dir, "data")):
+                data_dir = os.path.abspath(os.path.join(root_dir, "data"))
+            else:
+                data_dir = os.path.abspath(env_data_dir)
         else:
             data_dir = os.path.abspath(os.path.join(root_dir, env_data_dir))
     else:
@@ -81,10 +85,14 @@ def get_export_dir(root_dir=None):
 
     env_export_dir = os.getenv("EXPORT_DIR")
     if env_export_dir:
-        if os.path.exists("/.dockerenv") and not os.path.exists(env_export_dir):
+        is_container = os.path.exists("/.dockerenv") or os.path.exists("/workspace")
+        if not os.path.exists(env_export_dir) and (is_container or not os.path.isabs(env_export_dir)):
             export_dir = os.path.join(root_dir, "export")
         elif os.path.isabs(env_export_dir):
-            export_dir = env_export_dir
+            if not os.path.exists(env_export_dir) and os.path.exists(os.path.join(root_dir, "export")):
+                export_dir = os.path.join(root_dir, "export")
+            else:
+                export_dir = env_export_dir
         else:
             export_dir = os.path.join(root_dir, env_export_dir)
     else:

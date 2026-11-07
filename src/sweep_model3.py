@@ -411,7 +411,7 @@ def run_sweep_model3(
                 try:
                     export_dir = get_export_dir()
                     zip_out = os.path.join(export_dir, f"{step_name}.zip")
-                    export_paraview_package(output_zip=zip_out, run_name=step_name)
+                    export_paraview_package(output_name=step_name, output_zip=zip_out)
                 except Exception as ex:
                     print(f"Upozornění při exportu balíčku pro {step_name}: {ex}")
 
