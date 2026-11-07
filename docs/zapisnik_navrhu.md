@@ -272,3 +272,89 @@ Zahájena realizace modulů:
 - Integrace do `src/geometry.py`, `src/mesh.py`, `src/palace_builder.py`, `src/visualization.py`, `src/main.py`.
 - Integrace do sweepovacího rámce (`src/sweep_model3.py`, `src/sweep.py`).
 - Testy funkčnosti sítě a geometrie (`tests/test_model3.py`).
+
+---
+
+## 12. Metodika a interpretace grafu analytického de-embeddingu (`graf_impedance_skoky.png`)
+
+Pro diagnostiku a oddělení vlivu napájecí sítě od samotného vyzařujícího flíčku generuje skript `scripts/plot_deembedding.py` (a automaticky `src/main.py`) strukturovaný diagnostický graf `graf_impedance_skoky.png`.
+
+Graf striktně dodržuje následující zásady:
+1. **Pravidlo 1 (1 měřicí místo = 1 graf pro impedanci + 1 graf pro odraz):**
+   - **RP1 (Port):** Graf $Z_{in}$ ($\mathrm{Re}$ a $\mathrm{Im}$ s nulovou osou a referencí $100\,\Omega$) + Graf $S_{11}$ v dB (s limitem $-10\,\text{dB}$ a křivkou izolace $S_{21}$).
+   - **RP2 (Svorka transformátoru):** Graf $Z_{RP2}$ ($\mathrm{Re}$ a $\mathrm{Im}$ s referencí $100\,\Omega$) + Graf lokálního $|\Gamma_{RP2}|$ v dB.
+   - **RP3 (Vstup do flíčku):** Graf $Z_{\text{patch}}$ ($\mathrm{Re}$ a $\mathrm{Im}$ s referencí $140\,\Omega$ a nulou pro rezonanci $f_0$) + Graf lokálního $|\Gamma_{\text{patch}}|$ v dB.
+2. **Pravidlo 2 (Izolované buzení jednoho portu `DRIVEN_PORT=1` nebo `2`):**
+   - Kreslí se **VÝHRADNĚ aktivní cesta**! Pasivní port se v grafech impedance ani de-embeddingu vůbec nezobrazuje (žádné matoucí čárkované čáry druhého portu).
+   - Jediné, co se z druhého portu zobrazí, je křivka přeslechu/izolace $S_{21}$ (resp. $S_{12}$) v dB v grafu RP1, aby inženýr viděl únik energie do pasivního portu.
+3. **Pravidlo 3 (Buzení oběma porty `DRIVEN_PORT=all`):**
+   - Samostatný finální graf S-parametrů `graf_S_parametry.png` ($S_{11}, S_{22}, S_{21}$ v dB a vstupní impedance).
+   - V de-embedding grafu přehledné rozdělení (dva samostatné bloky sloupců: levý pro Port 1, pravý pro Port 2, s plným zachováním pravidla 1 pro každou polarizaci).
+
+```
+[RP1: Port 100 Ω] --- (100 Ω úsek L_100) ---> [RP2: Svorka] --- (Transformátor w_T, l_T) ---> [RP3: Flíček ~140 Ω]
+```
+
+---
+
+### 12.1 Podrobný popis jednotlivých rovin a fyzikální význam
+
+#### 1. RP1 (Vstupní port — lumped port na okraji substrátu)
+- **Levý panel (Impedance $Z_{in}$):** Sleduje $\mathrm{Re}\{Z_{in}\}$ a $\mathrm{Im}\{Z_{in}\}$ na svorce budiče. Referenční čára $100\,\Omega$ ukazuje ideální přizpůsobení, černá plná čára $0\,\Omega$ zobrazuje nulovou reaktanci.
+- **Pravý panel (Činitel odrazu $|S_{11}|$ a přeslech $|S_{21}|$):** Zobrazuje modul odrazu v dB s vyznačeným minimem a technickou mezí $-10\,\text{dB}$. Doplňková fialová křivka přeslechu $|S_{21}|$ (či $|S_{12}|$) indikuje míru vazby mezi rameny.
+
+#### 2. RP2 (Svorka čtvrtvlnného transformátoru po odečtení délky $L_{100}$)
+- **Levý panel (Impedance $Z_{RP2}$):** Odpor a reaktance na rozhraní vnějšího $100\,\Omega$ vedení a transformátoru po odečtení délky $L_{100}$. Cíl pro $\mathrm{Re}$: **$100\,\Omega$**, pro $\mathrm{Im}$: **$0\,\Omega$**.
+- **Pravý panel (Lokální činitel odrazu $|\Gamma_{RP2}|$):** Lokální odraz vztažený k referenci $100\,\Omega$. Odhaluje, zda je transformátor správně navržen pro transformaci impedance flíčku na $100\,\Omega$.
+
+#### 3. RP3 (Vstup do vyzařujícího flíčku v zářezu)
+- **Levý panel (Vlastní impedance flíčku $Z_{\text{patch}}$):** Skutečný vyzařovací odpor $\mathrm{Re}\{Z_{\text{patch}}\}$ a reaktance $\mathrm{Im}\{Z_{\text{patch}}\}$ samotného flíčku bez vlivu napájecích vedení a transformátoru.
+  - Cílová referenční hodnota: $R_{\text{patch}} \approx 140\,\Omega$ (pro mělký zářez Modelu 3: $R_{\text{patch}} = Z_T^2 / 100$).
+  - **Detekce vlastní rezonance flíčku $f_0$:** Průchod nulou $\mathrm{Im}\{Z_{\text{patch}}\} = 0$ je automaticky detekován a označen červeným bodem s přesnou hodnotou $f_0$ a činného odporu $R(f_0)$.
+- **Pravý panel (Lokální činitel odrazu $|\Gamma_{\text{patch}}|$):** Činitel odrazu vztažený k impedanci flíčku $Z_{0,\text{ref}} \approx 140\,\Omega$. Umožňuje bezpečně určit, zda je zářez $y_0$ optimálně hluboký.
+
+### 12.2 Rychlá inženýrská rozhodovací matice
+
+| Příznak na grafu `graf_impedance_skoky.png` | Fyzikální příčina | Nápravná akce v parametrech |
+| :--- | :--- | :--- |
+| $\mathrm{Im}\{Z^{\text{RP3}}\} < 0$ v celém pásmu | Flíček je elektricky příliš malý (kapacitní) | Zvětšit rozměr flíčku: **zvýšit `PATCH_L`** |
+| $\mathrm{Im}\{Z^{\text{RP3}}\} > 0$ v celém pásmu | Flíček je elektricky příliš velký (indukční) | Zmenšit rozměr flíčku: **snížit `PATCH_L`** |
+| $\mathrm{Re}\{Z^{\text{RP3}}\} > 150\,\Omega$ na obou portech | Mělký zářez nesnížil impedanci dostatečně | Prohloubit zářez: **zvětšit `FEED_INSET_B` i `FEED_INSET_L`** |
+| $\mathrm{Re}\{Z^{\text{RP3}}\} < 130\,\Omega$ na obou portech | Zářez je příliš hluboký | Změlčit zářez: **zmenšit `FEED_INSET_B` i `FEED_INSET_L`** |
+| Velký rozdíl $|\Delta\mathrm{Re}\{Z\}| > 20\,\Omega$ na Panelu 4 | Nesymetrické zatížení mezi $E_y$ a $E_x$ | Jemné asymetrické doladění: **upravit `FEED_INSET_B` vůči `FEED_INSET_L`** |
+| RP3 je na $140\,\Omega$, ale RP2 není na $100\,\Omega$ | Chybí správná transformace $Z_T = \sqrt{100 \cdot 140}$ | Upravit šířku transformátoru: **doladit `TRANS_W`** |
+
+Dal jsem tam špatný rozměr zanoření (antena4_1_1)
+Opakování 4_1_2 - **je zde krásně vidět zvětšení izolace!**
+Pro 30mm je rezonance v 2,318 GHz - chceme ji v 2,3325 GHz -> L = 2,318/2,3325 * 30mm = 29,81mm
+  * ano, 29,81 je dobrý začátek. sice to není uprostřed, ale reálná část impedance klesá rychleji na vyšších frekvencí, tak to tak nechám. S12 je kolem -27,5 dB. Rád bych měl -20, mám možnost buď měnit zanoření nebo transformátor. Zkusím změnit transformátor. Je šílené, jak je to skryté v grafu S parametry. Je taky šílené, jaký hraje 100 um rozdíl
+  * Zlepším pro jistotu určení tohoto zásadního parametru vlastnosti simulace.
+
+Staré parametry simulace:
+AMR_MAX_ITS=0
+AMR_THRESHOLD=0.2
+MESH_SIZE_MAX=8.0
+MESH_SIZE_MIN=0.5
+MESH_DIST_MIN=0.5
+MESH_DIST_MAX=6.0
+LINEAR_TOL=1e-5
+LINEAR_MAX_ITS=100
+
+Nové parametry simulace:
+AMR_MAX_ITS=2
+AMR_THRESHOLD=0.15
+LINEAR_TOL=1e-6
+LINEAR_MAX_ITS=200
+MESH_SIZE_MIN=0.3
+MESH_SIZE_MAX=8.0
+MESH_DIST_MIN=0.5
+MESH_DIST_MAX=5.0
+
+Po zvýšení přesnosti se simalce dosti liší (antena4_1_3)
+Našel jsem novou délku flíčku (29.95 mm)
+Jak přizpůsobit reálnou část impedance
+a) změnou zanoření - to pokazí rezonanční frekvenci a více naruší proud druhého portu (horší kruhová polarizace)
+b) změnou šířky transformátoru - nemělo by to nic moc udělat s anténou, ale myslím si, že kvůli většímu rozdílu impedancí (100 ohmů vs cca 165 ohmů) bude vstup transformátoru více úzkopásmový, ale strmost reálné části impedance na RP2 není moc velká -> volím tuto cestu
+Nastavil jsem délku flíčku na špatném místě, data k ničemu (antena4_2_1)
+Úspěch - vypadá to velmi dobře (antena4_2_2) šířka transformátoru 0.3 mm
+Jednoduchý pohled na buzení druhým portem (rychlé, nepřesné, antena4_3_1)
