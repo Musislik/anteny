@@ -430,12 +430,16 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
     port_z0 = float(params.get('port_impedance', default_z0))
 
     freqs_arr = np.atleast_1d(np.asarray(freqs, dtype=float))
-    s11_arr = np.atleast_1d(np.asarray(s11_complex, dtype=complex))
+    s11_arr = np.atleast_1d(np.asarray(s11_complex, dtype=complex)) if s11_complex is not None else None
     s22_arr = np.atleast_1d(np.asarray(s22_complex, dtype=complex)) if s22_complex is not None else None
 
     # --- 1. RP1: Rovina portu ---
-    z1_rp1 = port_z0 * (1.0 + s11_arr) / (1.0 - s11_arr + 1e-12)
-    gamma1_rp1_db = 20.0 * np.log10(np.clip(np.abs(s11_arr), 1e-10, 10.0))
+    if s11_arr is not None:
+        z1_rp1 = port_z0 * (1.0 + s11_arr) / (1.0 - s11_arr + 1e-12)
+        gamma1_rp1_db = 20.0 * np.log10(np.clip(np.abs(s11_arr), 1e-10, 10.0))
+    else:
+        z1_rp1 = None
+        gamma1_rp1_db = None
 
     if s22_arr is not None:
         z2_rp1 = port_z0 * (1.0 + s22_arr) / (1.0 - s22_arr + 1e-12)
@@ -521,9 +525,13 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         L_100_l = max(8.0, (W_sub / 2.0) - (W / 2.0) + inset_l - l_T_l)
 
     # --- 2. RP2: Svorka transformátoru (po odečtení L_100) ---
-    z1_rp2 = deembed_transmission_line(z1_rp1, z0_feed, gamma_feed, L_100_b)
-    gamma1_rp2 = (z1_rp2 - z0_feed) / (z1_rp2 + z0_feed + 1e-12)
-    gamma1_rp2_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp2), 1e-10, 10.0))
+    if z1_rp1 is not None:
+        z1_rp2 = deembed_transmission_line(z1_rp1, z0_feed, gamma_feed, L_100_b)
+        gamma1_rp2 = (z1_rp2 - z0_feed) / (z1_rp2 + z0_feed + 1e-12)
+        gamma1_rp2_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp2), 1e-10, 10.0))
+    else:
+        z1_rp2 = None
+        gamma1_rp2_db = None
 
     if z2_rp1 is not None:
         z2_rp2 = deembed_transmission_line(z2_rp1, z0_feed, gamma_feed, L_100_l)
@@ -541,11 +549,12 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         z0_Tb, _, _, _, gamma_Tb = calc_microstrip_propagation(w_T_b, h, eps_r, tan_delta, freqs_arr)
         z0_Tl, _, _, _, gamma_Tl = calc_microstrip_propagation(w_T_l, h, eps_r, tan_delta, freqs_arr)
 
-        z1_rp3 = deembed_transmission_line(z1_rp2, z0_Tb, gamma_Tb, l_T_b)
+        z1_rp3 = deembed_transmission_line(z1_rp2, z0_Tb, gamma_Tb, l_T_b) if z1_rp2 is not None else None
         z2_rp3 = deembed_transmission_line(z2_rp2, z0_Tl, gamma_Tl, l_T_l) if z2_rp2 is not None else None
 
         # Cílová reference na flíčku v zářezu ~140 Ohm (R_patch = Z_T^2 / 100)
-        z0_rp3 = float(params.get('z_target_rp3', (z0_Tb**2) / 100.0 if np.ndim(z0_Tb) == 0 else (z0_Tb[0]**2) / 100.0))
+        z0_ref_calc = z0_Tb if z0_Tb is not None else z0_Tl
+        z0_rp3 = float(params.get('z_target_rp3', (z0_ref_calc**2) / 100.0 if np.ndim(z0_ref_calc) == 0 else (z0_ref_calc[0]**2) / 100.0))
     else:
         # Pro Model 2 je l_T = 0, RP2 splývá s RP3
         w_T_b = None
@@ -556,8 +565,11 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         z2_rp3 = z2_rp2
         z0_rp3 = 100.0
 
-    gamma1_rp3 = (z1_rp3 - z0_rp3) / (z1_rp3 + z0_rp3 + 1e-12)
-    gamma1_rp3_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp3), 1e-10, 10.0))
+    if z1_rp3 is not None:
+        gamma1_rp3 = (z1_rp3 - z0_rp3) / (z1_rp3 + z0_rp3 + 1e-12)
+        gamma1_rp3_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp3), 1e-10, 10.0))
+    else:
+        gamma1_rp3_db = None
 
     if z2_rp3 is not None:
         gamma2_rp3 = (z2_rp3 - z0_rp3) / (z2_rp3 + z0_rp3 + 1e-12)

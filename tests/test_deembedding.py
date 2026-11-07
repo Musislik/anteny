@@ -249,5 +249,68 @@ def test_plot_impedance_deembedding_existing_export():
                 os.remove(out_png)
 
 
+def test_plot_impedance_deembedding_single_port_rules(tmp_path):
+    """Test pravidel 1 a 2 pro buzení pouze jednoho portu (Port 1 a Port 2)."""
+    test_dir_p1 = str(tmp_path / "sim_p1")
+    os.makedirs(test_dir_p1, exist_ok=True)
+
+    freqs = np.linspace(2.320, 2.345, 11)
+    s_csv_p1 = os.path.join(test_dir_p1, "port-S.csv")
+    with open(s_csv_p1, "w", encoding="utf-8") as f:
+        f.write("f (GHz),|S[1][1]| (dB),arg(S[1][1]) (deg.),|S[2][1]| (dB),arg(S[2][1]) (deg.)\n")
+        for fq in freqs:
+            f.write(f"{fq:.6e},-22.5,-140.0,-15.5,-120.0\n")
+
+    p1_params = {'antenna_model': 3, 'driven_port': '1', 'patch_L': 28.8, 'patch_W': 28.8, 'port_impedance': 100.0}
+    with open(os.path.join(test_dir_p1, "params.json"), "w", encoding="utf-8") as f:
+        json.dump(p1_params, f)
+
+    out_p1 = os.path.join(test_dir_p1, "graf_impedance_skoky.png")
+    res_p1 = plot_impedance_deembedding(test_dir_p1, params=p1_params, output_png=out_p1)
+    assert res_p1 is not None
+    assert os.path.exists(out_p1)
+    assert os.path.getsize(out_p1) > 10000
+
+    # Port 2 buzení
+    test_dir_p2 = str(tmp_path / "sim_p2")
+    os.makedirs(test_dir_p2, exist_ok=True)
+    s_csv_p2 = os.path.join(test_dir_p2, "port-S.csv")
+    with open(s_csv_p2, "w", encoding="utf-8") as f:
+        f.write("f (GHz),|S[1][2]| (dB),arg(S[1][2]) (deg.),|S[2][2]| (dB),arg(S[2][2]) (deg.)\n")
+        for fq in freqs:
+            f.write(f"{fq:.6e},-16.0,-125.0,-24.0,-142.0\n")
+
+    p2_params = {'antenna_model': 3, 'driven_port': '2', 'patch_L': 29.2, 'patch_W': 29.2, 'port_impedance': 100.0}
+    with open(os.path.join(test_dir_p2, "params.json"), "w", encoding="utf-8") as f:
+        json.dump(p2_params, f)
+
+    out_p2 = os.path.join(test_dir_p2, "graf_impedance_skoky.png")
+    res_p2 = plot_impedance_deembedding(test_dir_p2, params=p2_params, output_png=out_p2)
+    assert res_p2 is not None
+    assert os.path.exists(out_p2)
+    assert os.path.getsize(out_p2) > 10000
+
+
+def test_plot_s_parameters_rules(tmp_path):
+    """Test generování graf_S_parametry.png pro buzení 1 portem i oběma porty."""
+    from plot_s_parameters import plot_s_parameters
+
+    test_dir = str(tmp_path / "sim_sparams")
+    os.makedirs(test_dir, exist_ok=True)
+
+    freqs = np.linspace(2.320, 2.345, 11)
+    s_csv = os.path.join(test_dir, "port-S.csv")
+    with open(s_csv, "w", encoding="utf-8") as f:
+        f.write("f (GHz),|S[1][1]| (dB),arg(S[1][1]) (deg.),|S[2][2]| (dB),arg(S[2][2]) (deg.),|S[2][1]| (dB)\n")
+        for fq in freqs:
+            f.write(f"{fq:.6e},-20.0,-140.0,-18.0,-135.0,-16.5\n")
+
+    out_png = os.path.join(test_dir, "graf_S_parametry.png")
+    res = plot_s_parameters(test_dir, output_png=out_png)
+    assert res is not None
+    assert os.path.exists(out_png)
+    assert os.path.getsize(out_png) > 10000
+
+
 if __name__ == "__main__":
     pytest.main(["-v", __file__])

@@ -466,12 +466,21 @@ def main(custom_params=None, skip_simulation=False, clean=False):
 
 def _generate_advanced_plots(output_dir, data_dir):
     """Automatické generování grafu S-parametrů/impedance a 2D/3D vyzařovacích diagramů po každém kroku simulace."""
+    params_for_deembed = None
+    params_path = os.path.join(data_dir, "params.json")
+    if os.path.exists(params_path):
+        try:
+            with open(params_path, "r", encoding="utf-8") as f:
+                params_for_deembed = json.load(f)
+        except Exception:
+            pass
+
     # 1. Graf S-parametrů a impedance
     try:
         from plot_s_parameters import plot_s_parameters
         s_png_data = os.path.join(data_dir, "graf_S_parametry.png")
         s_png_post = os.path.join(output_dir, "graf_S_parametry.png")
-        plot_s_parameters(output_dir, output_png=s_png_data)
+        plot_s_parameters(output_dir, output_png=s_png_data, params=params_for_deembed)
         if os.path.abspath(s_png_data) != os.path.abspath(s_png_post) and os.path.exists(s_png_data):
             shutil.copy2(s_png_data, s_png_post)
     except Exception as e:
@@ -502,15 +511,6 @@ def _generate_advanced_plots(output_dir, data_dir):
         from plot_deembedding import plot_impedance_deembedding
         deemb_png_data = os.path.join(data_dir, "graf_impedance_skoky.png")
         deemb_png_post = os.path.join(output_dir, "graf_impedance_skoky.png")
-
-        params_for_deembed = None
-        params_path = os.path.join(data_dir, "params.json")
-        if os.path.exists(params_path):
-            try:
-                with open(params_path, "r", encoding="utf-8") as f:
-                    params_for_deembed = json.load(f)
-            except Exception:
-                pass
 
         plot_impedance_deembedding(output_dir, params=params_for_deembed, output_png=deemb_png_data)
         if os.path.abspath(deemb_png_data) != os.path.abspath(deemb_png_post) and os.path.exists(deemb_png_data):
