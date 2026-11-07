@@ -360,27 +360,62 @@ def run_sweep_model3(
     if export_each is None:
         export_each = _resolve_env_bool("SWEEP_EXPORT_EACH", default_val=True)
 
-    # Globální parametry simulace
-    s_fmin = float(freq_min if freq_min is not None else os.getenv("SWEEP_FREQ_MIN", os.getenv("FREQ_MIN", "2.320")))
-    s_fmax = float(freq_max if freq_max is not None else os.getenv("SWEEP_FREQ_MAX", os.getenv("FREQ_MAX", "2.345")))
-    s_fstep = float(freq_step if freq_step is not None else os.getenv("SWEEP_FREQ_STEP", os.getenv("FREQ_STEP", "0.001")))
-    s_amr = int(amr_max_its if amr_max_its is not None else os.getenv("SWEEP_AMR_MAX_ITS", os.getenv("AMR_MAX_ITS", "0")))
-    s_amr_tol = float(os.getenv("SWEEP_AMR_THRESHOLD", os.getenv("AMR_THRESHOLD", "0.15")))
-    s_mesh_size_min = float(os.getenv("SWEEP_MESH_SIZE_MIN", os.getenv("MESH_SIZE_MIN", "0.28")))
-    s_mesh_size_max = float(os.getenv("SWEEP_MESH_SIZE_MAX", os.getenv("MESH_SIZE_MAX", "6.0")))
-    s_mesh_dist_min = float(os.getenv("SWEEP_MESH_DIST_MIN", os.getenv("MESH_DIST_MIN", "0.4")))
-    s_mesh_dist_max = float(os.getenv("SWEEP_MESH_DIST_MAX", os.getenv("MESH_DIST_MAX", "4.5")))
-    s_linear_tol = float(linear_tol if linear_tol is not None else os.getenv("SWEEP_LINEAR_TOL", os.getenv("LINEAR_TOL", "1e-5")))
-    s_linear_max_its = int(linear_max_its if linear_max_its is not None else os.getenv("SWEEP_LINEAR_MAX_ITS", os.getenv("LINEAR_MAX_ITS", "150")))
-    s_ff_nsample = int(farfield_nsample if farfield_nsample is not None else os.getenv("SWEEP_FARFIELD_NSAMPLE", os.getenv("FARFIELD_NSAMPLE", "4050")))
-    s_save_step = int(os.getenv("SWEEP_SAVE_STEP", "0" if s_amr == 0 else "1"))
+    # Globální parametry simulace a profil sweepu ('precise' vs 'fast')
+    sweep_profile = os.getenv("SWEEP_PROFILE", "precise").lower().strip()
+    prefix = "SWEEP_FAST_" if sweep_profile == "fast" else "SWEEP_PRECISE_"
+
+    def _get_prof_env(key, default_val):
+        v = os.getenv(f"{prefix}{key}")
+        if v is not None and v != "":
+            return v
+        v = os.getenv(f"SWEEP_{key}")
+        if v is not None and v != "":
+            return v
+        return str(default_val)
+
+    if sweep_profile == "fast":
+        default_amr = "0"
+        default_amr_tol = "0.15"
+        default_mesh_min = "0.35"
+        default_mesh_max = "8.0"
+        default_dist_min = "0.5"
+        default_dist_max = "5.0"
+        default_linear_tol = "1e-5"
+        default_linear_max_its = "100"
+        default_ff_nsample = "2025"
+        default_freq_step = "0.002"
+    else:  # 'precise' (výchozí konvergovaný profil)
+        default_amr = "3"
+        default_amr_tol = "0.06"
+        default_mesh_min = "0.28"
+        default_mesh_max = "6.0"
+        default_dist_min = "0.4"
+        default_dist_max = "4.5"
+        default_linear_tol = "1e-6"
+        default_linear_max_its = "200"
+        default_ff_nsample = "4050"
+        default_freq_step = "0.001"
+
+    s_fmin = float(freq_min if freq_min is not None else _get_prof_env("FREQ_MIN", os.getenv("FREQ_MIN", "2.320")))
+    s_fmax = float(freq_max if freq_max is not None else _get_prof_env("FREQ_MAX", os.getenv("FREQ_MAX", "2.345")))
+    s_fstep = float(freq_step if freq_step is not None else _get_prof_env("FREQ_STEP", default_freq_step))
+    s_amr = int(amr_max_its if amr_max_its is not None else _get_prof_env("AMR_MAX_ITS", default_amr))
+    s_amr_tol = float(_get_prof_env("AMR_THRESHOLD", default_amr_tol))
+    s_mesh_size_min = float(_get_prof_env("MESH_SIZE_MIN", default_mesh_min))
+    s_mesh_size_max = float(_get_prof_env("MESH_SIZE_MAX", default_mesh_max))
+    s_mesh_dist_min = float(_get_prof_env("MESH_DIST_MIN", default_dist_min))
+    s_mesh_dist_max = float(_get_prof_env("MESH_DIST_MAX", default_dist_max))
+    s_linear_tol = float(linear_tol if linear_tol is not None else _get_prof_env("LINEAR_TOL", default_linear_tol))
+    s_linear_max_its = int(linear_max_its if linear_max_its is not None else _get_prof_env("LINEAR_MAX_ITS", default_linear_max_its))
+    s_ff_nsample = int(farfield_nsample if farfield_nsample is not None else _get_prof_env("FARFIELD_NSAMPLE", default_ff_nsample))
+    s_save_step = int(_get_prof_env("SAVE_STEP", "0"))
     s_driven_port = str(driven_port if driven_port is not None else os.getenv("SWEEP_DRIVEN_PORT", os.getenv("DRIVEN_PORT", "all"))).lower().strip()
 
     print("\n" + "=" * 105)
-    print("SPUŠTĚNÍ PARAMETRICKÉHO SWEEPU MODELU 3 (HYBRIDNÍ PŘIZPŮSOBENÍ, CESTA B):")
+    print(f"SPUŠTĚNÍ PARAMETRICKÉHO SWEEPU MODELU 3 (PROFIL: {sweep_profile.upper()}):")
     print(f"Cíl sweepování: {sweep_desc}")
     print(f"Frekvence: {s_fmin:.3f} až {s_fmax:.3f} GHz (krok {s_fstep:.4f} GHz)")
-    print(f"Síť Gmsh: h_min = {s_mesh_size_min:.2f} mm, h_max = {s_mesh_size_max:.2f} mm | AMR zjemnění: {s_amr} iterací, Dálkové pole: {s_ff_nsample} bodů, Buzení portů: {s_driven_port}")
+    print(f"Síť Gmsh: h_min = {s_mesh_size_min:.2f} mm, h_max = {s_mesh_size_max:.2f} mm | AMR: max {s_amr} it. (Tol {s_amr_tol}) | Lineární řešič Tol: {s_linear_tol}")
     print("=" * 105 + "\n")
 
     t_start = time.time()

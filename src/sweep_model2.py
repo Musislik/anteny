@@ -101,14 +101,24 @@ def _parse_manual_pairs(val):
 
 
 def _resolve_env_float(sweep_key, base_key, default_val):
+    prof = os.getenv("SWEEP_PROFILE", "precise").lower().strip()
+    prefix = "SWEEP_FAST_" if prof == "fast" else "SWEEP_PRECISE_"
+    core_key = sweep_key.replace("SWEEP_", "")
+    prof_key = f"{prefix}{core_key}"
+    val = os.getenv(prof_key)
+    if val is not None and val != "":
+        try:
+            return float(val)
+        except ValueError:
+            pass
     val = os.getenv(sweep_key)
-    if val is not None:
+    if val is not None and val != "":
         try:
             return float(val)
         except ValueError:
             pass
     val = os.getenv(base_key)
-    if val is not None:
+    if val is not None and val != "":
         try:
             return float(val)
         except ValueError:
@@ -117,14 +127,24 @@ def _resolve_env_float(sweep_key, base_key, default_val):
 
 
 def _resolve_env_opt_float(sweep_key, base_key):
+    prof = os.getenv("SWEEP_PROFILE", "precise").lower().strip()
+    prefix = "SWEEP_FAST_" if prof == "fast" else "SWEEP_PRECISE_"
+    core_key = sweep_key.replace("SWEEP_", "")
+    prof_key = f"{prefix}{core_key}"
+    val = os.getenv(prof_key)
+    if val is not None and val != "":
+        try:
+            return float(val)
+        except ValueError:
+            pass
     val = os.getenv(sweep_key)
-    if val is not None:
+    if val is not None and val != "":
         try:
             return float(val)
         except ValueError:
             pass
     val = os.getenv(base_key)
-    if val is not None:
+    if val is not None and val != "":
         try:
             return float(val)
         except ValueError:
@@ -133,14 +153,24 @@ def _resolve_env_opt_float(sweep_key, base_key):
 
 
 def _resolve_env_int(sweep_key, base_key, default_val):
+    prof = os.getenv("SWEEP_PROFILE", "precise").lower().strip()
+    prefix = "SWEEP_FAST_" if prof == "fast" else "SWEEP_PRECISE_"
+    core_key = sweep_key.replace("SWEEP_", "")
+    prof_key = f"{prefix}{core_key}"
+    val = os.getenv(prof_key)
+    if val is not None and val != "":
+        try:
+            return int(val)
+        except ValueError:
+            pass
     val = os.getenv(sweep_key)
-    if val is not None:
+    if val is not None and val != "":
         try:
             return int(val)
         except ValueError:
             pass
     val = os.getenv(base_key)
-    if val is not None:
+    if val is not None and val != "":
         try:
             return int(val)
         except ValueError:
@@ -520,6 +550,7 @@ def run_sweep_model2(
     )
 
     driven_port = driven_port or os.getenv("SWEEP_DRIVEN_PORT") or os.getenv("DRIVEN_PORT", "all")
+    prof = os.getenv("SWEEP_PROFILE", "precise").lower().strip()
     patch_l = patch_l if patch_l is not None else _resolve_env_float("SWEEP_PATCH_L", "PATCH_L", 30.3)
     patch_w = patch_w if patch_w is not None else _resolve_env_float("SWEEP_PATCH_W", "PATCH_W", patch_l)
     freq_min = freq_min if freq_min is not None else _resolve_env_float("SWEEP_FREQ_MIN", "FREQ_MIN", 2.280)
@@ -527,6 +558,10 @@ def run_sweep_model2(
     freq_step = freq_step if freq_step is not None else _resolve_env_float("SWEEP_FREQ_STEP", "FREQ_STEP", 0.005)
     amr_max_its = amr_max_its if amr_max_its is not None else _resolve_env_int("SWEEP_AMR_MAX_ITS", "AMR_MAX_ITS", 1)
     amr_threshold = amr_threshold if amr_threshold is not None else _resolve_env_float("SWEEP_AMR_THRESHOLD", "AMR_THRESHOLD", 0.3)
+    mesh_size_min = _resolve_env_float("SWEEP_MESH_SIZE_MIN", "MESH_SIZE_MIN", 0.35 if prof == "fast" else 0.28)
+    mesh_size_max = _resolve_env_float("SWEEP_MESH_SIZE_MAX", "MESH_SIZE_MAX", 8.0 if prof == "fast" else 6.0)
+    mesh_dist_min = _resolve_env_float("SWEEP_MESH_DIST_MIN", "MESH_DIST_MIN", 0.5 if prof == "fast" else 0.4)
+    mesh_dist_max = _resolve_env_float("SWEEP_MESH_DIST_MAX", "MESH_DIST_MAX", 5.0 if prof == "fast" else 4.5)
     farfield_nsample = farfield_nsample if farfield_nsample is not None else _resolve_env_int("SWEEP_FARFIELD_NSAMPLE", "FARFIELD_NSAMPLE", 16200)
     save_step = save_step if save_step is not None else _resolve_env_int("SWEEP_SAVE_STEP", "SAVE_STEP", 1)
     linear_tol = linear_tol if linear_tol is not None else _resolve_env_float("SWEEP_LINEAR_TOL", "LINEAR_TOL", 1e-5)
@@ -545,7 +580,7 @@ def run_sweep_model2(
         print(f"  • Rozměry flíčku (sweep L):   {p_lengths} mm")
     else:
         print(f"  • Rozměry flíčku:             L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
-    print(f"  • AMR zjemnění / Solver Tol:  {amr_max_its} it. (Tol {amr_threshold}) / {linear_tol}")
+    print(f"  • Síť Gmsh / AMR / Solver:    h_min={mesh_size_min} mm / {amr_max_its} it. (Tol {amr_threshold}) / {linear_tol}")
     print(f"  • Ukládání 3D polí:           každých {save_step} kroků")
     print(f"  • Export ParaView balíčků:    {'ANO' if export_each else 'NE'}")
     print("  • Tabulka výsledků:           export/sweep_results_model2.csv")
@@ -565,6 +600,10 @@ def run_sweep_model2(
             'freq_min': freq_min,
             'freq_max': freq_max,
             'freq_step': freq_step,
+            'mesh_size_min': mesh_size_min,
+            'mesh_size_max': mesh_size_max,
+            'mesh_dist_min': mesh_dist_min,
+            'mesh_dist_max': mesh_dist_max,
             'amr_max_its': amr_max_its,
             'amr_threshold': amr_threshold,
             'farfield_nsample': farfield_nsample,
