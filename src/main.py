@@ -1,6 +1,7 @@
 import os
 import sys
 import shutil
+import json
 import numpy as np
 import matplotlib.pyplot as plt
 import gmsh
@@ -352,7 +353,39 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     
     print("--- 3. Vytváření konfigurace pro Palace ---")
     build_palace_config(params)
-    
+
+    # Uložení aktuálních parametrů modelu do data/params.json
+    root_dir, current_data_dir = load_env()
+    target_param_files = [os.path.join(root_dir, "data", "params.json")]
+    if os.path.abspath(current_data_dir) != os.path.abspath(os.path.join(root_dir, "data")):
+        target_param_files.append(os.path.join(current_data_dir, "params.json"))
+
+    try:
+        def _to_json_val(val):
+            if isinstance(val, (np.integer,)):
+                return int(val)
+            if isinstance(val, (np.floating,)):
+                return float(val)
+            if isinstance(val, np.ndarray):
+                return val.tolist()
+            if isinstance(val, dict):
+                return {k: _to_json_val(v) for k, v in val.items()}
+            if isinstance(val, (list, tuple)):
+                return [_to_json_val(v) for v in val]
+            return val
+
+        serializable_params = {k: _to_json_val(v) for k, v in params.items() if not str(k).startswith('_')}
+        for pfile in target_param_files:
+            try:
+                os.makedirs(os.path.dirname(pfile), exist_ok=True)
+                with open(pfile, "w", encoding="utf-8") as pf:
+                    json.dump(serializable_params, pf, indent=4)
+                print(f"Parametry modelu byly uloženy do {pfile}")
+            except Exception as e_pfile:
+                print(f"Upozornění při ukládání {pfile}: {e_pfile}")
+    except Exception as e:
+        print(f"Upozornění při přípravě parametrů pro uložení: {e}")
+
     if skip_simulation:
         print("--- Hotovo: Geometrie, STEP CAD model, náhled a síť byly vygenerovány lokálně bez simulace v Dockeru. ---")
         return
@@ -463,6 +496,27 @@ def _generate_advanced_plots(output_dir, data_dir):
                 shutil.copy2(rd_3d_data, rd_3d_post)
     except Exception as e:
         print(f"Upozornění při automatickém generování vyzařovacích diagramů: {e}")
+
+    # 3. Graf de-embeddingu impedančních skoků (graf_impedance_skoky.png)
+    try:
+        from plot_deembedding import plot_impedance_deembedding
+        deemb_png_data = os.path.join(data_dir, "graf_impedance_skoky.png")
+        deemb_png_post = os.path.join(output_dir, "graf_impedance_skoky.png")
+
+        params_for_deembed = None
+        params_path = os.path.join(data_dir, "params.json")
+        if os.path.exists(params_path):
+            try:
+                with open(params_path, "r", encoding="utf-8") as f:
+                    params_for_deembed = json.load(f)
+            except Exception:
+                pass
+
+        plot_impedance_deembedding(output_dir, params=params_for_deembed, output_png=deemb_png_data)
+        if os.path.abspath(deemb_png_data) != os.path.abspath(deemb_png_post) and os.path.exists(deemb_png_data):
+            shutil.copy2(deemb_png_data, deemb_png_post)
+    except Exception as e:
+        print(f"Upozornění při automatickém generování grafu de-embeddingu impedance: {e}")
 
 def _process_results_model1(params, output_dir, data_dir, run_name):
     s11_file = os.path.join(output_dir, "port-S.csv")

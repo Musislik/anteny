@@ -149,7 +149,7 @@ def export_paraview_package(output_name=None, output_zip=None):
             shutil.copy2(script_path, os.path.join(temp_pack_dir, "paraview_dynamic_phase.py"))
             print("  + paraview_dynamic_phase.py")
 
-        for s_script in ["plot_s_parameters.py", "plot_radiation_pattern.py"]:
+        for s_script in ["plot_s_parameters.py", "plot_radiation_pattern.py", "plot_deembedding.py"]:
             s_path = os.path.join(root_dir, "scripts", s_script)
             if os.path.exists(s_path):
                 shutil.copy2(s_path, os.path.join(temp_pack_dir, s_script))
@@ -218,9 +218,11 @@ def export_paraview_package(output_name=None, output_zip=None):
             ("geometry_iso.png", "2D náhled geometrie antény"),
             ("S11_graf.png", "2D graf činitele odrazu S11"),
             ("graf_S_parametry.png", "graf S-parametrů a impedance portů"),
+            ("graf_impedance_skoky.png", "analytický de-embedding impedančních skoků napájecí sítě"),
             ("vyzarovaci_diagram_2d.png", "2D polární diagramy řezů X-Z a Y-Z"),
             ("vyzarovaci_diagram_3d.png", "3D prostorový vyzařovací lalok"),
             ("config.json", "vstupní konfigurace FEM řešiče Palace"),
+            ("params.json", "parametry geometrie a modelu"),
         ]
         for fname, desc in extra_models:
             fsrc = os.path.join(data_dir, fname)

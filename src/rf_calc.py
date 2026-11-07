@@ -309,3 +309,302 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
 
     return res
 
+
+def calc_microstrip_propagation(w, h, eps_r, tan_delta=0.02, freqs_ghz=DESIGN_FREQ_GHZ):
+    """
+    Vypočte vlnové parametry mikropáskového vedení:
+    Z0, eps_eff, fázovou konstantu beta [rad/mm], konstantu útlumu alpha [Np/mm]
+    a komplexní konstantu šíření gamma = alpha + j*beta [1/mm].
+
+    :param w: Šířka mikropásku [mm]
+    :param h: Výška substrátu [mm]
+    :param eps_r: Relativní permitivita substrátu [-]
+    :param tan_delta: Ztrátový činitel dielektrika [-]
+    :param freqs_ghz: Frekvence v GHz (skalár nebo numpy pole)
+    :return: (Z0, eps_eff, beta, alpha, gamma)
+    """
+    w = float(w)
+    h = float(h)
+    eps_r = float(eps_r)
+    tan_delta = float(tan_delta)
+
+    eps_eff = calc_microstrip_eps_eff(w, h, eps_r)
+    z0 = calc_microstrip_z0(w, h, eps_r)
+
+    is_scalar = np.ndim(freqs_ghz) == 0
+    freqs = np.atleast_1d(np.asarray(freqs_ghz, dtype=float))
+
+    # Vlnové číslo ve vakuu k0 [rad/mm]
+    k0 = (2.0 * np.pi * freqs) / C_0_MM_GHZ
+
+    # Fázová konstanta beta [rad/mm]
+    beta = k0 * np.sqrt(eps_eff)
+
+    # Útlum dielektrikem alpha_d [Np/mm]
+    if eps_r > 1.0 and tan_delta > 0.0:
+        alpha_d = (k0 * eps_r * (eps_eff - 1.0) * tan_delta) / (2.0 * np.sqrt(eps_eff) * (eps_r - 1.0))
+    else:
+        alpha_d = np.zeros_like(freqs)
+
+    # Útlum vodičem alpha_c [Np/mm] (měď: sigma = 5.8e7 S/m)
+    # R_s = sqrt(pi * f * mu0 / sigma)
+    mu_0 = 4.0 * np.pi * 1e-7
+    sigma_cu = 5.8e7
+    r_s = np.sqrt(np.pi * (freqs * 1e9) * mu_0 / sigma_cu)
+    w_m = max(w * 1e-3, 1e-6)
+    alpha_c = (r_s / (z0 * w_m)) * 1e-3
+
+    alpha = alpha_d + alpha_c
+    gamma = alpha + 1j * beta
+
+    if is_scalar:
+        return float(z0), float(eps_eff), float(beta[0]), float(alpha[0]), complex(gamma[0])
+    return z0, eps_eff, beta, alpha, gamma
+
+
+def deembed_transmission_line(zin, z0_line, gamma, length_mm):
+    """
+    Provede analytický de-embedding úseku přenosového vedení (zpětná transformace impedance/odrazu).
+    Posouvá referenční rovinu směrem k zátěži (odečtení délky vedení length_mm).
+
+    Využívá zpětnou transformaci komplexního činitele odrazu:
+    Gamma_L = Gamma_in * exp(+2 * gamma * length_mm)
+    a následný přepočet na impedanci zátěže:
+    Z_L = Z0_line * (1 + Gamma_L) / (1 - Gamma_L)
+
+    :param zin: Komplexní vstupní impedance před de-embeddingem [Ohm]
+    :param z0_line: Charakteristická impedance de-embedovaného vedení [Ohm]
+    :param gamma: Komplexní konstanta šíření vedení gamma = alpha + j*beta [1/mm]
+    :param length_mm: Fyzická délka úseku vedení k odečtení [mm]
+    :return: Komplexní impedance Z_L v de-embedované rovině [Ohm]
+    """
+    zin_arr = np.asarray(zin, dtype=complex)
+    is_scalar = np.ndim(zin) == 0
+
+    if length_mm is None or abs(length_mm) < 1e-9:
+        return complex(zin_arr) if is_scalar else zin_arr
+
+    z0 = float(z0_line)
+    length = float(length_mm)
+
+    # Vstupní činitel odrazu vztažený k impedanci daného vedení Z0
+    gamma_in = (zin_arr - z0) / (zin_arr + z0 + 1e-12)
+
+    # Posun roviny k zátěži (odstranění fázového zpoždění a útlumu: exp(+2 * gamma * length))
+    gamma_l = gamma_in * np.exp(2.0 * gamma * length)
+
+    # Zpětný přepočet na impedanci zátěže
+    denom = 1.0 - gamma_l
+    safe_denom = np.where(np.abs(denom) < 1e-12, 1e-12, denom)
+    z_load = z0 * (1.0 + gamma_l) / safe_denom
+
+    if is_scalar:
+        return complex(z_load)
+    return z_load
+
+
+def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=None):
+    """
+    Provede kompletní kaskádní de-embedding impedančních skoků pro Model 3 (i Model 2 a Model 1 fallback)
+    přes 3 referenční roviny:
+      - RP1 (Port): svorka lumped portu na okraji substrátu (Z0_port = 100 Ohm)
+      - RP2 (Svorka transformátoru): po odečtení délky vnějšího 100 Ohm vedení L_100
+      - RP3 (Vstup do flíčku): po odečtení čtvrtvlnného transformátoru w_T, l_T (cíl ~140 Ohm)
+
+    :param freqs: Pole frekvencí [GHz]
+    :param s11_complex: Komplexní odraz Portu 1 (spodní rameno Ey) na RP1
+    :param s22_complex: Komplexní odraz Portu 2 (levé rameno Ex) na RP1 (volitelné)
+    :param params: Slovník parametrů modelu (geometrie, substrát, délky)
+    :return: Slovník s výsledky pro RP1, RP2, RP3
+    """
+    if params is None:
+        params = {}
+
+    model = int(params.get('antenna_model', 3))
+    h = float(params.get('sub_h', 1.52))
+    eps_r = float(params.get('eps_r', 4.3))
+    tan_delta = float(params.get('tan_delta', 0.02))
+    f_design = float(params.get('design_freq_ghz', DESIGN_FREQ_GHZ))
+
+    default_z0 = 100.0 if model in (2, 3) else PORT_Z0
+    port_z0 = float(params.get('port_impedance', default_z0))
+
+    freqs_arr = np.atleast_1d(np.asarray(freqs, dtype=float))
+    s11_arr = np.atleast_1d(np.asarray(s11_complex, dtype=complex))
+    s22_arr = np.atleast_1d(np.asarray(s22_complex, dtype=complex)) if s22_complex is not None else None
+
+    # --- 1. RP1: Rovina portu ---
+    z1_rp1 = port_z0 * (1.0 + s11_arr) / (1.0 - s11_arr + 1e-12)
+    gamma1_rp1_db = 20.0 * np.log10(np.clip(np.abs(s11_arr), 1e-10, 10.0))
+
+    if s22_arr is not None:
+        z2_rp1 = port_z0 * (1.0 + s22_arr) / (1.0 - s22_arr + 1e-12)
+        gamma2_rp1_db = 20.0 * np.log10(np.clip(np.abs(s22_arr), 1e-10, 10.0))
+    else:
+        z2_rp1 = None
+        gamma2_rp1_db = None
+
+    # Fallback pro Model 1
+    if model == 1:
+        return {
+            'freqs': freqs_arr,
+            'model': 1,
+            'rp1': {
+                'name': 'RP1 (Port 50 Ω)',
+                'z1': z1_rp1,
+                'z2': None,
+                'gamma1_db': gamma1_rp1_db,
+                'gamma2_db': None,
+                'z0_ref': port_z0,
+            },
+            'rp2': {
+                'name': 'RP2 (T-dělič)',
+                'z1': z1_rp1,
+                'z2': None,
+                'gamma1_db': gamma1_rp1_db,
+                'gamma2_db': None,
+                'z0_ref': port_z0,
+            },
+            'rp3': {
+                'name': 'RP3 (Flíček)',
+                'z1': z1_rp1,
+                'z2': None,
+                'gamma1_db': gamma1_rp1_db,
+                'gamma2_db': None,
+                'z0_ref': port_z0,
+            },
+            'params_used': {'antenna_model': 1, 'port_z0': port_z0}
+        }
+
+    # Parametry vnějšího 100 Ohm mikropáskového vedení
+    w_feed = float(params.get('w_feed', params.get('feed_W', synth_microstrip_w(100.0, h, eps_r))))
+    z0_feed, eps_eff_feed, _, _, gamma_feed = calc_microstrip_propagation(w_feed, h, eps_r, tan_delta, freqs_arr)
+
+    # Odvození délek vnějšího 100 Ohm úseku
+    l_T_default_val = None
+    w_T_def = float(params.get('trans_w', params.get('w_T', 0.42)))
+    if model == 3:
+        eps_eff_tdef = calc_microstrip_eps_eff(w_T_def, h, eps_r)
+        l_T_default_val = calc_quarter_wave_length(f_design, eps_eff_tdef)
+
+    l_T_b = float(params.get('trans_l_b', params.get('l_T_b', params.get('trans_l', params.get('l_T', l_T_default_val if model == 3 else 0.0)))))
+    l_T_l = float(params.get('trans_l_l', params.get('l_T_l', params.get('trans_l', params.get('l_T', l_T_default_val if model == 3 else 0.0)))))
+
+    if model == 2:
+        l_T_b = 0.0
+        l_T_l = 0.0
+
+    raw_L_100_b = params.get('L_100_b')
+    raw_L_100_l = params.get('L_100_l')
+
+    if raw_L_100_b is not None:
+        L_100_b = float(raw_L_100_b)
+    elif params.get('feed_len_b') is not None:
+        L_100_b = float(params['feed_len_b']) - l_T_b
+    else:
+        # Výchozí geometrie
+        W = float(params.get('patch_W', params.get('patch_L', 28.8)))
+        W_sub = float(params.get('sub_W', params.get('sub_w', 80.0)))
+        inset_b = float(params.get('feed_inset_b', params.get('inset_b', 2.5 if model == 3 else 0.0)))
+        feed_delta_l = float(params.get('feed_delta_l', calc_quarter_wave_length(f_design, eps_eff_feed)))
+        L_100_l_def = max(8.0, (W_sub / 2.0) - (W / 2.0) + inset_b - l_T_l)
+        L_100_b = L_100_l_def + feed_delta_l
+
+    if raw_L_100_l is not None:
+        L_100_l = float(raw_L_100_l)
+    elif params.get('feed_len_l') is not None:
+        L_100_l = float(params['feed_len_l']) - l_T_l
+    else:
+        W = float(params.get('patch_W', params.get('patch_L', 28.8)))
+        W_sub = float(params.get('sub_W', params.get('sub_w', 80.0)))
+        inset_l = float(params.get('feed_inset_l', params.get('inset_l', 2.5 if model == 3 else 0.0)))
+        L_100_l = max(8.0, (W_sub / 2.0) - (W / 2.0) + inset_l - l_T_l)
+
+    # --- 2. RP2: Svorka transformátoru (po odečtení L_100) ---
+    z1_rp2 = deembed_transmission_line(z1_rp1, z0_feed, gamma_feed, L_100_b)
+    gamma1_rp2 = (z1_rp2 - z0_feed) / (z1_rp2 + z0_feed + 1e-12)
+    gamma1_rp2_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp2), 1e-10, 10.0))
+
+    if z2_rp1 is not None:
+        z2_rp2 = deembed_transmission_line(z2_rp1, z0_feed, gamma_feed, L_100_l)
+        gamma2_rp2 = (z2_rp2 - z0_feed) / (z2_rp2 + z0_feed + 1e-12)
+        gamma2_rp2_db = 20.0 * np.log10(np.clip(np.abs(gamma2_rp2), 1e-10, 10.0))
+    else:
+        z2_rp2 = None
+        gamma2_rp2_db = None
+
+    # --- 3. RP3: Vstup do flíčku (po odečtení l_T) ---
+    if model == 3 and (l_T_b > 0.0 or l_T_l > 0.0):
+        w_T_b = float(params.get('trans_w_b', params.get('w_T_b', params.get('trans_w', 0.42))))
+        w_T_l = float(params.get('trans_w_l', params.get('w_T_l', params.get('trans_w', 0.42))))
+
+        z0_Tb, _, _, _, gamma_Tb = calc_microstrip_propagation(w_T_b, h, eps_r, tan_delta, freqs_arr)
+        z0_Tl, _, _, _, gamma_Tl = calc_microstrip_propagation(w_T_l, h, eps_r, tan_delta, freqs_arr)
+
+        z1_rp3 = deembed_transmission_line(z1_rp2, z0_Tb, gamma_Tb, l_T_b)
+        z2_rp3 = deembed_transmission_line(z2_rp2, z0_Tl, gamma_Tl, l_T_l) if z2_rp2 is not None else None
+
+        # Cílová reference na flíčku v zářezu ~140 Ohm (R_patch = Z_T^2 / 100)
+        z0_rp3 = float(params.get('z_target_rp3', (z0_Tb**2) / 100.0 if np.ndim(z0_Tb) == 0 else (z0_Tb[0]**2) / 100.0))
+    else:
+        # Pro Model 2 je l_T = 0, RP2 splývá s RP3
+        w_T_b = None
+        w_T_l = None
+        z0_Tb = None
+        z0_Tl = None
+        z1_rp3 = z1_rp2
+        z2_rp3 = z2_rp2
+        z0_rp3 = 100.0
+
+    gamma1_rp3 = (z1_rp3 - z0_rp3) / (z1_rp3 + z0_rp3 + 1e-12)
+    gamma1_rp3_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp3), 1e-10, 10.0))
+
+    if z2_rp3 is not None:
+        gamma2_rp3 = (z2_rp3 - z0_rp3) / (z2_rp3 + z0_rp3 + 1e-12)
+        gamma2_rp3_db = 20.0 * np.log10(np.clip(np.abs(gamma2_rp3), 1e-10, 10.0))
+    else:
+        gamma2_rp3_db = None
+
+    return {
+        'freqs': freqs_arr,
+        'model': model,
+        'rp1': {
+            'name': 'RP1 (Port)',
+            'z1': z1_rp1,
+            'z2': z2_rp1,
+            'gamma1_db': gamma1_rp1_db,
+            'gamma2_db': gamma2_rp1_db,
+            'z0_ref': port_z0,
+        },
+        'rp2': {
+            'name': 'RP2 (Transformátor svorka)' if model == 3 else 'RP2 (Flíček)',
+            'z1': z1_rp2,
+            'z2': z2_rp2,
+            'gamma1_db': gamma1_rp2_db,
+            'gamma2_db': gamma2_rp2_db,
+            'z0_ref': z0_feed,
+        },
+        'rp3': {
+            'name': 'RP3 (Flíček vstup)',
+            'z1': z1_rp3,
+            'z2': z2_rp3,
+            'gamma1_db': gamma1_rp3_db,
+            'gamma2_db': gamma2_rp3_db,
+            'z0_ref': z0_rp3,
+        },
+        'params_used': {
+            'antenna_model': model,
+            'port_z0': port_z0,
+            'w_feed': w_feed,
+            'z0_feed': float(np.mean(z0_feed)),
+            'L_100_b': L_100_b,
+            'L_100_l': L_100_l,
+            'w_T_b': w_T_b,
+            'w_T_l': w_T_l,
+            'l_T_b': l_T_b,
+            'l_T_l': l_T_l,
+            'z0_rp3': z0_rp3,
+        }
+    }
+
+
