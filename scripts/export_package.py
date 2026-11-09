@@ -218,7 +218,7 @@ def export_paraview_package(output_name=None, output_zip=None, run_name=None, **
             ("geometry_iso.png", "2D náhled geometrie antény"),
             ("S11_graf.png", "2D graf činitele odrazu S11"),
             ("graf_S_parametry.png", "graf S-parametrů a impedance portů"),
-            ("graf_impedance_skoky.png", "analytický de-embedding impedančních skoků napájecí sítě"),
+            ("graf_impedance_skoky.png", "analytické odečtení vlivu vedení (de-embedding) napájecí sítě"),
             ("vyzarovaci_diagram_2d.png", "2D polární diagramy řezů X-Z a Y-Z"),
             ("vyzarovaci_diagram_3d.png", "3D prostorový vyzařovací lalok"),
             ("config.json", "vstupní konfigurace FEM řešiče Palace"),
@@ -231,6 +231,16 @@ def export_paraview_package(output_name=None, output_zip=None, run_name=None, **
             if os.path.exists(fsrc) and os.path.getsize(fsrc) > 0:
                 shutil.copy2(fsrc, os.path.join(temp_pack_dir, fname))
                 print(f"  + {fname} ({desc})")
+
+        # Podsložky grafy/ a obrazky/ s jednotlivými dílčími grafy a schématy
+        for subfolder in ["grafy", "obrazky"]:
+            src_sub = os.path.join(data_dir, subfolder)
+            if not os.path.exists(src_sub):
+                src_sub = os.path.join(postpro_dir, subfolder)
+            if os.path.exists(src_sub) and os.path.isdir(src_sub):
+                dst_sub = os.path.join(temp_pack_dir, subfolder)
+                shutil.copytree(src_sub, dst_sub, dirs_exist_ok=True)
+                print(f"  + {subfolder}/ (jednotlivé dílčí grafy a schémata geometrie)")
 
         # D) Podrobný návod k použití a popis souborů (README.txt)
         if has_boundary:
@@ -257,8 +267,16 @@ OBSAH BALÍČKU:
    - config.json                ... Vstupní konfigurace řešiče pro reprodukovatelnost
    - config_resolved.json       ... Vyřešená konfigurace řešiče (pokud existuje)
    - graf_S_parametry.png        ... Graf S11, S22 a vstupní impedance portů Zin
-   - vyzarovaci_diagram_2d.png   ... 2D polární diagramy řezů X-Z a Y-Z (LHCP/RHCP) + AR
+   - vyzarovaci_diagram_2d.png   ... 2D polární diagramy řezů X-Z a Y-Z (LHCP) + AR
    - vyzarovaci_diagram_3d.png   ... 3D prostorový vyzařovací diagram v dBi
+   - graf_impedance_skoky.png    ... Přehledový graf odečtení vlivu vedení (de-embedding)
+   - grafy/                     ... Složka se samostatnými dílčími grafy:
+                                  graf_S11_S22.png, graf_S21_izolace.png,
+                                  vyzarovaci_diagram_rez_XZ.png, vyzarovaci_diagram_rez_YZ.png,
+                                  graf_osovy_pomer_AR.png, graf_impedance_RP1.png,
+                                  graf_impedance_RP2.png, graf_impedance_RP3.png
+   - obrazky/                   ... Složka se schématy geometrie:
+                                  geometrie_shora.png, geometrie_detail_transformatoru.png
 
 JAK ZOBRAZIT INTERAKTIVNÍ MODEL V PARAVIEW:
 1. Otevřete ParaView.
@@ -298,8 +316,16 @@ OBSAH BALÍČKU:
 
 3. Vygenerované grafy:
    - graf_S_parametry.png        ... Graf S11, S22 a vstupní impedance portů Zin
-   - vyzarovaci_diagram_2d.png   ... 2D polární diagramy řezů X-Z a Y-Z (LHCP/RHCP) + AR
+   - vyzarovaci_diagram_2d.png   ... 2D polární diagramy řezů X-Z a Y-Z (LHCP) + AR
    - vyzarovaci_diagram_3d.png   ... 3D prostorový vyzařovací diagram v dBi
+   - graf_impedance_skoky.png    ... Přehledový graf odečtení vlivu vedení (de-embedding)
+   - grafy/                     ... Složka se samostatnými dílčími grafy:
+                                  graf_S11_S22.png, graf_S21_izolace.png,
+                                  vyzarovaci_diagram_rez_XZ.png, vyzarovaci_diagram_rez_YZ.png,
+                                  graf_osovy_pomer_AR.png, graf_impedance_RP1.png,
+                                  graf_impedance_RP2.png, graf_impedance_RP3.png
+   - obrazky/                   ... Složka se schématy geometrie:
+                                  geometrie_shora.png, geometrie_detail_transformatoru.png
 
 JAK PŘEGENEROVAT GRAFY:
 1. S-parametry a impedance:

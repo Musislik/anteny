@@ -171,22 +171,11 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
 
     # Auto-detekce buzení
     if s11_db is not None and s22_db is not None:
-        if dp_hint in ("1", "2"):
-            driven_mode = dp_hint
-        else:
-            driven_mode = "all"
+        driven_mode = "all"
     elif s22_db is not None:
         driven_mode = "2"
     else:
         driven_mode = "1"
-
-    # Pravidlo 2: Pokud je buzen pouze jeden port, druhý pasivní port se nezobrazuje
-    if driven_mode == "1":
-        s22_db = None
-        zin2 = None
-    elif driven_mode == "2":
-        s11_db = None
-        zin1 = None
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
@@ -198,21 +187,21 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
 
     if s22_db is not None:
         min2_idx = np.argmin(s22_db)
-        ax1.plot(freqs, s22_db, label=r"$S_{22}$ (Port 2 - levý, $E_x$)", color='firebrick', lw=2.2, linestyle='--')
+        ax1.plot(freqs, s22_db, label=r"$S_{22}$ (Port 2 - levý, $E_x$)", color='crimson', lw=2.2, linestyle='--')
         ax1.plot(freqs[min2_idx], s22_db[min2_idx], 'ro', label=f'Min $S_{{22}}$: {s22_db[min2_idx]:.2f} dB @ {freqs[min2_idx]:.3f} GHz')
 
     if iso_db is not None:
-        iso_name = "S_{21}" if driven_mode in ("1", "all") else "S_{12}"
+        iso_name = "S_{21}" if (s11_db is not None or s12_db is None) else "S_{12}"
         ax1.plot(freqs, iso_db, label=rf"Izolace / přeslech ${iso_name}$", color='purple', lw=1.8, linestyle=':')
 
-    ax1.axhline(-10.0, color='red', linestyle=':', lw=1.5, label='Kritérium -10 dB')
+    ax1.axhline(-10.0, color='red', linestyle='--', lw=1.5, label='Kritérium -10 dB')
     
-    if driven_mode == "1":
+    if s11_db is not None and s22_db is not None:
+        title_s = rf"S-parametry ($S_{{11}}$, $S_{{22}}$) — $Z_0 = {z0:.0f}\ \Omega$"
+    elif driven_mode == "1":
         title_s = r"S-parametry — Buzení Portu 1 ($E_y$, spodní rameno)"
-    elif driven_mode == "2":
-        title_s = r"S-parametry — Buzení Portu 2 ($E_x$, levé rameno)"
     else:
-        title_s = rf"S-parametry ($S_{{11}}$, $S_{{22}}$, $S_{{21}}$) — Dvouportové buzení {z0:.0f} $\Omega$"
+        title_s = r"S-parametry — Buzení Portu 2 ($E_x$, levé rameno)"
 
     ax1.set_title(title_s, fontsize=12, fontweight='bold')
     ax1.set_ylabel("Magnituda [dB]", fontsize=11)
@@ -225,7 +214,7 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
         ax2.plot(freqs, zin1.imag, label=r"$\mathrm{Im}\{Z_{in1}\}$ (Port 1)", color='deepskyblue', lw=1.6, linestyle='--')
 
     if zin2 is not None:
-        ax2.plot(freqs, zin2.real, label=r"$\mathrm{Re}\{Z_{in2}\}$ (Port 2)", color='firebrick', lw=2.0)
+        ax2.plot(freqs, zin2.real, label=r"$\mathrm{Re}\{Z_{in2}\}$ (Port 2)", color='crimson', lw=2.0)
         ax2.plot(freqs, zin2.imag, label=r"$\mathrm{Im}\{Z_{in2}\}$ (Port 2)", color='coral', lw=1.6, linestyle='--')
 
     ax2.axhline(z0, color='gray', linestyle='--', alpha=0.7, label=rf"Cíl $Z_0 = {z0:.0f}\ \Omega$")
@@ -242,6 +231,52 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
     plt.savefig(output_png, dpi=200)
     plt.close()
     print(f"[Plot S-Params] Uložen graf S-parametrů a impedance: {output_png}")
+
+    # Uložení samostatných dílčích grafů do podsložky grafy/
+    grafy_dirs = [os.path.join(export_dir, "grafy")]
+    out_dir = os.path.dirname(output_png)
+    if os.path.abspath(out_dir) != os.path.abspath(export_dir):
+        grafy_dirs.append(os.path.join(out_dir, "grafy"))
+
+    for g_dir in grafy_dirs:
+        os.makedirs(g_dir, exist_ok=True)
+
+        # 1. Samostatný graf S11 a S22
+        fig_s, ax_s = plt.subplots(figsize=(8.5, 5))
+        if s11_db is not None:
+            min1_idx = np.argmin(s11_db)
+            ax_s.plot(freqs, s11_db, label=r"$S_{11}$ (Port 1 - spodní, $E_y$)", color='royalblue', lw=2.2)
+            ax_s.plot(freqs[min1_idx], s11_db[min1_idx], 'bo', label=f'Min $S_{{11}}$: {s11_db[min1_idx]:.2f} dB @ {freqs[min1_idx]:.3f} GHz')
+        if s22_db is not None:
+            min2_idx = np.argmin(s22_db)
+            ax_s.plot(freqs, s22_db, label=r"$S_{22}$ (Port 2 - levý, $E_x$)", color='crimson', lw=2.2, linestyle='--')
+            ax_s.plot(freqs[min2_idx], s22_db[min2_idx], 'ro', label=f'Min $S_{{22}}$: {s22_db[min2_idx]:.2f} dB @ {freqs[min2_idx]:.3f} GHz')
+
+        ax_s.axhline(-10.0, color='red', linestyle='--', lw=1.5, label='Kritérium -10 dB')
+        ax_s.set_title(rf"Činitel odrazu ($S_{{11}}$, $S_{{22}}$) — $Z_0 = {z0:.0f}\ \Omega$", fontsize=12, fontweight='bold')
+        ax_s.set_xlabel("Frekvence [GHz]", fontsize=11)
+        ax_s.set_ylabel("Magnituda [dB]", fontsize=11)
+        ax_s.grid(True, linestyle=':', alpha=0.7)
+        ax_s.legend(loc='best', fontsize=9)
+        plt.tight_layout()
+        p_s11_s22 = os.path.join(g_dir, "graf_S11_S22.png")
+        plt.savefig(p_s11_s22, dpi=200)
+        plt.close(fig_s)
+
+        # 2. Samostatný graf izolace S21
+        if iso_db is not None:
+            fig_iso, ax_iso = plt.subplots(figsize=(8.5, 5))
+            iso_name = "S_{21}" if (s11_db is not None or s12_db is None) else "S_{12}"
+            ax_iso.plot(freqs, iso_db, label=rf"Izolace / přeslech ${iso_name}$", color='purple', lw=2.0)
+            ax_iso.set_title(rf"Izolace mezi porty (${iso_name}$)", fontsize=12, fontweight='bold')
+            ax_iso.set_xlabel("Frekvence [GHz]", fontsize=11)
+            ax_iso.set_ylabel("Magnituda [dB]", fontsize=11)
+            ax_iso.grid(True, linestyle=':', alpha=0.7)
+            ax_iso.legend(loc='best', fontsize=9)
+            plt.tight_layout()
+            p_iso = os.path.join(g_dir, "graf_S21_izolace.png")
+            plt.savefig(p_iso, dpi=200)
+            plt.close(fig_iso)
     return output_png
 
 if __name__ == "__main__":

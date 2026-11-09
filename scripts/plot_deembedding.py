@@ -329,7 +329,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
 
     m_info = f"Model {model}"
     if model == 3:
-        m_info += f" (Hybrid Matching: $w_T={p_used.get('w_T_b', 0.42):.2f}\\ \\mathrm{{mm}}$, $l_T={p_used.get('l_T_b', 18.9):.2f}\\ \\mathrm{{mm}}$)"
+        m_info += f" (Hybridní dvoustupňové přizpůsobení: $w_T={p_used.get('w_T_b', 0.42):.2f}\\ \\mathrm{{mm}}$, $l_T={p_used.get('l_T_b', 18.9):.2f}\\ \\mathrm{{mm}}$)"
     elif model == 2:
         m_info += " (Dvouportový $100\\ \\Omega$ bez transformátoru)"
 
@@ -375,7 +375,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
         min_g1_idx = np.argmin(gamma_rp1_db)
         ax1_gam.plot(freqs[min_g1_idx], gamma_rp1_db[min_g1_idx], 'o', color=c_re,
                      label=f"Min $|{s_lbl}|$: {gamma_rp1_db[min_g1_idx]:.2f} dB @ {freqs[min_g1_idx]:.3f} GHz")
-        ax1_gam.axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='Kritérium -10 dB')
+        ax1_gam.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
         if iso_db is not None:
             ax1_gam.plot(freqs, iso_db, label=rf"Izolace / přeslech $|{iso_lbl}|$", color=c_iso, lw=1.8, linestyle=':')
         ax1_gam.set_title(rf"2. RP1 (Port): Činitel odrazu $|{s_lbl}|$ a přeslech $|{iso_lbl}|$", fontsize=11, fontweight='bold')
@@ -403,7 +403,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
         min_g2_idx = np.argmin(gamma_rp2_db)
         ax2_gam.plot(freqs[min_g2_idx], gamma_rp2_db[min_g2_idx], 'o', color=c_re,
                      label=rf"Min $|\Gamma_{{RP2}}|: {gamma_rp2_db[min_g2_idx]:.2f}$ dB @ {freqs[min_g2_idx]:.3f} GHz")
-        ax2_gam.axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='Kritérium -10 dB')
+        ax2_gam.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
         ax2_gam.set_title(r"4. RP2 (Svorka): Lokální činitel odrazu $|\Gamma_{RP2}| (100\ \Omega)$", fontsize=11, fontweight='bold')
         ax2_gam.set_ylabel(r"Magnituda [dB]", fontsize=10)
         ax2_gam.grid(True, linestyle=':', alpha=0.6)
@@ -443,7 +443,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
         min_g3_idx = np.argmin(gamma_rp3_db)
         ax3_gam.plot(freqs[min_g3_idx], gamma_rp3_db[min_g3_idx], 'o', color=c_re,
                      label=rf"Min $|\Gamma_{{patch}}|: {gamma_rp3_db[min_g3_idx]:.2f}$ dB @ {freqs[min_g3_idx]:.3f} GHz")
-        ax3_gam.axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='Kritérium -10 dB')
+        ax3_gam.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
         ax3_gam.set_title(rf"6. RP3 (Flíček): Lokální činitel odrazu $|\Gamma_{{patch}}| ({z0_ref_rp3:.0f}\ \Omega)$",
                           fontsize=11, fontweight='bold')
         ax3_gam.set_xlabel("Frekvence [GHz]", fontsize=10)
@@ -452,7 +452,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
         ax3_gam.legend(loc='best', fontsize=8)
 
         # Globální záhlaví
-        plt.suptitle(f"Analytický de-embedding impedančních skoků — {m_info}\n"
+        plt.suptitle(f"Analytické odečtení vlivu vedení (de-embedding) — {m_info}\n"
                      f"Aktivní buzení: {p_name} — RP1 (Port) $\\to$ RP2 (Svorka) $\\to$ RP3 (Flíček)",
                      fontsize=12, fontweight='bold', y=0.98)
         plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -483,7 +483,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
                             label=f"Min $|S_{{11}}|: {rp1['gamma1_db'][min1_idx]:.2f} dB")
             if iso_db is not None:
                 axes[0, 1].plot(freqs, iso_db, label=r"Izolace $|S_{21}|$", color=c_iso, lw=1.8, linestyle=':')
-            axes[0, 1].axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='-10 dB')
+            axes[0, 1].axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='-10 dB')
             axes[0, 1].set_title(r"RP1 (Port 1): Odraz $|S_{11}|$ a přeslech", fontsize=11, fontweight='bold')
             axes[0, 1].set_ylabel(r"Magnituda [dB]", fontsize=10)
             axes[0, 1].grid(True, linestyle=':', alpha=0.6)
@@ -506,7 +506,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
                             label=f"Min $|S_{{22}}|: {rp1['gamma2_db'][min2_idx]:.2f} dB")
             if iso_db is not None:
                 axes[0, 3].plot(freqs, iso_db, label=r"Izolace $|S_{12}|$", color=c_iso, lw=1.8, linestyle=':')
-            axes[0, 3].axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='-10 dB')
+            axes[0, 3].axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='-10 dB')
             axes[0, 3].set_title(r"RP1 (Port 2): Odraz $|S_{22}|$ a přeslech", fontsize=11, fontweight='bold')
             axes[0, 3].set_ylabel(r"Magnituda [dB]", fontsize=10)
             axes[0, 3].grid(True, linestyle=':', alpha=0.6)
@@ -525,7 +525,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
 
             # Port 1: |Gamma_RP2_1|
             axes[1, 1].plot(freqs, rp2['gamma1_db'], label=r"$|\Gamma_{RP2,1}|$", color=c_p1_re, lw=2.2)
-            axes[1, 1].axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='-10 dB')
+            axes[1, 1].axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='-10 dB')
             axes[1, 1].set_title(r"RP2 (Port 1): Činitel odrazu $|\Gamma_{RP2}| (100\ \Omega)$", fontsize=11, fontweight='bold')
             axes[1, 1].set_ylabel(r"Magnituda [dB]", fontsize=10)
             axes[1, 1].grid(True, linestyle=':', alpha=0.6)
@@ -543,7 +543,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
 
             # Port 2: |Gamma_RP2_2|
             axes[1, 3].plot(freqs, rp2['gamma2_db'], label=r"$|\Gamma_{RP2,2}|$", color=c_p2_re, lw=2.2)
-            axes[1, 3].axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='-10 dB')
+            axes[1, 3].axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='-10 dB')
             axes[1, 3].set_title(r"RP2 (Port 2): Činitel odrazu $|\Gamma_{RP2}| (100\ \Omega)$", fontsize=11, fontweight='bold')
             axes[1, 3].set_ylabel(r"Magnituda [dB]", fontsize=10)
             axes[1, 3].grid(True, linestyle=':', alpha=0.6)
@@ -569,7 +569,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
 
             # Port 1: |Gamma_patch1|
             axes[2, 1].plot(freqs, rp3['gamma1_db'], label=rf"$|\Gamma_{{patch1}}|$", color=c_p1_re, lw=2.2)
-            axes[2, 1].axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='-10 dB')
+            axes[2, 1].axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='-10 dB')
             axes[2, 1].set_title(rf"RP3 (Port 1): Odraz $|\Gamma_{{patch}}| ({z0_ref_rp3:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
             axes[2, 1].set_xlabel("Frekvence [GHz]", fontsize=10)
             axes[2, 1].set_ylabel(r"Magnituda [dB]", fontsize=10)
@@ -595,7 +595,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
 
             # Port 2: |Gamma_patch2|
             axes[2, 3].plot(freqs, rp3['gamma2_db'], label=rf"$|\Gamma_{{patch2}}|$", color=c_p2_re, lw=2.2)
-            axes[2, 3].axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='-10 dB')
+            axes[2, 3].axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='-10 dB')
             axes[2, 3].set_title(rf"RP3 (Port 2): Odraz $|\Gamma_{{patch}}| ({z0_ref_rp3:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
             axes[2, 3].set_xlabel("Frekvence [GHz]", fontsize=10)
             axes[2, 3].set_ylabel(r"Magnituda [dB]", fontsize=10)
@@ -603,8 +603,8 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             axes[2, 3].legend(loc='best', fontsize=8)
 
             # Globální záhlaví
-            plt.suptitle(f"Analytický de-embedding impedančních skoků — {m_info}\n"
-                         r"Dvouportové zobrazení: PORT 1 ($E_y$) vlevo vs. PORT 2 ($E_x$) vpravo",
+            plt.suptitle(f"Analytické odečtení vlivu vedení (de-embedding) — {m_info}\n"
+                         r"Dvouportové zobrazení: Port 1 ($E_y$) vlevo vs. Port 2 ($E_x$) vpravo",
                          fontsize=12, fontweight='bold', y=0.98)
             plt.tight_layout(rect=[0, 0, 1, 0.95])
 
@@ -630,7 +630,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             ax1.plot(freqs, rp1['gamma2_db'], label=r"$|S_{22}|$ (Port 2)", color=c_p2_re, lw=2.2, linestyle='--')
             if iso_db is not None:
                 ax1.plot(freqs, iso_db, label=r"Izolace $|S_{21}|$", color=c_iso, lw=1.8, linestyle=':')
-            ax1.axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='Kritérium -10 dB')
+            ax1.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
             ax1.set_title(r"2. RP1 (Port): Činitele odrazu a přeslech", fontsize=11, fontweight='bold')
             ax1.set_ylabel(r"Magnituda [dB]", fontsize=10)
             ax1.grid(True, linestyle=':', alpha=0.6)
@@ -652,7 +652,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             ax3 = axes[1, 1]
             ax3.plot(freqs, rp2['gamma1_db'], label=r"$|\Gamma_{RP2,1}|$ (Port 1)", color=c_p1_re, lw=2.2)
             ax3.plot(freqs, rp2['gamma2_db'], label=r"$|\Gamma_{RP2,2}|$ (Port 2)", color=c_p2_re, lw=2.2, linestyle='--')
-            ax3.axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='Kritérium -10 dB')
+            ax3.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
             ax3.set_title(r"4. RP2 (Svorka): Lokální činitel odrazu $|\Gamma_{RP2}| (100\ \Omega)$", fontsize=11, fontweight='bold')
             ax3.set_ylabel(r"Magnituda [dB]", fontsize=10)
             ax3.grid(True, linestyle=':', alpha=0.6)
@@ -675,14 +675,14 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             ax5 = axes[2, 1]
             ax5.plot(freqs, rp3['gamma1_db'], label=r"$|\Gamma_{patch1}|$ (Port 1)", color=c_p1_re, lw=2.2)
             ax5.plot(freqs, rp3['gamma2_db'], label=r"$|\Gamma_{patch2}|$ (Port 2)", color=c_p2_re, lw=2.2, linestyle='--')
-            ax5.axhline(-10.0, color=c_limit, linestyle=':', lw=1.5, label='Kritérium -10 dB')
+            ax5.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
             ax5.set_title(rf"6. RP3 (Flíček): Lokální činitel odrazu $|\Gamma_{{patch}}| ({z0_ref_rp3:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
             ax5.set_xlabel("Frekvence [GHz]", fontsize=10)
             ax5.set_ylabel(r"Magnituda [dB]", fontsize=10)
             ax5.grid(True, linestyle=':', alpha=0.6)
             ax5.legend(loc='best', fontsize=8)
 
-            plt.suptitle(f"Analytický de-embedding impedančních skoků — {m_info}\n"
+            plt.suptitle(f"Analytické odečtení vlivu vedení (de-embedding) — {m_info}\n"
                          r"Dvouportové buzení: RP1 (Port) $\to$ RP2 (Svorka) $\to$ RP3 (Flíček)",
                          fontsize=12, fontweight='bold', y=0.98)
             plt.tight_layout(rect=[0, 0, 1, 0.95])
@@ -690,8 +690,188 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
     os.makedirs(os.path.dirname(output_png) or ".", exist_ok=True)
     plt.savefig(output_png, dpi=200)
     plt.close()
-    print(f"[De-embedding] Graf impedančních skoků byl úspěšně uložen do: {output_png}")
+    print(f"[Odečtení vedení] Graf impedančních skoků byl úspěšně uložen do: {output_png}")
+
+    # Uložení samostatných grafů pro referenční roviny RP1, RP2, RP3 do podsložky grafy/
+    _save_individual_rp_plots(
+        export_dir=export_dir,
+        output_png=output_png,
+        freqs=freqs,
+        rp1=rp1,
+        rp2=rp2,
+        rp3=rp3,
+        iso_db=iso_db,
+        driven_mode=driven_mode,
+        z0_ref_rp3=z0_ref_rp3,
+        m_info=m_info
+    )
+
     return output_png
+
+
+def _save_individual_rp_plots(export_dir, output_png, freqs, rp1, rp2, rp3, iso_db, driven_mode, z0_ref_rp3, m_info):
+    """Uloží samostatné grafy impedancí a činitelů odrazu v rovinách RP1, RP2 a RP3 do podsložky grafy/."""
+    grafy_dirs = [os.path.join(export_dir, "grafy")]
+    out_dir = os.path.dirname(output_png) if output_png else None
+    if out_dir and os.path.abspath(out_dir) != os.path.abspath(export_dir):
+        grafy_dirs.append(os.path.join(out_dir, "grafy"))
+
+    c_p1_re = 'royalblue'
+    c_p1_im = 'deepskyblue'
+    c_p2_re = 'crimson'
+    c_p2_im = 'coral'
+    c_iso = 'purple'
+    c_limit = 'red'
+
+    for g_dir in grafy_dirs:
+        os.makedirs(g_dir, exist_ok=True)
+
+        # -------------------------------------------------------------
+        # 1. Rovina RP1: Napájecí port
+        # -------------------------------------------------------------
+        fig1, (ax1_z, ax1_s) = plt.subplots(1, 2, figsize=(13, 5))
+        if driven_mode == "1":
+            ax1_z.plot(freqs, rp1['z1'].real, label=r"$\mathrm{Re}\{Z_{in1}\}$ (Port 1, $E_y$)", color=c_p1_re, lw=2.2)
+            ax1_z.plot(freqs, rp1['z1'].imag, label=r"$\mathrm{Im}\{Z_{in1}\}$ (Port 1)", color=c_p1_im, lw=1.8, linestyle='--')
+        elif driven_mode == "2":
+            ax1_z.plot(freqs, rp1['z2'].real, label=r"$\mathrm{Re}\{Z_{in2}\}$ (Port 2, $E_x$)", color=c_p2_re, lw=2.2)
+            ax1_z.plot(freqs, rp1['z2'].imag, label=r"$\mathrm{Im}\{Z_{in2}\}$ (Port 2)", color=c_p2_im, lw=1.8, linestyle='--')
+        else:
+            ax1_z.plot(freqs, rp1['z1'].real, label=r"$\mathrm{Re}\{Z_{in1}\}$ (P1, $E_y$)", color=c_p1_re, lw=2.2)
+            ax1_z.plot(freqs, rp1['z1'].imag, label=r"$\mathrm{Im}\{Z_{in1}\}$ (P1)", color=c_p1_im, lw=1.8, linestyle='--')
+            ax1_z.plot(freqs, rp1['z2'].real, label=r"$\mathrm{Re}\{Z_{in2}\}$ (P2, $E_x$)", color=c_p2_re, lw=2.2)
+            ax1_z.plot(freqs, rp1['z2'].imag, label=r"$\mathrm{Im}\{Z_{in2}\}$ (P2)", color=c_p2_im, lw=1.8, linestyle='--')
+        ax1_z.axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Cíl $Z_0 = 100\ \Omega$")
+        ax1_z.axhline(0.0, color='black', linestyle='-', alpha=0.4, label=r"$\mathrm{Im}\{Z\} = 0\ \Omega$")
+        ax1_z.set_title(r"Vstupní impedance $Z_{in}$ v rovině RP1", fontsize=11, fontweight='bold')
+        ax1_z.set_xlabel("Frekvence [GHz]", fontsize=10)
+        ax1_z.set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
+        ax1_z.grid(True, linestyle=':', alpha=0.6)
+        ax1_z.legend(loc='best', fontsize=8, ncol=2)
+
+        if driven_mode == "1":
+            ax1_s.plot(freqs, rp1['gamma1_db'], label=r"$|S_{11}|$ (Port 1)", color=c_p1_re, lw=2.2)
+            m1 = np.argmin(rp1['gamma1_db'])
+            ax1_s.plot(freqs[m1], rp1['gamma1_db'][m1], 'bo', label=f"Min $|S_{{11}}|: {rp1['gamma1_db'][m1]:.2f}$ dB")
+            if iso_db is not None:
+                ax1_s.plot(freqs, iso_db, label=r"Izolace $|S_{21}|$", color=c_iso, lw=1.8, linestyle=':')
+        elif driven_mode == "2":
+            ax1_s.plot(freqs, rp1['gamma2_db'], label=r"$|S_{22}|$ (Port 2)", color=c_p2_re, lw=2.2)
+            m2 = np.argmin(rp1['gamma2_db'])
+            ax1_s.plot(freqs[m2], rp1['gamma2_db'][m2], 'ro', label=f"Min $|S_{{22}}|: {rp1['gamma2_db'][m2]:.2f}$ dB")
+            if iso_db is not None:
+                ax1_s.plot(freqs, iso_db, label=r"Izolace $|S_{12}|$", color=c_iso, lw=1.8, linestyle=':')
+        else:
+            ax1_s.plot(freqs, rp1['gamma1_db'], label=r"$|S_{11}|$ (Port 1)", color=c_p1_re, lw=2.2)
+            ax1_s.plot(freqs, rp1['gamma2_db'], label=r"$|S_{22}|$ (Port 2)", color=c_p2_re, lw=2.2, linestyle='--')
+            if iso_db is not None:
+                ax1_s.plot(freqs, iso_db, label=r"Izolace $|S_{21}|$", color=c_iso, lw=1.8, linestyle=':')
+        ax1_s.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
+        ax1_s.set_title(r"Činitel odrazu v rovině RP1 (Port)", fontsize=11, fontweight='bold')
+        ax1_s.set_xlabel("Frekvence [GHz]", fontsize=10)
+        ax1_s.set_ylabel(r"Magnituda [dB]", fontsize=10)
+        ax1_s.grid(True, linestyle=':', alpha=0.6)
+        ax1_s.legend(loc='best', fontsize=8)
+        fig1.suptitle(f"Referenční rovina RP1 (Napájecí port) — {m_info}", fontsize=12, fontweight='bold')
+        fig1.tight_layout()
+        plt.savefig(os.path.join(g_dir, "graf_impedance_RP1.png"), dpi=200)
+        plt.close(fig1)
+
+        # -------------------------------------------------------------
+        # 2. Rovina RP2: Svorka transformátoru
+        # -------------------------------------------------------------
+        fig2, (ax2_z, ax2_s) = plt.subplots(1, 2, figsize=(13, 5))
+        if driven_mode == "1":
+            ax2_z.plot(freqs, rp2['z1'].real, label=r"$\mathrm{Re}\{Z_{RP2,1}\}$", color=c_p1_re, lw=2.2)
+            ax2_z.plot(freqs, rp2['z1'].imag, label=r"$\mathrm{Im}\{Z_{RP2,1}\}$", color=c_p1_im, lw=1.8, linestyle='--')
+        elif driven_mode == "2":
+            ax2_z.plot(freqs, rp2['z2'].real, label=r"$\mathrm{Re}\{Z_{RP2,2}\}$", color=c_p2_re, lw=2.2)
+            ax2_z.plot(freqs, rp2['z2'].imag, label=r"$\mathrm{Im}\{Z_{RP2,2}\}$", color=c_p2_im, lw=1.8, linestyle='--')
+        else:
+            ax2_z.plot(freqs, rp2['z1'].real, label=r"$\mathrm{Re}\{Z_{RP2,1}\}$ (P1)", color=c_p1_re, lw=2.2)
+            ax2_z.plot(freqs, rp2['z1'].imag, label=r"$\mathrm{Im}\{Z_{RP2,1}\}$ (P1)", color=c_p1_im, lw=1.8, linestyle='--')
+            ax2_z.plot(freqs, rp2['z2'].real, label=r"$\mathrm{Re}\{Z_{RP2,2}\}$ (P2)", color=c_p2_re, lw=2.2)
+            ax2_z.plot(freqs, rp2['z2'].imag, label=r"$\mathrm{Im}\{Z_{RP2,2}\}$ (P2)", color=c_p2_im, lw=1.8, linestyle='--')
+        ax2_z.axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Reference $100\ \Omega$")
+        ax2_z.axhline(0.0, color='black', linestyle='-', alpha=0.4, label=r"$\mathrm{Im}\{Z\} = 0\ \Omega$")
+        ax2_z.set_title(r"Impedance $Z_{RP2}$ na svorce transformátoru", fontsize=11, fontweight='bold')
+        ax2_z.set_xlabel("Frekvence [GHz]", fontsize=10)
+        ax2_z.set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
+        ax2_z.grid(True, linestyle=':', alpha=0.6)
+        ax2_z.legend(loc='best', fontsize=8, ncol=2)
+
+        if driven_mode == "1":
+            ax2_s.plot(freqs, rp2['gamma1_db'], label=r"$|\Gamma_{RP2,1}|$", color=c_p1_re, lw=2.2)
+        elif driven_mode == "2":
+            ax2_s.plot(freqs, rp2['gamma2_db'], label=r"$|\Gamma_{RP2,2}|$", color=c_p2_re, lw=2.2)
+        else:
+            ax2_s.plot(freqs, rp2['gamma1_db'], label=r"$|\Gamma_{RP2,1}|$ (Port 1)", color=c_p1_re, lw=2.2)
+            ax2_s.plot(freqs, rp2['gamma2_db'], label=r"$|\Gamma_{RP2,2}|$ (Port 2)", color=c_p2_re, lw=2.2, linestyle='--')
+        ax2_s.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
+        ax2_s.set_title(r"Lokální činitel odrazu $|\Gamma_{RP2}| (100\ \Omega)$", fontsize=11, fontweight='bold')
+        ax2_s.set_xlabel("Frekvence [GHz]", fontsize=10)
+        ax2_s.set_ylabel(r"Magnituda [dB]", fontsize=10)
+        ax2_s.grid(True, linestyle=':', alpha=0.6)
+        ax2_s.legend(loc='best', fontsize=8)
+        fig2.suptitle(f"Referenční rovina RP2 (Svorka transformátoru) — {m_info}", fontsize=12, fontweight='bold')
+        fig2.tight_layout()
+        plt.savefig(os.path.join(g_dir, "graf_impedance_RP2.png"), dpi=200)
+        plt.close(fig2)
+
+        # -------------------------------------------------------------
+        # 3. Rovina RP3: Vstup do flíčku
+        # -------------------------------------------------------------
+        fig3, (ax3_z, ax3_s) = plt.subplots(1, 2, figsize=(13, 5))
+        if driven_mode == "1":
+            ax3_z.plot(freqs, rp3['z1'].real, label=r"$\mathrm{Re}\{Z_{patch1}\}$", color=c_p1_re, lw=2.2)
+            ax3_z.plot(freqs, rp3['z1'].imag, label=r"$\mathrm{Im}\{Z_{patch1}\}$", color=c_p1_im, lw=1.8, linestyle='--')
+            f0_1 = _detect_resonance(freqs, rp3['z1'].imag)
+            if f0_1 is not None and (freqs[0] <= f0_1 <= freqs[-1]):
+                r0 = float(np.interp(f0_1, freqs, rp3['z1'].real))
+                ax3_z.plot(f0_1, 0.0, 'ro', markersize=7, label=rf"Rezonance $f_0={f0_1:.3f}\ \mathrm{{GHz}}$ ($R={r0:.1f}\ \Omega$)")
+        elif driven_mode == "2":
+            ax3_z.plot(freqs, rp3['z2'].real, label=r"$\mathrm{Re}\{Z_{patch2}\}$", color=c_p2_re, lw=2.2)
+            ax3_z.plot(freqs, rp3['z2'].imag, label=r"$\mathrm{Im}\{Z_{patch2}\}$", color=c_p2_im, lw=1.8, linestyle='--')
+            f0_2 = _detect_resonance(freqs, rp3['z2'].imag)
+            if f0_2 is not None and (freqs[0] <= f0_2 <= freqs[-1]):
+                r0 = float(np.interp(f0_2, freqs, rp3['z2'].real))
+                ax3_z.plot(f0_2, 0.0, 'ro', markersize=7, label=rf"Rezonance $f_0={f0_2:.3f}\ \mathrm{{GHz}}$ ($R={r0:.1f}\ \Omega$)")
+        else:
+            ax3_z.plot(freqs, rp3['z1'].real, label=r"$\mathrm{Re}\{Z_{patch1}\}$ (P1)", color=c_p1_re, lw=2.2)
+            ax3_z.plot(freqs, rp3['z1'].imag, label=r"$\mathrm{Im}\{Z_{patch1}\}$ (P1)", color=c_p1_im, lw=1.8, linestyle='--')
+            ax3_z.plot(freqs, rp3['z2'].real, label=r"$\mathrm{Re}\{Z_{patch2}\}$ (P2)", color=c_p2_re, lw=2.2)
+            ax3_z.plot(freqs, rp3['z2'].imag, label=r"$\mathrm{Im}\{Z_{patch2}\}$ (P2)", color=c_p2_im, lw=1.8, linestyle='--')
+            f0_1 = _detect_resonance(freqs, rp3['z1'].imag)
+            if f0_1 is not None and (freqs[0] <= f0_1 <= freqs[-1]):
+                ax3_z.plot(f0_1, 0.0, 'bo', markersize=6, label=rf"$f_{{0,1}}={f0_1:.3f}\ \mathrm{{GHz}}$")
+            f0_2 = _detect_resonance(freqs, rp3['z2'].imag)
+            if f0_2 is not None and (freqs[0] <= f0_2 <= freqs[-1]):
+                ax3_z.plot(f0_2, 0.0, 'ro', markersize=6, label=rf"$f_{{0,2}}={f0_2:.3f}\ \mathrm{{GHz}}$")
+        ax3_z.axhline(z0_ref_rp3, color='mediumvioletred', linestyle='--', alpha=0.8, label=rf"Cíl $R_{{patch}} \approx {z0_ref_rp3:.1f}\ \Omega$")
+        ax3_z.axhline(0.0, color='black', linestyle='-', alpha=0.5, label=r"$\mathrm{Im}\{Z\} = 0\ \Omega$")
+        ax3_z.set_title(r"Impedance flíčku $Z_{patch}$ v rovině RP3", fontsize=11, fontweight='bold')
+        ax3_z.set_xlabel("Frekvence [GHz]", fontsize=10)
+        ax3_z.set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
+        ax3_z.grid(True, linestyle=':', alpha=0.6)
+        ax3_z.legend(loc='best', fontsize=8, ncol=2)
+
+        if driven_mode == "1":
+            ax3_s.plot(freqs, rp3['gamma1_db'], label=rf"Lokální $|\Gamma_{{patch1}}|$", color=c_p1_re, lw=2.2)
+        elif driven_mode == "2":
+            ax3_s.plot(freqs, rp3['gamma2_db'], label=rf"Lokální $|\Gamma_{{patch2}}|$", color=c_p2_re, lw=2.2)
+        else:
+            ax3_s.plot(freqs, rp3['gamma1_db'], label=r"$|\Gamma_{patch1}|$ (Port 1)", color=c_p1_re, lw=2.2)
+            ax3_s.plot(freqs, rp3['gamma2_db'], label=r"$|\Gamma_{patch2}|$ (Port 2)", color=c_p2_re, lw=2.2, linestyle='--')
+        ax3_s.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
+        ax3_s.set_title(rf"Lokální činitel odrazu $|\Gamma_{{patch}}| ({z0_ref_rp3:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
+        ax3_s.set_xlabel("Frekvence [GHz]", fontsize=10)
+        ax3_s.set_ylabel(r"Magnituda [dB]", fontsize=10)
+        ax3_s.grid(True, linestyle=':', alpha=0.6)
+        ax3_s.legend(loc='best', fontsize=8)
+        fig3.suptitle(f"Referenční rovina RP3 (Vstup do flíčku) — {m_info}", fontsize=12, fontweight='bold')
+        fig3.tight_layout()
+        plt.savefig(os.path.join(g_dir, "graf_impedance_RP3.png"), dpi=200)
+        plt.close(fig3)
 
 
 if __name__ == "__main__":

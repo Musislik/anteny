@@ -106,7 +106,7 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
     tree = cKDTree(np.column_stack([m['xs'], m['ys'], m['zs']]))
     
     # Generování úhlů pro řezy: theta od -180° do +180°
-    # V polárním diagramu: 0° je osa +Z (Zenith / Boresight), +/-90° je horizont, 180° je nadir (-Z)
+    # V polárním diagramu: 0° je osa +Z (hlavní směr vyzařování), +/-90° je horizont, 180° je nadir (-Z)
     angles_deg = np.linspace(-180, 180, 361)
     angles_rad = np.deg2rad(angles_deg)
     
@@ -117,7 +117,6 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
         np.cos(angles_rad)                # Z
     ])
     d_lhcp_xz = interpolate_cut(tree, m['d_lhcp'], xz_pts)
-    d_rhcp_xz = interpolate_cut(tree, m['d_rhcp'], xz_pts)
     d_tot_xz  = interpolate_cut(tree, m['d_tot'],  xz_pts)
     ar_xz     = interpolate_cut(tree, m['ar_db'],   xz_pts)
     
@@ -128,7 +127,6 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
         np.cos(angles_rad)                # Z
     ])
     d_lhcp_yz = interpolate_cut(tree, m['d_lhcp'], yz_pts)
-    d_rhcp_yz = interpolate_cut(tree, m['d_rhcp'], yz_pts)
     d_tot_yz  = interpolate_cut(tree, m['d_tot'],  yz_pts)
     ar_yz     = interpolate_cut(tree, m['ar_db'],   yz_pts)
     
@@ -137,14 +135,13 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
     
     # Polární plot X-Z
     ax1 = fig.add_subplot(131, projection='polar')
-    ax1.set_theta_zero_location('N')       # 0° (Zenith / +Z) nahoře
+    ax1.set_theta_zero_location('N')       # 0° (osa +Z) nahoře
     ax1.set_theta_direction(-1)            # Po směru hodinových ručiček
     
     r_min = -25
     r_max = np.ceil(np.max(d_tot_xz) + 1)
     
     ax1.plot(angles_rad, np.clip(d_lhcp_xz, r_min, r_max), 'b-', lw=2.2, label='LHCP (hlavní)')
-    ax1.plot(angles_rad, np.clip(d_rhcp_xz, r_min, r_max), 'r--', lw=1.8, label='RHCP (křížová)')
     ax1.plot(angles_rad, np.clip(d_tot_xz,  r_min, r_max), 'k:',  lw=1.2, label='Celková směrovost')
     ax1.set_ylim([r_min, r_max])
     ax1.set_title(rf"Řez rovinou X-Z ($\phi = 0^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold', pad=15)
@@ -156,7 +153,6 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
     ax2.set_theta_zero_location('N')
     ax2.set_theta_direction(-1)
     ax2.plot(angles_rad, np.clip(d_lhcp_yz, r_min, r_max), 'b-', lw=2.2, label='LHCP (hlavní)')
-    ax2.plot(angles_rad, np.clip(d_rhcp_yz, r_min, r_max), 'r--', lw=1.8, label='RHCP (křížová)')
     ax2.plot(angles_rad, np.clip(d_tot_yz,  r_min, r_max), 'k:',  lw=1.2, label='Celková směrovost')
     ax2.set_ylim([r_min, r_max])
     ax2.set_title(rf"Řez rovinou Y-Z ($\phi = 90^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold', pad=15)
@@ -169,7 +165,7 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
     theta_hemi = angles_deg[mask_hemi]
     ax3.plot(theta_hemi, ar_xz[mask_hemi], 'b-', lw=2.0, label='AR (řez X-Z)')
     ax3.plot(theta_hemi, ar_yz[mask_hemi], 'm--', lw=2.0, label='AR (řez Y-Z)')
-    ax3.axhline(3.0, color='red', linestyle=':', lw=1.5, label='Mez 3 dB (čistá kruhová)')
+    ax3.axhline(3.0, color='red', linestyle='--', lw=1.5, label='Mez 3 dB (čistá kruhová)')
     ax3.set_ylim([0, 15])
     ax3.set_xlim([-90, 90])
     ax3.set_xlabel(r"Úhel od kolmice $\theta$ [$^\circ$]", fontsize=11)
@@ -178,20 +174,83 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
     ax3.grid(True, linestyle=':', alpha=0.7)
     ax3.legend(loc='upper right', fontsize=9)
     
-    # Vypíšeme hodnoty v zenitu (theta = 0)
+    # Hodnoty v ose +Z (theta = 0) umístěné do levého horního rohu bez překryvu křivek
     zenith_idx = np.argmin(np.abs(angles_deg))
-    ax3.annotate(f"Zenith AR: {ar_xz[zenith_idx]:.2f} dB\nMax LHCP: {np.max(d_lhcp_xz):.2f} dBi",
-                 xy=(0, ar_xz[zenith_idx]), xytext=(10, ar_xz[zenith_idx] + 2),
-                 arrowprops=dict(arrowstyle="->", color="black"),
-                 fontsize=10, bbox=dict(boxstyle="round,pad=0.3", fc="yellow", alpha=0.4))
+    ax3.annotate(f"Směr +Z: AR = {ar_xz[zenith_idx]:.2f} dB\nMax LHCP: {np.max(d_lhcp_xz):.2f} dBi",
+                 xy=(0.04, 0.95), xycoords='axes fraction',
+                 verticalalignment='top',
+                 fontsize=9.5, bbox=dict(boxstyle="round,pad=0.35", fc="lightyellow", ec="goldenrod", alpha=0.9))
     
     plt.tight_layout()
     if output_png is None:
         output_png = os.path.join(export_dir, "vyzarovaci_diagram_2d.png")
-    os.makedirs(os.path.dirname(os.path.abspath(output_png)) or ".", exist_ok=True)
+    output_png = os.path.abspath(output_png)
+    os.makedirs(os.path.dirname(output_png) or ".", exist_ok=True)
     plt.savefig(output_png, dpi=200)
     plt.close()
     print(f"Uložen 2D vyzařovací diagram: {output_png}")
+
+    # Uložení samostatných dílčích grafů do složky grafy/
+    grafy_dirs = [os.path.join(export_dir, "grafy")]
+    out_dir = os.path.dirname(output_png)
+    if os.path.abspath(out_dir) != os.path.abspath(export_dir):
+        grafy_dirs.append(os.path.join(out_dir, "grafy"))
+
+    for g_dir in grafy_dirs:
+        os.makedirs(g_dir, exist_ok=True)
+
+        # 1. Samostatný řez X-Z
+        fig_xz = plt.figure(figsize=(6.5, 6))
+        ax_xz = fig_xz.add_subplot(111, projection='polar')
+        ax_xz.set_theta_zero_location('N')
+        ax_xz.set_theta_direction(-1)
+        ax_xz.plot(angles_rad, np.clip(d_lhcp_xz, r_min, r_max), 'b-', lw=2.2, label='LHCP (hlavní)')
+        ax_xz.plot(angles_rad, np.clip(d_tot_xz, r_min, r_max), 'k:', lw=1.2, label='Celková směrovost')
+        ax_xz.set_ylim([r_min, r_max])
+        ax_xz.set_title(rf"Vyzařovací diagram — Řez rovinou X-Z ($\phi = 0^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=11, fontweight='bold', pad=15)
+        ax_xz.legend(loc='lower left', bbox_to_anchor=(-0.08, -0.15), fontsize=9)
+        ax_xz.grid(True, linestyle=':', alpha=0.7)
+        plt.tight_layout()
+        p_xz = os.path.join(g_dir, "vyzarovaci_diagram_rez_XZ.png")
+        plt.savefig(p_xz, dpi=200)
+        plt.close(fig_xz)
+
+        # 2. Samostatný řez Y-Z
+        fig_yz = plt.figure(figsize=(6.5, 6))
+        ax_yz = fig_yz.add_subplot(111, projection='polar')
+        ax_yz.set_theta_zero_location('N')
+        ax_yz.set_theta_direction(-1)
+        ax_yz.plot(angles_rad, np.clip(d_lhcp_yz, r_min, r_max), 'b-', lw=2.2, label='LHCP (hlavní)')
+        ax_yz.plot(angles_rad, np.clip(d_tot_yz, r_min, r_max), 'k:', lw=1.2, label='Celková směrovost')
+        ax_yz.set_ylim([r_min, r_max])
+        ax_yz.set_title(rf"Vyzařovací diagram — Řez rovinou Y-Z ($\phi = 90^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=11, fontweight='bold', pad=15)
+        ax_yz.legend(loc='lower left', bbox_to_anchor=(-0.08, -0.15), fontsize=9)
+        ax_yz.grid(True, linestyle=':', alpha=0.7)
+        plt.tight_layout()
+        p_yz = os.path.join(g_dir, "vyzarovaci_diagram_rez_YZ.png")
+        plt.savefig(p_yz, dpi=200)
+        plt.close(fig_yz)
+
+        # 3. Samostatný graf osového poměru AR
+        fig_ar, ax_ar = plt.subplots(figsize=(7, 5))
+        ax_ar.plot(theta_hemi, ar_xz[mask_hemi], 'b-', lw=2.0, label='AR (řez X-Z)')
+        ax_ar.plot(theta_hemi, ar_yz[mask_hemi], 'm--', lw=2.0, label='AR (řez Y-Z)')
+        ax_ar.axhline(3.0, color='red', linestyle='--', lw=1.5, label='Mez 3 dB (čistá kruhová)')
+        ax_ar.set_ylim([0, 15])
+        ax_ar.set_xlim([-90, 90])
+        ax_ar.set_xlabel(r"Úhel od kolmice $\theta$ [$^\circ$]", fontsize=11)
+        ax_ar.set_ylabel("Osový poměr AR [dB]", fontsize=11)
+        ax_ar.set_title(f"Osový poměr AR (Axial Ratio)\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold')
+        ax_ar.grid(True, linestyle=':', alpha=0.7)
+        ax_ar.legend(loc='upper right', fontsize=9)
+        ax_ar.annotate(f"Směr +Z: AR = {ar_xz[zenith_idx]:.2f} dB\nMax LHCP: {np.max(d_lhcp_xz):.2f} dBi",
+                       xy=(0.04, 0.95), xycoords='axes fraction',
+                       verticalalignment='top',
+                       fontsize=9.5, bbox=dict(boxstyle="round,pad=0.35", fc="lightyellow", ec="goldenrod", alpha=0.9))
+        plt.tight_layout()
+        p_ar = os.path.join(g_dir, "graf_osovy_pomer_AR.png")
+        plt.savefig(p_ar, dpi=200)
+        plt.close(fig_ar)
 
 def plot_radiation_pattern_3d(export_dir, freq_target=None, output_png=None):
     csv_path = _find_farfield_csv(export_dir)
@@ -249,7 +308,7 @@ def plot_radiation_pattern_3d(export_dir, freq_target=None, output_png=None):
                  fontsize=13, fontweight='bold')
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
-    ax.set_zlabel('Z (+Zenith)')
+    ax.set_zlabel('+Z')
     
     # Nastavení pohledu
     ax.view_init(elev=25, azim=45)

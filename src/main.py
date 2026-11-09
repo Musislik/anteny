@@ -344,9 +344,17 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     gmsh.write(step_file)
     print(f"Geometrie byla exportována do {step_file} pro případné zobrazení v CAD softwaru.")
     
-    # Isometrický náhled pomocí Matplotlib
+    # 2D pohled shora na geometrii pomocí Matplotlib
     from visualization import plot_geometry
-    plot_geometry(params)
+    plot_geometry(params, filename="data/geometry_iso.png")
+    root_dir_pre, current_data_dir_pre = load_env()
+    if os.path.abspath(current_data_dir_pre) != os.path.abspath(os.path.join(root_dir_pre, "data")):
+        target_iso = os.path.join(current_data_dir_pre, "geometry_iso.png")
+        if os.path.abspath(target_iso) != os.path.abspath("data/geometry_iso.png"):
+            try:
+                plot_geometry(params, filename=target_iso)
+            except Exception:
+                pass
     
     print("--- 2. Klasifikace domén a tvorba sítě (Gmsh) ---")
     assign_physical_groups_and_mesh(params)
@@ -518,6 +526,22 @@ def _generate_advanced_plots(output_dir, data_dir):
     except Exception as e:
         print(f"Upozornění při automatickém generování grafu de-embeddingu impedance: {e}")
 
+    # Synchronizace podsložek grafy/ a obrazky/ mezi data_dir a output_dir
+    if os.path.abspath(data_dir) != os.path.abspath(output_dir):
+        for subf in ["grafy", "obrazky"]:
+            src_f = os.path.join(data_dir, subf)
+            dst_f = os.path.join(output_dir, subf)
+            if os.path.exists(src_f) and os.path.isdir(src_f):
+                os.makedirs(dst_f, exist_ok=True)
+                for item in os.listdir(src_f):
+                    s_item = os.path.join(src_f, item)
+                    d_item = os.path.join(dst_f, item)
+                    if os.path.isfile(s_item):
+                        try:
+                            shutil.copy2(s_item, d_item)
+                        except Exception:
+                            pass
+
 def _process_results_model1(params, output_dir, data_dir, run_name):
     s11_file = os.path.join(output_dir, "port-S.csv")
     if os.path.exists(s11_file) and os.path.getsize(s11_file) > 0:
@@ -575,13 +599,18 @@ def _process_results_model2(params, output_dir, data_dir, run_name):
             plt.xlabel('Frekvence [GHz]')
             plt.ylabel('S-parametry [dB]')
             plt.grid(True)
-            plt.axhline(-10, color='grey', linestyle=':', label='Mez -10 dB')
+            plt.axhline(-10, color='red', linestyle='--', lw=1.5, label='Mez -10 dB')
             plt.legend()
 
             plot_path = os.path.join(data_dir, "S_params_graf.png")
             plt.savefig(plot_path)
             # Kopie pro zpětnou kompatibilitu
             plt.savefig(os.path.join(data_dir, "S11_graf.png"))
+
+            # Uložení do grafy/
+            grafy_dir = os.path.join(data_dir, "grafy")
+            os.makedirs(grafy_dir, exist_ok=True)
+            plt.savefig(os.path.join(grafy_dir, "graf_S11_S22.png"))
             plt.close()
             print(f"Graf S11 a S22 byl úspěšně uložen do {plot_path}")
         except Exception as e:
