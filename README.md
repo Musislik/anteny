@@ -30,12 +30,12 @@ The workflow automates parametric OpenCASCADE geometry construction, conformal G
 
 Three progressively refined antenna topologies are implemented and selectable via `ANTENNA_MODEL` in `.env` or `--model` on the CLI:
 
-### 1. Model 1 — 50 Ω T-Junction Power Divider ([`src/geometry_v1.py`](src/geometry_v1.py))
+### 1. Model 1 (obsolete) — 50 Ω T-Junction Power Divider ([`src/geometry_v1.py`](src/geometry_v1.py))
 - **Topology:** Single `50 Ω` input feed (`w1 ≈ 2.98 mm`) connected to a symmetric T-junction power divider splitting into two orthogonal `100 Ω` branches (`w2 ≈ 0.69 mm`, natural match `Z_in,T = 100 Ω || 100 Ω = 50 Ω`).
 - **Quadrature Phasing:** The bottom branch (`E_y`) serves as the `0°` reference, while the left branch (`E_x`) adds a `λ_g / 4` (`≈ 18.66 mm` at `f_c = 2.3325 GHz`, `ε_eff ≈ 2.97`) delay section for `-90°` phase shift.
 - **Tuning Parameters:** Patch dimensions (`PATCH_L`, `PATCH_W`, default `30.30 mm`), connection trace width `w3` (`w3 <= w2`), and optional inset feed (`FEED_INSET`).
 
-### 2. Model 2 — Dual-Port 100 Ω Direct Inset Feed ([`src/geometry_v2.py`](src/geometry_v2.py))
+### 2. Model 2 (obsolete) — Dual-Port 100 Ω Direct Inset Feed ([`src/geometry_v2.py`](src/geometry_v2.py))
 - **Topology:** Decouples the two orthogonal excitations into two independent `100 Ω` lumped ports (`w_feed ≈ 0.694 mm`) feeding the bottom (`Port 1`, `E_y`) and left (`Port 2`, `E_x`) edges directly, eliminating parasitic routing coupling from the T-junction.
 - **Quadrature Phasing & Excitation Modes:** Port 1 incorporates a `ΔL = λ_g / 4` (`≈ 18.66 mm`) line extension. Supports isolated single-port tuning (`DRIVEN_PORT=1` or `2`), simultaneous dual-port driving, or full two-step S-matrix superposition (`DRIVEN_PORT=all`).
 - **Tuning Parameters:** Independent asymmetric inset depths (`FEED_INSET_B`, `FEED_INSET_L`, typically `4.8–5.4 mm` for `L = W = 28.80 mm`), slot gaps, and explicit feed lengths (`FEED_LEN_B`, `FEED_LEN_L`, `FEED_DELTA_L`). Because deep insets lower resonance and interact with the `λ_g / 4` delay line via impedance inversion, this architecture motivated Model 3.
@@ -128,8 +128,8 @@ ruff check .
 
 ### Summary Tables (`export/`)
 Each simulation and sweep step automatically extracts RF metrics in [`src/tracker.py`](src/tracker.py) and appends structured logs into `export/`:
-- **Model 1:** `export/sweep_results.csv` and `export/sweep_results.md`
-- **Model 2:** `export/sweep_results_model2.csv` and `export/sweep_results_model2.md`
+- **Model 1:** (obsolete) `export/sweep_results.csv` and `export/sweep_results.md`
+- **Model 2:** (obsolete) `export/sweep_results_model2.csv` and `export/sweep_results_model2.md`
 - **Model 3:** `export/sweep_results_model3.csv` and `export/sweep_results_model3.md`
 
 Tracked metrics include resonant frequencies (`f0`, `f0_b`, `f0_l`), reflection minima (`S11_min`, `S22_min`), `-10 dB` impedance bandwidth, port input impedance (`Zin`), LHCP/RHCP gain (`Gain_LHCP`, `Gain_max_LHCP` and `fGainMaxLhcp`), Axial Ratio (`AR`), and polarization sense. When `SWEEP_EXPORT_EACH=true`, each step can also archive plots, CAD geometry, and solver configs into a self-contained ZIP package.
