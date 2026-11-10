@@ -12,7 +12,6 @@ Ověřuje:
 
 import os
 import sys
-import shutil
 import tempfile
 import json
 from unittest.mock import patch

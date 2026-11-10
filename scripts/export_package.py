@@ -12,17 +12,16 @@ Nebo se zadáním jména:
 """
 
 import os
-import sys
 import shutil
 import zipfile
 import re
 import argparse
 
 try:
-    import _env
+    import _env  # noqa: F401
 except ImportError:
     try:
-        import scripts._env
+        import scripts._env  # noqa: F401
     except ImportError:
         pass
 from postpro_utils import load_env, ensure_paraview_linked, get_export_dir

@@ -14,13 +14,12 @@ import os
 import sys
 import glob
 import json
-import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 from matplotlib.animation import FuncAnimation, PillowWriter
 
-import _env
+import _env  # noqa: F401
 from postpro_utils import load_env, ensure_paraview_linked
 
 

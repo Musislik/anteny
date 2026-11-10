@@ -11,12 +11,11 @@ Spuštění v ParaView:
 """
 
 import os
-import sys
 import vtk
 from paraview.simple import *
 
 try:
-    import _env
+    import _env  # noqa: F401
     from postpro_utils import get_driven_boundary_pvd
 except ImportError:
     def get_driven_boundary_pvd(caller_file=None):

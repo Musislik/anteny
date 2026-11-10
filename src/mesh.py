@@ -1,6 +1,5 @@
 import os
 import gmsh
-import numpy as np
 
 # Konstanty geometrické přesnosti a tolerancí
 GEOM_TOL = 1e-6

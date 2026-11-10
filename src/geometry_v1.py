@@ -25,7 +25,7 @@ def build_model_v1(params):
     # Zanoření napaječe (inset feed)
     inset = float(params.get('inset', params.get('feed_inset', 0.0)))
 
-    # Napájecí dělič dle specifikace v docs/abstrakce_zadani.md (Cross-fed patch dle napajeni.png)
+    # Napájecí T-dělič pro cross-fed patch anténu (kruhová polarizace LHCP)
     # Tři šířky spojů:
     # 1. w1: 50 Ohm hlavní přívod od portu k T-uzlu (přirozené přizpůsobení, bez transformátoru)
     # 2. w2: 100 Ohm větve fázovacího děliče (referenční spodní větev Ey, zpožďovací levá větev Ex s délkou + lambda_g/4)

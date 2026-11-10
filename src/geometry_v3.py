@@ -17,7 +17,6 @@ import numpy as np
 from rf_calc import (
     synth_microstrip_w,
     calc_microstrip_eps_eff,
-    calc_microstrip_z0,
     calc_quarter_wave_length,
     DESIGN_FREQ_GHZ,
 )

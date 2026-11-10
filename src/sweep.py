@@ -53,7 +53,6 @@ if __name__ == "__main__":
 
     if selected_model == 3:
         from sweep_model3 import run_sweep_model3
-        import sweep_model3
         parser_m3 = argparse.ArgumentParser(description="Parametrický sweep Modelu 3 (Hybridní dvoustupňové přizpůsobení)")
         parser_m3.add_argument("--sweep-target", choices=["inset", "y0", "trans_w", "w_t", "trans_l", "l_t", "delta_l", "patch_l"], default=None,
                                 help="Cíl sweepování: 'inset' (y0, výchozí), 'trans_w' (w_T), 'trans_l' (l_T), 'delta_l', 'patch_l'")
@@ -122,8 +121,6 @@ if __name__ == "__main__":
     elif selected_model == 2:
         from sweep_model2 import run_sweep_model2
         sys.argv = [sys.argv[0]] + remaining_argv
-        # Spustíme parser z sweep_model2
-        import sweep_model2
         parser_m2 = argparse.ArgumentParser(description="Parametrický sweep Modelu 2 (Dvouportový LHCP)")
         parser_m2.add_argument("--sweep-target", choices=["inset", "patch_l", "feed_len_b", "feed_len_l", "feed_delta_l", "delta_l", "feed_lens"], default=None,
                                 help="Cíl sweepování: 'inset' (výchozí), 'patch_l', 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
@@ -206,7 +203,6 @@ if __name__ == "__main__":
 
     else:
         from sweep_model1 import run_sweep_model1
-        import sweep_model1
         parser_m1 = argparse.ArgumentParser(description="Parametrický sweep Modelu 1 (T-dělič)")
         parser_m1.add_argument("--param", choices=["inset", "patch_l"], default="inset")
         parser_m1.add_argument("--insets", type=float, nargs="+", default=None)

@@ -10,8 +10,6 @@ Ověřuje:
 
 import os
 import sys
-import shutil
-import tempfile
 import json
 import pytest
 import numpy as np

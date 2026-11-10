@@ -20,7 +20,7 @@ for d in (src_dir, scripts_dir):
     if d not in sys.path:
         sys.path.append(d)
 
-from postpro_utils import load_env, get_export_dir
+from postpro_utils import load_env
 load_env()
 
 from main import main

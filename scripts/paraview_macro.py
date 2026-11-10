@@ -1,9 +1,8 @@
 from paraview.simple import *
 import os
-import sys
 import json
 
-import _env
+import _env  # noqa: F401
 from postpro_utils import load_env, ensure_paraview_linked
 
 def setup_scene():

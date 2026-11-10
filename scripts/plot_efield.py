@@ -3,7 +3,7 @@ import pyvista as pv
 import os
 import sys
 
-import _env
+import _env  # noqa: F401
 from postpro_utils import load_env, ensure_paraview_linked
 
 def plot_e_field(vtu_file=None, output_image=None):

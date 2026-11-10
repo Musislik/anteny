@@ -142,7 +142,7 @@ def calc_patch_edge_impedance(patch_w, patch_l, h, eps_r):
 def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3, inset=0.0):
     """
     Uživatelská funkce pro výpočet jednotlivých délek mikropáskového vedení l1 až l8
-    napájecí sítě cross-fed patch antény (kruhová polarizace LHCP dle napajeni.png).
+    napájecí sítě cross-fed patch antény (kruhová polarizace LHCP).
     Umožňuje zanoření napaječe (inset feed) o hloubku inset do vyzařujícího flíčku.
 
     Přiřazení a definice délek l1 až l8:
@@ -216,7 +216,7 @@ def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3, inset=0.0):
 
 def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0, w3=None, sub_margin=None, inset=0.0):
     """
-    Vypočte rozměry napájecí sítě dle specifikace v docs/abstrakce_zadani.md:
+    Vypočte rozměry napájecí sítě cross-fed patch antény:
     1. w1: Hlavní vstupní vedení (50 Ohm, přirozeně přizpůsobeno T-uzlu 100 || 100 = 50 Ohm).
     2. w2: Větve děliče výkonu (100 Ohm), ze kterých se počítá fázovací zpoždění lambda_g/4.
     3. w3: Vodič k samotné anténě (optimalizační stupeň volnosti, w3 <= w2).

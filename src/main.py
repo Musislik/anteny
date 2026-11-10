@@ -21,8 +21,6 @@ from postpro_utils import (
 )
 
 from rf_calc import (
-    synth_microstrip_w,
-    synth_square_patch_size,
     C_0_MM_GHZ,
     DESIGN_FREQ_GHZ,
     PORT_Z0

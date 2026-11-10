@@ -4,7 +4,6 @@ test_model2.py - Komplexní jednotkové testy pro Model 2 a zpětnou kompatibili
 
 import os
 import sys
-import shutil
 import tempfile
 import json
 import numpy as np
@@ -22,7 +21,6 @@ from rf_calc import (
     calc_quarter_wave_length,
     DESIGN_FREQ_GHZ,
 )
-from geometry_v1 import build_model_v1
 from geometry_v2 import build_model_v2
 from geometry import build_model
 from palace_builder import build_palace_config
@@ -30,11 +28,7 @@ from tracker import (
     extract_s_parameters_model2,
     extract_farfield_metrics,
     record_run,
-    record_run_model2,
-    update_markdown_summary,
     print_summary_table_model2,
-    TRACKED_METRICS_MODEL2,
-    FIELDNAMES_V2,
 )
 from sweep_model2 import build_sweep_pairs
 

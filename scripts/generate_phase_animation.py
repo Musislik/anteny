@@ -7,12 +7,11 @@ Výstup se uloží jako ParaView PVD kolekce, kterou lze v ParaView přímo pře
 """
 
 import os
-import sys
 import glob
 import numpy as np
 from paraview.simple import *
 
-import _env
+import _env  # noqa: F401
 from postpro_utils import load_env, ensure_paraview_linked
 
 def generate_phase_series(
