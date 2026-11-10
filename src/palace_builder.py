@@ -6,7 +6,7 @@ SCALE_MM_TO_M = 1e-3
 DEFAULT_PORT_IMPEDANCE_V1 = 50.0
 DEFAULT_PORT_IMPEDANCE_V2 = 100.0
 
-def build_palace_config(params):
+def build_palace_config(params, data_dir=None):
     model_version = int(params.get('antenna_model', 1))
     
     if model_version in (2, 3):
@@ -137,5 +137,7 @@ def build_palace_config(params):
         }
     }
     
-    with open("data/config.json", "w") as f:
+    target_dir = data_dir or "data"
+    os.makedirs(target_dir, exist_ok=True)
+    with open(os.path.join(target_dir, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4)

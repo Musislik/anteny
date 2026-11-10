@@ -1,3 +1,4 @@
+import os
 import gmsh
 import numpy as np
 
@@ -5,7 +6,7 @@ import numpy as np
 GEOM_TOL = 1e-6
 EDGE_CLEARANCE_TOL = 1e-3
 
-def assign_physical_groups_and_mesh(params):
+def assign_physical_groups_and_mesh(params, data_dir=None):
     vols = gmsh.model.getEntities(3)
     surfs = gmsh.model.getEntities(2)
     
@@ -137,6 +138,8 @@ def assign_physical_groups_and_mesh(params):
     gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)
     gmsh.option.setNumber("Mesh.Binary", 0)
     
+    target_dir = data_dir or "data"
+    os.makedirs(target_dir, exist_ok=True)
     gmsh.model.mesh.generate(3)
-    gmsh.write("data/mesh.msh")
+    gmsh.write(os.path.join(target_dir, "mesh.msh"))
     gmsh.finalize()

@@ -1,6 +1,7 @@
 import os
 import sys
 import shutil
+import subprocess
 import json
 import numpy as np
 import matplotlib.pyplot as plt
@@ -44,6 +45,69 @@ def _resolve_param(key, env_key, default_val, custom_params=None, cast_type=floa
             pass
     return default_val
 
+def _is_link_or_junction(path):
+    """Vrátí True, pokud je cesta symlink nebo Windows directory junction."""
+    if os.path.islink(path):
+        return True
+    if hasattr(os.path, "isjunction") and os.path.isjunction(path):
+        return True
+    if sys.platform == "win32":
+        try:
+            st = os.lstat(path)
+            if getattr(st, "st_file_attributes", 0) & 0x0400:  # FILE_ATTRIBUTE_REPARSE_POINT
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def _unlink_reparse_point(path):
+    """Bezpečně odpojí symlink nebo Windows junction bez mazání cílového obsahu."""
+    if os.path.islink(path):
+        try:
+            os.unlink(path)
+            return
+        except OSError:
+            pass
+    try:
+        os.rmdir(path)
+        return
+    except OSError:
+        pass
+    if sys.platform == "win32":
+        subprocess.run(
+            ["cmd", "/c", "rmdir", path],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    else:
+        os.remove(path)
+
+
+def _clean_dir(path):
+    """Bezpečně vyčistí obsah adresáře včetně symlinků a Windows junctions."""
+    if not os.path.exists(path) and not os.path.lexists(path):
+        return
+    if _is_link_or_junction(path):
+        _unlink_reparse_point(path)
+        return
+    if not os.path.isdir(path):
+        return
+    for item in os.listdir(path):
+        p = os.path.join(path, item)
+        try:
+            if _is_link_or_junction(p):
+                _unlink_reparse_point(p)
+            elif os.path.isdir(p):
+                _clean_dir(p)
+                os.rmdir(p)
+            else:
+                os.remove(p)
+        except Exception as e:
+            print(f"Upozornění při mazání {p}: {e}")
+
+
 def clean_previous_outputs(data_dir=None):
     print("--- 0. Čištění předchozích výstupů simulace ---")
     if data_dir is None:
@@ -54,32 +118,16 @@ def clean_previous_outputs(data_dir=None):
         os.path.join(data_dir, "postpro_p2"),
     ]
     for d in dirs_to_clean:
-        if os.path.exists(d):
-            for item in os.listdir(d):
-                p = os.path.join(d, item)
-                try:
-                    if os.path.islink(p):
-                        try:
-                            os.unlink(p)
-                        except Exception:
-                            os.remove(p)
-                    elif os.path.isdir(p):
-                        shutil.rmtree(p, ignore_errors=True)
-                    else:
-                        try:
-                            os.remove(p)
-                        except Exception:
-                            pass
-                except Exception as e:
-                    print(f"Upozornění při mazání {p}: {e}")
-    print("Výstupní složky simulace (data/postpro*) byly vyčištěny.")
+        _clean_dir(d)
+    print(f"Výstupní složky simulace ({os.path.join(data_dir, 'postpro*')}) byly vyčištěny.")
 
 def main(custom_params=None, skip_simulation=False, clean=False):
-    if clean:
-        clean_previous_outputs()
+    # Načtení případného .env souboru a zajištění cílového datového adresáře
+    root_dir, data_dir = load_env()
+    os.makedirs(data_dir, exist_ok=True)
 
-    # Načtení případného .env souboru
-    load_env()
+    if clean:
+        clean_previous_outputs(data_dir=data_dir)
 
     # Model antény (1 = původní T-dělič 50 Ohm, 2 = dvouportový model 100 Ohm LHCP, 3 = hybridní dvoustupňové přizpůsobení)
     antenna_model = _resolve_param('antenna_model', 'ANTENNA_MODEL', 1, custom_params, int)
@@ -340,34 +388,22 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     build_model(params)
     
     # Export 3D modelu pro CAD
-    step_file = "data/antenna_model.step"
+    step_file = os.path.join(data_dir, "antenna_model.step")
     gmsh.write(step_file)
     print(f"Geometrie byla exportována do {step_file} pro případné zobrazení v CAD softwaru.")
     
     # 2D pohled shora na geometrii pomocí Matplotlib
     from visualization import plot_geometry
-    plot_geometry(params, filename="data/geometry_iso.png")
-    root_dir_pre, current_data_dir_pre = load_env()
-    if os.path.abspath(current_data_dir_pre) != os.path.abspath(os.path.join(root_dir_pre, "data")):
-        target_iso = os.path.join(current_data_dir_pre, "geometry_iso.png")
-        if os.path.abspath(target_iso) != os.path.abspath("data/geometry_iso.png"):
-            try:
-                plot_geometry(params, filename=target_iso)
-            except Exception:
-                pass
+    plot_geometry(params, filename=os.path.join(data_dir, "geometry_iso.png"))
     
     print("--- 2. Klasifikace domén a tvorba sítě (Gmsh) ---")
-    assign_physical_groups_and_mesh(params)
+    assign_physical_groups_and_mesh(params, data_dir=data_dir)
     
     print("--- 3. Vytváření konfigurace pro Palace ---")
-    build_palace_config(params)
+    build_palace_config(params, data_dir=data_dir)
 
-    # Uložení aktuálních parametrů modelu do data/params.json
-    root_dir, current_data_dir = load_env()
-    target_param_files = [os.path.join(root_dir, "data", "params.json")]
-    if os.path.abspath(current_data_dir) != os.path.abspath(os.path.join(root_dir, "data")):
-        target_param_files.append(os.path.join(current_data_dir, "params.json"))
-
+    # Uložení aktuálních parametrů modelu do data_dir/params.json
+    pfile = os.path.join(data_dir, "params.json")
     try:
         def _to_json_val(val):
             if isinstance(val, (np.integer,)):
@@ -383,23 +419,18 @@ def main(custom_params=None, skip_simulation=False, clean=False):
             return val
 
         serializable_params = {k: _to_json_val(v) for k, v in params.items() if not str(k).startswith('_')}
-        for pfile in target_param_files:
-            try:
-                os.makedirs(os.path.dirname(pfile), exist_ok=True)
-                with open(pfile, "w", encoding="utf-8") as pf:
-                    json.dump(serializable_params, pf, indent=4)
-                print(f"Parametry modelu byly uloženy do {pfile}")
-            except Exception as e_pfile:
-                print(f"Upozornění při ukládání {pfile}: {e_pfile}")
+        os.makedirs(data_dir, exist_ok=True)
+        with open(pfile, "w", encoding="utf-8") as pf:
+            json.dump(serializable_params, pf, indent=4)
+        print(f"Parametry modelu byly uloženy do {pfile}")
     except Exception as e:
-        print(f"Upozornění při přípravě parametrů pro uložení: {e}")
+        print(f"Upozornění při ukládání {pfile}: {e}")
 
     if skip_simulation:
         print("--- Hotovo: Geometrie, STEP CAD model, náhled a síť byly vygenerovány lokálně bez simulace v Dockeru. ---")
         return
 
     print("--- 4. Spuštění fyzikální simulace (Palace) ---")
-    _, data_dir = load_env()
     output_dir = os.path.join(data_dir, "postpro")
 
     driven_mode = str(params.get('driven_port', os.getenv('DRIVEN_PORT', 'all'))).lower().strip()
@@ -411,11 +442,14 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     if is_model_matrix:
         print("--- Spouštím dvoukrokovou simulaci pro kompletní 2-portovou S-matici (Port 1 a Port 2) ---")
 
+        # Před krokem 1 vyčistíme případné zbytky předchozího běhu v postpro
+        _clean_dir(output_dir)
+
         # 1. KROK: Port 1 (spodní, Ey)
         print("\n>>> Krok 1/2: Simulace buzení Portu 1 (Spodní napaječ Ey, Port 2 = 100 Ω zátěž) <<<")
         params_p1 = dict(params)
         params_p1['driven_port'] = '1'
-        build_palace_config(params_p1)
+        build_palace_config(params_p1, data_dir=data_dir)
 
         try:
             run_palace()
@@ -424,15 +458,15 @@ def main(custom_params=None, skip_simulation=False, clean=False):
             return
 
         p1_dir = os.path.join(data_dir, "postpro_p1")
-        if os.path.exists(p1_dir):
-            shutil.rmtree(p1_dir, ignore_errors=True)
+        _clean_dir(p1_dir)
         copy_postpro_directory(output_dir, p1_dir)
+        _clean_dir(output_dir)
 
         # 2. KROK: Port 2 (levý, Ex)
         print("\n>>> Krok 2/2: Simulace buzení Portu 2 (Levý napaječ Ex, Port 1 = 100 Ω zátěž) <<<")
         params_p2 = dict(params)
         params_p2['driven_port'] = '2'
-        build_palace_config(params_p2)
+        build_palace_config(params_p2, data_dir=data_dir)
 
         try:
             run_palace()
@@ -441,20 +475,20 @@ def main(custom_params=None, skip_simulation=False, clean=False):
             return
 
         p2_dir = os.path.join(data_dir, "postpro_p2")
-        if os.path.exists(p2_dir):
-            shutil.rmtree(p2_dir, ignore_errors=True)
+        _clean_dir(p2_dir)
         copy_postpro_directory(output_dir, p2_dir)
+        _clean_dir(output_dir)
 
         # 3. KROK: Sloučení výstupů z obou kroků do kompletní 2-portové matice v data/postpro
         print("\n--- Sloučení výstupů z obou běhů do kompletní 2-portové S-matice ---")
         merge_two_port_simulations(p1_dir, p2_dir, output_dir)
 
         # Obnovení výchozí konfigurace config.json
-        build_palace_config(params)
+        build_palace_config(params, data_dir=data_dir)
 
     else:
         # Běžný jednorázový běh (Model 1, nebo explicitně zadaný jeden port u Modelu 2 a 3)
-        build_palace_config(params)
+        build_palace_config(params, data_dir=data_dir)
         try:
             run_palace()
         except Exception as e:
@@ -657,6 +691,8 @@ if __name__ == "__main__":
                         help="Relativní tolerance lineárního řešiče FGMRES (výchozí: 1e-6 nebo z LINEAR_TOL)")
     parser.add_argument("--linear-its", "--linear-max-its", type=int, default=None, dest="linear_max_its",
                         help="Maximální počet iterací lineárního řešiče FGMRES (výchozí: 100 nebo z LINEAR_MAX_ITS)")
+    parser.add_argument("--port-impedance", type=float, default=None, dest="port_impedance",
+                        help="Impedance portů v Ohmech (výchozí: 50.0 pro Model 1, 100.0 pro Model 2 a 3, nebo z PORT_IMPEDANCE)")
 
     # Parametrizace geometrie patche a zanoření
     parser.add_argument("--patch-l", type=float, default=None, dest="patch_L",
@@ -690,7 +726,7 @@ if __name__ == "__main__":
 
     cli_params = {}
     for param in ['antenna_model', 'freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
-                  'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its',
+                  'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its', 'port_impedance',
                   'patch_L', 'patch_W', 'feed_inset', 'feed_inset_b', 'feed_inset_l', 'feed_inset_gap_b', 'feed_inset_gap_l',
                   'feed_len_b', 'feed_len_l', 'feed_delta_l', 'trans_w', 'trans_l', 'driven_port']:
         val = getattr(args, param, None)
