@@ -210,6 +210,7 @@ if __name__ == "__main__":
         parser_m1 = argparse.ArgumentParser(description="Parametrický sweep Modelu 1 (T-dělič)")
         parser_m1.add_argument("--param", choices=["inset", "patch_l"], default="inset")
         parser_m1.add_argument("--insets", type=float, nargs="+", default=None)
+        parser_m1.add_argument("--patch-lengths", type=float, nargs="+", default=None, dest="patch_lengths")
         parser_m1.add_argument("--patch-l", type=float, default=None, dest="patch_l")
         parser_m1.add_argument("--patch-w", type=float, default=None, dest="patch_w")
         parser_m1.add_argument("--freq-min", type=float, default=None, dest="freq_min")
@@ -226,6 +227,7 @@ if __name__ == "__main__":
         run_sweep_model1(
             param=m1_args.param,
             insets=m1_args.insets,
+            patch_lengths=m1_args.patch_lengths,
             patch_l=m1_args.patch_l,
             patch_w=m1_args.patch_w,
             freq_min=m1_args.freq_min,

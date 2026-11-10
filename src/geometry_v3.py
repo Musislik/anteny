@@ -52,25 +52,25 @@ def build_model_v3(params):
     w_T_b = float(params.get('trans_w_b', params.get('w_T_b', params.get('w_trans_b', w_T_default))))
     w_T_l = float(params.get('trans_w_l', params.get('w_T_l', params.get('w_trans_l', w_T_default))))
 
-    raw_l_T_b = params.get('trans_l_b', params.get('l_T_b', params.get('l_trans_b')))
-    raw_l_T_l = params.get('trans_l_l', params.get('l_T_l', params.get('l_trans_l')))
-    raw_l_T_common = params.get('trans_l', params.get('l_T', params.get('l_trans')))
+    raw_l_T_b = next((params[k] for k in ('trans_l_b', 'l_T_b', 'l_trans_b') if params.get(k) is not None), None)
+    raw_l_T_l = next((params[k] for k in ('trans_l_l', 'l_T_l', 'l_trans_l') if params.get(k) is not None), None)
+    raw_l_T_common = next((params[k] for k in ('trans_l', 'l_T', 'l_trans') if params.get(k) is not None), None)
 
-    if raw_l_T_b is not None:
-        l_T_b = float(raw_l_T_b)
-    elif raw_l_T_common is not None:
-        l_T_b = float(raw_l_T_common)
-    else:
-        eps_eff_tb = calc_microstrip_eps_eff(w_T_b, h, eps_r)
-        l_T_b = calc_quarter_wave_length(f_design, eps_eff_tb)
+    def _resolve_branch_trans_l(raw_branch, w_branch):
+        if raw_branch is not None:
+            return float(raw_branch)
+        if raw_l_T_common is not None:
+            return float(raw_l_T_common)
+        eps_eff_branch = calc_microstrip_eps_eff(w_branch, h, eps_r)
+        return calc_quarter_wave_length(f_design, eps_eff_branch)
 
-    if raw_l_T_l is not None:
-        l_T_l = float(raw_l_T_l)
-    elif raw_l_T_common is not None:
-        l_T_l = float(raw_l_T_common)
-    else:
-        eps_eff_tl = calc_microstrip_eps_eff(w_T_l, h, eps_r)
-        l_T_l = calc_quarter_wave_length(f_design, eps_eff_tl)
+    l_T_b = _resolve_branch_trans_l(raw_l_T_b, w_T_b)
+    l_T_l = _resolve_branch_trans_l(raw_l_T_l, w_T_l)
+    resolved_trans_l = (
+        float(raw_l_T_common)
+        if raw_l_T_common is not None
+        else (l_T_b if abs(l_T_b - l_T_l) < 1e-9 else l_T_default)
+    )
 
     # 3. Mělký zářez (insets) a mezery (gaps)
     # Výchozí hloubka zanoření y0b = y0l = 2.5 mm, mezera g = 0.5 mm
@@ -149,7 +149,7 @@ def build_model_v3(params):
     params['w_T_b'] = params['trans_w_b']
     params['w_T_l'] = params['trans_w_l']
 
-    params['trans_l'] = float(np.round(l_T_default, 4))
+    params['trans_l'] = float(np.round(resolved_trans_l, 4))
     params['l_T'] = params['trans_l']
     params['l_trans'] = params['trans_l']
     params['trans_l_b'] = float(np.round(l_T_b, 4))

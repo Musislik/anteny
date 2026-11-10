@@ -101,6 +101,19 @@ def _resolve_env_bool(sweep_key, default_val=True):
     return val.strip().lower() in ("true", "1", "yes", "y", "ano", "t")
 
 
+def _resolve_opt_float(arg_val, *env_keys, default_val=None):
+    if arg_val is not None:
+        return float(arg_val)
+    for key in env_keys:
+        val = os.getenv(key)
+        if val is not None and val != "":
+            try:
+                return float(val)
+            except ValueError:
+                pass
+    return float(default_val) if default_val is not None else None
+
+
 def build_sweep_steps_m3(
     sweep_target=None,
     mode=None,
@@ -120,6 +133,7 @@ def build_sweep_steps_m3(
     inset_l=None,
     feed_delta_l=None,
     patch_l=None,
+    patch_w=None,
 ):
     """
     Sestaví seznam konfiguračních kroků (slovníků parametrů) pro parametrický sweep Modelu 3.
@@ -136,14 +150,13 @@ def build_sweep_steps_m3(
     elif target in ("patch", "l_patch", "patch_length"):
         target = "patch_l"
 
-    fixed_ib = float(inset_b if inset_b is not None else os.getenv("FEED_INSET_B", "2.5"))
-    fixed_il = float(inset_l if inset_l is not None else os.getenv("FEED_INSET_L", "2.5"))
-    fixed_tw = float(trans_w if trans_w is not None else os.getenv("TRANS_W", "0.42"))
-    raw_tl = trans_l if trans_l is not None else os.getenv("TRANS_L")
-    fixed_tl = float(raw_tl) if raw_tl is not None else None
-    raw_dl = feed_delta_l if feed_delta_l is not None else os.getenv("FEED_DELTA_L")
-    fixed_dl = float(raw_dl) if raw_dl is not None else None
-    fixed_pl = float(patch_l if patch_l is not None else os.getenv("PATCH_L", "28.8"))
+    fixed_ib = _resolve_opt_float(inset_b, "FEED_INSET_B", default_val="2.5")
+    fixed_il = _resolve_opt_float(inset_l, "FEED_INSET_L", default_val="2.5")
+    fixed_tw = _resolve_opt_float(trans_w, "TRANS_W", default_val="0.42")
+    fixed_tl = _resolve_opt_float(trans_l, "TRANS_L")
+    fixed_dl = _resolve_opt_float(feed_delta_l, "FEED_DELTA_L")
+    fixed_pl = _resolve_opt_float(patch_l, "SWEEP_PATCH_L", "PATCH_L", default_val="28.8")
+    fixed_pw = _resolve_opt_float(patch_w, "SWEEP_PATCH_W", "PATCH_W", default_val=fixed_pl)
 
     steps = []
 
@@ -161,7 +174,7 @@ def build_sweep_steps_m3(
                 'inset_b': fixed_ib,
                 'inset_l': fixed_il,
                 'patch_L': fixed_pl,
-                'patch_W': fixed_pl,
+                'patch_W': fixed_pw,
             }
             if fixed_tl is not None:
                 step['trans_l'] = fixed_tl
@@ -188,7 +201,7 @@ def build_sweep_steps_m3(
                 'inset_b': fixed_ib,
                 'inset_l': fixed_il,
                 'patch_L': fixed_pl,
-                'patch_W': fixed_pl,
+                'patch_W': fixed_pw,
             }
             if fixed_dl is not None:
                 step['feed_delta_l'] = fixed_dl
@@ -211,7 +224,7 @@ def build_sweep_steps_m3(
                 'inset_b': fixed_ib,
                 'inset_l': fixed_il,
                 'patch_L': fixed_pl,
-                'patch_W': fixed_pl,
+                'patch_W': fixed_pw,
             }
             if fixed_tl is not None:
                 step['trans_l'] = fixed_tl
@@ -223,10 +236,11 @@ def build_sweep_steps_m3(
         vals = patch_lengths or _parse_float_list(os.getenv("SWEEP_PATCH_LENGTHS")) or DEFAULT_PATCH_LENGTHS_M3
         for pl in vals:
             pl_val = float(np.round(pl, 2))
+            pw_val = float(np.round(patch_w, 2)) if patch_w is not None else pl_val
             step = {
                 'run_name': f"m3_patchL_{pl_val:.2f}mm",
                 'patch_L': pl_val,
-                'patch_W': pl_val,
+                'patch_W': pw_val,
                 'trans_w': fixed_tw,
                 'trans_w_b': fixed_tw,
                 'trans_w_l': fixed_tw,
@@ -289,7 +303,7 @@ def build_sweep_steps_m3(
                 'trans_w_b': fixed_tw,
                 'trans_w_l': fixed_tw,
                 'patch_L': fixed_pl,
-                'patch_W': fixed_pl,
+                'patch_W': fixed_pw,
             }
             if fixed_tl is not None:
                 step['trans_l'] = fixed_tl
@@ -331,6 +345,8 @@ def run_sweep_model3(
     export_each=None,
     skip_simulation=False,
     driven_port=None,
+    amr_threshold=None,
+    save_step=None,
 ):
     """Hlavní prováděcí funkce pro parametrický sweep Modelu 3."""
     load_env()
@@ -355,6 +371,7 @@ def run_sweep_model3(
         inset_l=inset_l,
         feed_delta_l=feed_delta_l,
         patch_l=patch_l,
+        patch_w=patch_w,
     )
 
     if export_each is None:
@@ -400,7 +417,7 @@ def run_sweep_model3(
     s_fmax = float(freq_max if freq_max is not None else _get_prof_env("FREQ_MAX", os.getenv("FREQ_MAX", "2.345")))
     s_fstep = float(freq_step if freq_step is not None else _get_prof_env("FREQ_STEP", default_freq_step))
     s_amr = int(amr_max_its if amr_max_its is not None else _get_prof_env("AMR_MAX_ITS", default_amr))
-    s_amr_tol = float(_get_prof_env("AMR_THRESHOLD", default_amr_tol))
+    s_amr_tol = float(amr_threshold if amr_threshold is not None else _get_prof_env("AMR_THRESHOLD", default_amr_tol))
     s_mesh_size_min = float(_get_prof_env("MESH_SIZE_MIN", default_mesh_min))
     s_mesh_size_max = float(_get_prof_env("MESH_SIZE_MAX", default_mesh_max))
     s_mesh_dist_min = float(_get_prof_env("MESH_DIST_MIN", default_dist_min))
@@ -408,7 +425,7 @@ def run_sweep_model3(
     s_linear_tol = float(linear_tol if linear_tol is not None else _get_prof_env("LINEAR_TOL", default_linear_tol))
     s_linear_max_its = int(linear_max_its if linear_max_its is not None else _get_prof_env("LINEAR_MAX_ITS", default_linear_max_its))
     s_ff_nsample = int(farfield_nsample if farfield_nsample is not None else _get_prof_env("FARFIELD_NSAMPLE", default_ff_nsample))
-    s_save_step = int(_get_prof_env("SAVE_STEP", "0"))
+    s_save_step = int(save_step if save_step is not None else _get_prof_env("SAVE_STEP", "0"))
     s_driven_port = str(driven_port if driven_port is not None else os.getenv("SWEEP_DRIVEN_PORT", os.getenv("DRIVEN_PORT", "all"))).lower().strip()
 
     print("\n" + "=" * 105)
@@ -442,8 +459,6 @@ def run_sweep_model3(
             'linear_tol': s_linear_tol,
             'linear_max_its': s_linear_max_its,
         }
-        if patch_w is not None:
-            custom_cfg['patch_W'] = float(patch_w)
 
         custom_cfg.update(step_params)
 

@@ -481,6 +481,17 @@ def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
         p_in_single = 1.0 - (10.0 ** (s11_min_db / 10.0)) if s11_min_db is not None else 1.0
         p_in_single = max(p_in_single, 0.01)
 
+        ff_abs = os.path.abspath(farfield_file)
+        ff_dir = os.path.dirname(ff_abs)
+        p1_ff = os.path.join(ff_dir, "farfield_p1-rE.csv")
+        p2_ff = os.path.join(ff_dir, "farfield_p2-rE.csv")
+        has_two_port_siblings = (
+            os.path.abspath(p1_ff) != ff_abs
+            and os.path.abspath(p2_ff) != ff_abs
+            and os.path.isfile(p1_ff) and os.path.getsize(p1_ff) > 0
+            and os.path.isfile(p2_ff) and os.path.getsize(p2_ff) > 0
+        )
+
         for f_val in freqs:
             f_data = data[np.isclose(data[:, 0], f_val, atol=1e-7)]
 
@@ -490,6 +501,8 @@ def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
             ex_tot = 0.0 + 0.0j
             ey_tot = 0.0 + 0.0j
             num_excs = max(len(unique_excs), 1)
+            if num_excs == 1 and has_two_port_siblings:
+                num_excs = 2
 
             for e in unique_excs:
                 e_data = f_data[np.isclose(f_data[:, 1], e, atol=1e-5)] if f_data.shape[1] > 1 else f_data
