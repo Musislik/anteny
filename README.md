@@ -21,7 +21,7 @@ The workflow automates parametric OpenCASCADE geometry construction, conformal G
 
 - **Parametric CAD & Meshing:** OpenCASCADE (`gmsh` OCC kernel) with Boolean Fragments for conformal interface meshing and localized conductor/slot refinement.
 - **Full-Wave EM Solver:** [AWS Labs Palace](https://github.com/awslabs/palace) FEM solver with Adaptive Mesh Refinement (AMR), SuperLU / FGMRES linear solver, second-order absorbing air-box boundaries (`>= λ_0 / 4` clearance), and far-field sphere integration.
-- **Orchestration & Post-Processing:** Python (`numpy`, `pandas`, `scipy`, `matplotlib`, `pyvista`, `meshio`, `python-dotenv`) inside Docker Compose.
+- **Orchestration & Post-Processing:** Python (`numpy`, `pandas`, `scipy`, `matplotlib`, `pyvista`, `meshio`) inside Docker Compose.
 - **3D Field Visualization:** ParaView (`.pvd` / `.pvtu` time/frequency series and interactive phasor rotation macros).
 
 ---
@@ -82,6 +82,8 @@ cp .env.example .env
 
 *(On Windows PowerShell / CMD: `copy .env.example .env`)*
 
+> **Important (Docker-out-of-Docker paths):** When running the full pipeline inside the `pipeline` container (`docker compose run --rm pipeline ...`), `pipeline` launches the `palace` worker container via `/var/run/docker.sock`. Because the host Docker daemon resolves bind mounts for `palace`, `CONF_DIR` and `DATA_DIR` in `.env` must be set to **absolute host paths**. When running `python src/main.py` or `python src/sweep.py` locally with `palace` in Docker, relative paths (`CONF_DIR=.`, `DATA_DIR=./data`) work directly — on Windows, running Python locally with `palace` in Docker avoids host-path translation issues.
+
 ### 2. Build Docker Images
 Build both the Python/Gmsh orchestration image (`pipeline`) and the AWS Palace FEM solver image (`palace`):
 
@@ -90,13 +92,17 @@ docker compose --profile worker build
 ```
 
 ### 3. Run a Single Simulation
-Run the full CAD → Gmsh → Palace → post-processing pipeline inside Docker using the configuration from `.env`:
+Run the full CAD → Gmsh → Palace → post-processing pipeline inside the `pipeline` container (with absolute host paths for `CONF_DIR` and `DATA_DIR`), or run orchestration locally in Python with only `palace` in Docker:
 
 ```bash
+# Inside the pipeline container (CONF_DIR and DATA_DIR in .env must be absolute host paths):
 docker compose run --rm pipeline python src/main.py
+
+# Or locally in Python with palace in Docker (works with relative '.' / './data', recommended on Windows):
+python src/main.py
 ```
 
-Common CLI overrides are available on [`src/main.py`](src/main.py) (e.g., `--model 3`, `--patch-l 29.95`, `--trans-w 0.30`, `--inset-b 2.5 --inset-l 2.5`, `--driven-port all`, `--freq-min 2.320 --freq-max 2.345 --freq-step 0.001`, `--amr-its 2`, `--clean`).
+Common CLI overrides are available on [`src/main.py`](src/main.py) (e.g., `--model 3`, `--patch-l 29.95`, `--trans-w 0.30`, `--inset-b 2.5 --inset-l 2.5`, `--driven-port all`, `--port-impedance 100.0`, `--freq-min 2.320 --freq-max 2.345 --freq-step 0.001`, `--amr-its 2`, `--clean`). By default, port impedance automatically selects `50.0 Ω` for Model 1 and `100.0 Ω` for Models 2 & 3 unless overridden via `PORT_IMPEDANCE` in `.env` or `--port-impedance`.
 
 To generate the CAD `.step` geometry, conformal `.msh` mesh, `config.json`, and layout previews **locally without invoking the Palace Docker solver**:
 
@@ -105,13 +111,13 @@ python src/main.py --skip-simulation
 ```
 
 ### 4. Run a Parametric Sweep
-Execute a parametric sweep via the unified dispatcher [`src/sweep.py`](src/sweep.py):
+Execute a parametric sweep via the unified dispatcher [`src/sweep.py`](src/sweep.py) (inside `pipeline` with absolute host paths, or locally in Python with `palace` in Docker):
 
 ```bash
 docker compose run --rm pipeline python src/sweep.py
 ```
 
-The dispatcher routes to the active model (`ANTENNA_MODEL` or `--model {1,2,3}`) and supports `.env` profiles (`SWEEP_PROFILE=precise` with AMR enabled or `SWEEP_PROFILE=fast` for rapid exploration), sweep targets (`--sweep-target` supporting `patch_l`, `trans_w`, `trans_l`, `delta_l`, `inset`, `feed_lens`), sweep modes (`--mode {symmetric,single_fixed,grid,manual}`), and local dry-runs (`--skip-simulation`).
+The dispatcher routes to the active model (`ANTENNA_MODEL` or `--model {1,2,3}`) and supports `.env` profiles (`SWEEP_PROFILE=precise` with AMR enabled or `SWEEP_PROFILE=fast` for rapid exploration), sweep targets (`--sweep-target` supporting `patch_l`, `trans_w`, `trans_l`, `delta_l`, `inset`, `feed_lens` for Models 2 & 3; `--param {inset,patch_l}` for Model 1), explicit value overrides (such as `--patch-lengths` across Models 1–3), sweep modes (`--mode {symmetric,single_fixed,grid,manual}`), and local dry-runs (`--skip-simulation`).
 
 ### 5. Run Tests
 Install local development dependencies from [`requirements-dev.txt`](requirements-dev.txt) and verify analytical RF calculations, de-embedding math, CAD/mesh generation, Palace config generation, plotting rules, and code linting:
@@ -148,28 +154,42 @@ To separate feed-network behavior from intrinsic patch resonance, [`src/rf_calc.
 For single-port excitation (`DRIVEN_PORT=1` or `2`), only the active port chain is plotted (plus cross-port isolation on RP1). For dual-port excitation (`DRIVEN_PORT=all`), both polarizations are rendered side-by-side (`--layout split`) or combined (`--layout compact`).
 
 ### Post-Processing Scripts (`scripts/`)
-All standalone plotting and packaging tools accept an optional exported run directory (e.g., `export/<run_dir>`). When invoked **without a path argument**, they default to reading simulation outputs from `DATA_DIR/postpro` (falling back to `DATA_DIR`) as configured in `.env` (likewise, [`src/visualization.py`](src/visualization.py) defaults to reading `DATA_DIR/params.json` and writing `DATA_DIR/geometry_iso.png`):
+The standalone tools follow three distinct CLI interfaces depending on their inputs (likewise, [`src/visualization.py`](src/visualization.py) accepts an optional directory, `params.json`, or output `.png` path, defaulting to reading `DATA_DIR/params.json` and writing `DATA_DIR/geometry_iso.png`):
 
-- [`scripts/plot_s_parameters.py`](scripts/plot_s_parameters.py) — Plots `S11`, `S22`, cross-port isolation `S21`/`S12`, and port input impedance (`graf_S_parametry.png` and individual sub-plots in `grafy/`):
-  ```bash
-  python scripts/plot_s_parameters.py export/<run_dir>
-  ```
-- [`scripts/plot_radiation_pattern.py`](scripts/plot_radiation_pattern.py) — Evaluates spherical `E_theta`/`E_phi`, LHCP/RHCP directivity in dBi, and Axial Ratio from `farfield-rE.csv`, generating `vyzarovaci_diagram_2d.png` (X-Z and Y-Z polar cuts + AR vs. θ) and `vyzarovaci_diagram_3d.png`:
-  ```bash
-  python scripts/plot_radiation_pattern.py export/<run_dir> --freq 2.333
-  ```
-- [`scripts/plot_deembedding.py`](scripts/plot_deembedding.py) — Computes and plots the RP1/RP2/RP3 impedance de-embedding diagnostics (`graf_impedance_skoky.png`):
-  ```bash
-  python scripts/plot_deembedding.py export/<run_dir> --layout split
-  ```
-- [`scripts/export_package.py`](scripts/export_package.py) — Bundles `.pvtu`/`.pvd` field datasets, `antenna_model.step`, CSV outputs, generated plots, and `paraview_dynamic_phase.py` into a portable ZIP archive under `export/`:
-  ```bash
-  python scripts/export_package.py --name antenna_run.zip
-  ```
-- [`scripts/export_lhcp_gif.py`](scripts/export_lhcp_gif.py) — Renders an animated GIF (`lhcp_rotation.gif`) showing instantaneous rotating electric field `E(ωt) = E_re cos(ωt) - E_im sin(ωt)` across a full `360°` cycle:
-  ```bash
-  python scripts/export_lhcp_gif.py
-  ```
+1. **Simulation / export directory plotters** — Accept an optional simulation or exported run directory (e.g., `export/<run_dir>`), defaulting to `DATA_DIR/postpro` (falling back to `DATA_DIR`) as configured in `.env`:
+   - [`scripts/plot_s_parameters.py`](scripts/plot_s_parameters.py) — Plots `S11`, `S22`, cross-port isolation `S21`/`S12`, and port input impedance (`graf_S_parametry.png` and individual sub-plots in `grafy/`):
+     ```bash
+     python scripts/plot_s_parameters.py [export/<run_dir>]
+     ```
+   - [`scripts/plot_radiation_pattern.py`](scripts/plot_radiation_pattern.py) — Evaluates spherical `E_theta`/`E_phi`, LHCP/RHCP directivity in dBi, and Axial Ratio from `farfield-rE.csv`, generating `vyzarovaci_diagram_2d.png` (X-Z and Y-Z polar cuts + AR vs. θ) and `vyzarovaci_diagram_3d.png`:
+     ```bash
+     python scripts/plot_radiation_pattern.py [export/<run_dir>] [--freq 2.333]
+     ```
+   - [`scripts/plot_deembedding.py`](scripts/plot_deembedding.py) — Computes and plots the RP1/RP2/RP3 impedance de-embedding diagnostics (`graf_impedance_skoky.png`):
+     ```bash
+     python scripts/plot_deembedding.py [export/<run_dir>] [--layout split]
+     ```
+
+2. **ZIP archive packager** — Packages simulation outputs from `DATA_DIR` and accepts an optional output ZIP name (positional `filename` or `-n` / `--name`), writing into `EXPORT_DIR` (default `export/`, auto-incremented as `antena_export_<N>.zip` when omitted):
+   - [`scripts/export_package.py`](scripts/export_package.py) — Bundles `.pvtu`/`.pvd` field datasets, `antenna_model.step`, CSV outputs, generated plots, and `paraview_dynamic_phase.py` into a portable ZIP archive:
+     ```bash
+     python scripts/export_package.py [filename]
+     python scripts/export_package.py --name antenna_run.zip
+     ```
+
+3. **3D field visualization tools** — [`scripts/export_lhcp_gif.py`](scripts/export_lhcp_gif.py) and [`scripts/plot_efield.py`](scripts/plot_efield.py) accept optional input `.pvtu`/`.vtu` and output file paths (defaulting to the middle `Cycle*` file under `DATA_DIR/postpro/paraview/driven_boundary`), while [`scripts/generate_phase_animation.py`](scripts/generate_phase_animation.py) runs via `pvpython` with no CLI arguments:
+   - [`scripts/export_lhcp_gif.py`](scripts/export_lhcp_gif.py) — Renders an animated GIF (`DATA_DIR/postpro/lhcp_rotation.gif` by default) showing instantaneous rotating electric field `E(ωt) = E_re cos(ωt) - E_im sin(ωt)` across a full `360°` cycle:
+     ```bash
+     python scripts/export_lhcp_gif.py [path/to/data.pvtu [output.gif]]
+     ```
+   - [`scripts/plot_efield.py`](scripts/plot_efield.py) — Renders an off-screen PyVista isometric E-field snapshot (`DATA_DIR/postpro/efield.png` by default):
+     ```bash
+     python scripts/plot_efield.py [path/to/data.pvtu [output.png]]
+     ```
+   - [`scripts/generate_phase_animation.py`](scripts/generate_phase_animation.py) — Generates a `phase_animation.pvd` time-series under `DATA_DIR/postpro/paraview/phase_animation/` (reads `DATA_DIR` from `.env`, no CLI arguments):
+     ```bash
+     pvpython scripts/generate_phase_animation.py
+     ```
 
 ### ParaView 3D Visualization
 When `SAVE_STEP=1` is enabled, Palace writes `.pvd` / `.pvtu` surface and volume field files to `data/postpro/paraview/`. Two macros are provided under `scripts/` (run inside ParaView via **Tools → Python Shell → Run Script**):
