@@ -179,7 +179,7 @@ def _draw_model3_top_view(ax, params, is_detail=False):
         ax.text(-W_sub/2.0 + 2.0, y_b + 1.2, "RP3 (Flíček)", fontsize=8.5, color='brown', fontweight='bold')
 
         # Porty
-        ax.text(0, y_port - 2.5, "Port 1 (Spodní, Ey, +90°)", fontsize=9.5, fontweight='bold', color='red', ha='center')
+        ax.text(0, y_port - 2.5, "Port 1 (Spodní, Ey, -90°)", fontsize=9.5, fontweight='bold', color='red', ha='center')
         ax.text(x_port - 2.0, 0, "Port 2 (Levý, Ex, ref 0°)", fontsize=9.5, fontweight='bold', color='crimson',
                 va='center', rotation=90)
 
@@ -199,21 +199,24 @@ def _draw_model2_top_view(ax, params):
     # Substrát
     sub_rect = patches.Rectangle(
         (-W_sub / 2.0, -L_sub / 2.0), W_sub, L_sub,
-        linewidth=1.2, edgecolor='#2E7D32', facecolor='#E8F5E9', zorder=1
+        linewidth=1.2, edgecolor='#2E7D32', facecolor='#E8F5E9', zorder=1,
+        label=rf'Substrát ({W_sub:.1f} $\times$ {L_sub:.1f} mm)'
     )
     ax.add_patch(sub_rect)
 
     # Patch
     patch_rect = patches.Rectangle(
         (-W / 2.0, -L / 2.0), W, L,
-        linewidth=1.3, edgecolor='#935116', facecolor='#E67E22', zorder=3
+        linewidth=1.3, edgecolor='#935116', facecolor='#E67E22', zorder=3,
+        label=rf'Vyzařující flíček ({W:.1f} $\times$ {L:.1f} mm)'
     )
     ax.add_patch(patch_rect)
 
     # Spodní a levé vedení 100 Ohm
     dy_bottom = (-L / 2.0 + inset_b) - y_port
     ax.add_patch(patches.Rectangle((-w_feed / 2.0, y_port), w_feed, dy_bottom,
-                                   edgecolor='#78281F', facecolor='#D35400', zorder=4))
+                                   edgecolor='#78281F', facecolor='#D35400', zorder=4,
+                                   label=rf'Napaječ 100 $\Omega$ ($w={w_feed:.2f}$ mm)'))
     dx_left = (-W / 2.0 + inset_l) - x_port
     ax.add_patch(patches.Rectangle((x_port, -w_feed / 2.0), dx_left, w_feed,
                                    edgecolor='#78281F', facecolor='#D35400', zorder=4))
@@ -248,16 +251,20 @@ def _draw_model1_top_view(ax, params):
 
     # Substrát
     ax.add_patch(patches.Rectangle((-W_sub / 2.0, -L_sub / 2.0), W_sub, L_sub,
-                                   linewidth=1.2, edgecolor='#2E7D32', facecolor='#E8F5E9', zorder=1))
+                                   linewidth=1.2, edgecolor='#2E7D32', facecolor='#E8F5E9', zorder=1,
+                                   label=rf'Substrát ({W_sub:.1f} $\times$ {L_sub:.1f} mm)'))
     # Patch
     ax.add_patch(patches.Rectangle((-W / 2.0, -L / 2.0), W, L,
-                                   linewidth=1.3, edgecolor='#935116', facecolor='#E67E22', zorder=3))
+                                   linewidth=1.3, edgecolor='#935116', facecolor='#E67E22', zorder=3,
+                                   label=rf'Vyzařující flíček ({W:.1f} $\times$ {L:.1f} mm)'))
 
     # T-dělič a ramena
     ax.add_patch(patches.Rectangle((x_T - w1 / 2.0, y_port), w1, abs(y_T - y_port) + w2 / 2.0,
-                                   edgecolor='#78281F', facecolor='#D35400', zorder=4))
+                                   edgecolor='#78281F', facecolor='#D35400', zorder=4,
+                                   label=rf'Napaječ 50 $\Omega$ ($w_1={w1:.2f}$ mm)'))
     ax.add_patch(patches.Rectangle((x_T - w2 / 2.0, y_T - w2 / 2.0), l2 + w2 / 2.0, w2,
-                                   edgecolor='#B7770D', facecolor='#F1C40F', zorder=4))
+                                   edgecolor='#B7770D', facecolor='#F1C40F', zorder=4,
+                                   label=rf'Větve T-děliče 100 $\Omega$ ($w_2={w2:.2f}$ mm)'))
     ax.add_patch(patches.Rectangle((x_T + l2, y_T - w3 / 2.0), l3 + w3 / 2.0, w3,
                                    edgecolor='#78281F', facecolor='#D35400', zorder=4))
     ax.add_patch(patches.Rectangle((-w3 / 2.0, y_T - w3 / 2.0), w3, l4 + w3 / 2.0,
@@ -321,7 +328,8 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
     ax.set_ylabel('Y [mm]', fontsize=11, fontweight='bold')
     ax.set_title(plot_title, fontsize=12, fontweight='bold', pad=12)
     ax.grid(True, linestyle=':', alpha=0.55)
-    ax.legend(loc='upper right', fontsize=9, framealpha=0.92)
+    if ax.get_legend_handles_labels()[0]:
+        ax.legend(loc='upper right', fontsize=9, framealpha=0.92)
 
     plt.tight_layout()
     plt.savefig(filename, dpi=250)
@@ -440,8 +448,30 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
         )
         ax_det.grid(True, linestyle=':', alpha=0.6)
 
+    elif model_version == 1:
+        _draw_model1_top_view(ax_det, params)
+        l2 = float(params.get('l2', 20.0))
+        l3 = float(params.get('l3', 10.0))
+        l4 = float(params.get('l4', 15.0))
+        l5 = float(params.get('l5', 10.0))
+        l6 = float(params.get('l6', 18.0))
+        inset = float(params.get('inset', params.get('feed_inset', 0.0)))
+        x_T = float(params.get('feed_x_T', -(l2 + l3)))
+        y_T = float(params.get('feed_y_T', -L / 2.0 + inset - l4))
+        y_port = -L_sub / 2.0
+        x_min = min(x_T - l5 - 8.0, -W / 2.0 - 5.0)
+        x_max = 10.0
+        y_min = min(y_T - 10.0, max(y_port - 3.0, y_T - 22.0))
+        y_max = max(8.0, y_T + l6 + 5.0)
+        ax_det.set_xlim([x_min, x_max])
+        ax_det.set_ylim([y_min, y_max])
+        ax_det.set_xlabel('X [mm]', fontsize=11, fontweight='bold')
+        ax_det.set_ylabel('Y [mm]', fontsize=11, fontweight='bold')
+        ax_det.set_title("Detail napájecí sítě s T-děličem a vstupů do flíčku (rovina XY)", fontsize=11, fontweight='bold')
+        ax_det.grid(True, linestyle=':', alpha=0.6)
+
     else:
-        # Fallback detail pro Model 2 / Model 1
+        # Fallback detail pro Model 2
         _draw_model2_top_view(ax_det, params)
         ax_det.set_xlim([-15, 15])
         ax_det.set_ylim([-25, 10])

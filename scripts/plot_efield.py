@@ -1,3 +1,4 @@
+import glob
 import pyvista as pv
 import os
 import sys
@@ -10,7 +11,11 @@ def plot_e_field(vtu_file=None, output_image=None):
     ensure_paraview_linked(data_dir)
 
     if vtu_file is None:
-        vtu_file = os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "Cycle000003", "data.pvtu")
+        cycles = sorted(glob.glob(os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "Cycle*", "data.pvtu")))
+        if cycles:
+            vtu_file = cycles[len(cycles) // 2]
+        else:
+            vtu_file = os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "Cycle000003", "data.pvtu")
     if output_image is None:
         output_image = os.path.join(data_dir, "postpro", "efield.png")
 
@@ -22,7 +27,7 @@ def plot_e_field(vtu_file=None, output_image=None):
     try:
         # Povolit off-screen rendering pro headless běh
         pv.start_xvfb() # Může být potřeba na Linuxu, na Windows je ignorováno/nepotřebné
-    except:
+    except Exception:
         pass
         
     mesh = pv.read(vtu_file)
@@ -31,25 +36,28 @@ def plot_e_field(vtu_file=None, output_image=None):
     # Pokud nemáme reálná data (mock), vykreslíme aspoň geometrii ze sítě
     
     plotter = pv.Plotter(off_screen=True)
-    
-    # Zkusíme najít vektorová data E
-    e_field_key = None
-    for key in mesh.point_data.keys():
-        if 'E' in key or 'e' in key.lower():
-            e_field_key = key
-            break
-            
-    if e_field_key:
-        plotter.add_mesh(mesh, scalars=e_field_key, cmap='jet', show_scalar_bar=True)
-    else:
-        # Pokud pole neexistuje, vykreslíme jen povrch a obarvíme podle osy Z
-        plotter.add_mesh(mesh, scalars=mesh.points[:, 2], cmap='viridis', show_scalar_bar=False)
-        print("Vektorové E-pole nenalezeno v datech, vykresluji pouze síť.")
+    try:
+        # Zkusíme najít vektorová data E
+        e_field_key = None
+        for key in mesh.point_data.keys():
+            if 'E' in key or 'e' in key.lower():
+                e_field_key = key
+                break
+                
+        if e_field_key:
+            plotter.add_mesh(mesh, scalars=e_field_key, cmap='jet', show_scalar_bar=True)
+        else:
+            # Pokud pole neexistuje, vykreslíme jen povrch a obarvíme podle osy Z
+            plotter.add_mesh(mesh, scalars=mesh.points[:, 2], cmap='viridis', show_scalar_bar=False)
+            print("Vektorové E-pole nenalezeno v datech, vykresluji pouze síť.")
 
-    plotter.view_isometric()
-    plotter.add_axes()
-    plotter.screenshot(output_image)
-    print(f"Rozložení pole bylo exportováno do: {output_image}")
+        plotter.view_isometric()
+        plotter.add_axes()
+        os.makedirs(os.path.dirname(os.path.abspath(output_image)) or ".", exist_ok=True)
+        plotter.screenshot(output_image)
+        print(f"Rozložení pole bylo exportováno do: {output_image}")
+    finally:
+        plotter.close()
 
 if __name__ == "__main__":
     target_vtu = sys.argv[1] if len(sys.argv) > 1 else None

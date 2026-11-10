@@ -427,3 +427,131 @@ def merge_two_port_simulations(p1_dir, p2_dir, output_dir):
         except Exception:
             pass
 
+
+def find_col_idx(header, patterns, exclude_patterns=None):
+    """Vyhledá index prvního sloupce v záhlaví odpovídajícího vzorům (s volitelným vyloučením)."""
+    for idx, col in enumerate(header):
+        col_low = col.lower()
+        if exclude_patterns and any(ep.lower() in col_low for ep in exclude_patterns):
+            continue
+        for pat in patterns:
+            if pat.lower() in col_low:
+                return idx
+    return None
+
+
+def load_port_v_voltages(v_path):
+    """
+    Načte port-V.csv pomocí párování názvů sloupců (s pozičním fallbackem) a spočte
+    komplexní S-parametry pro jeden nebo dva porty.
+
+    Vrací: (freqs, s11_complex, s22_complex, s21_complex, s12_complex)
+    """
+    import numpy as np
+
+    if not v_path or not os.path.exists(v_path) or os.path.getsize(v_path) == 0:
+        return None, None, None, None, None
+
+    with open(v_path, "r", encoding="utf-8") as f:
+        first_line = f.readline()
+    v_header = [h.strip().lstrip("#").strip() for h in first_line.split(",")]
+
+    v_data = np.loadtxt(v_path, delimiter=",", skiprows=1)
+    if v_data.size == 0:
+        return None, None, None, None, None
+    if v_data.ndim == 1:
+        v_data = v_data.reshape(1, -1)
+
+    ncols = v_data.shape[1]
+    if ncols < 2:
+        return None, None, None, None, None
+
+    freqs = v_data[:, 0]
+
+    v1_inc_idx = find_col_idx(v_header, ["v_inc[1]", "v_inc1", "vinc1", "v_inc_1"])
+    v2_inc_idx = find_col_idx(v_header, ["v_inc[2]", "v_inc2", "vinc2", "v_inc_2"])
+
+    v1_re_idx = find_col_idx(
+        v_header,
+        ["re{v[1]}", "re(v[1])", "v[1]_re", "re_v1", "v1r", "rev1", "re{v_1}", "v1_re"],
+        exclude_patterns=["inc"],
+    )
+    v1_im_idx = find_col_idx(
+        v_header,
+        ["im{v[1]}", "im(v[1])", "v[1]_im", "im_v1", "v1i", "imv1", "im{v_1}", "v1_im"],
+        exclude_patterns=["inc"],
+    )
+    v2_re_idx = find_col_idx(
+        v_header,
+        ["re{v[2]}", "re(v[2])", "v[2]_re", "re_v2", "v2r", "rev2", "re{v_2}", "v2_re"],
+        exclude_patterns=["inc"],
+    )
+    v2_im_idx = find_col_idx(
+        v_header,
+        ["im{v[2]}", "im(v[2])", "v[2]_im", "im_v2", "v2i", "imv2", "im{v_2}", "v2_im"],
+        exclude_patterns=["inc"],
+    )
+
+    # Poziční fallback pouze tehdy, pokud hlavičky nebylo možné spárovat
+    if v1_inc_idx is None and v2_inc_idx is None and v1_re_idx is None and v2_re_idx is None:
+        if ncols >= 7:
+            v1_inc_idx, v1_re_idx, v1_im_idx, v2_inc_idx, v2_re_idx, v2_im_idx = 1, 2, 3, 4, 5, 6
+        elif ncols == 6:
+            v1_inc_idx, v1_re_idx, v1_im_idx, v2_re_idx, v2_im_idx = 1, 2, 3, 4, 5
+        elif ncols >= 4:
+            v1_inc_idx, v1_re_idx, v1_im_idx = 1, 2, 3
+    elif v1_re_idx is None and v2_re_idx is None:
+        if v1_inc_idx is not None and v2_inc_idx is not None and ncols >= 7:
+            if v1_inc_idx == 1 and v2_inc_idx == 2:
+                v1_re_idx, v1_im_idx, v2_re_idx, v2_im_idx = 3, 4, 5, 6
+            else:
+                v1_re_idx, v1_im_idx, v2_re_idx, v2_im_idx = 2, 3, 5, 6
+        elif v1_inc_idx is not None and v2_inc_idx is None:
+            if ncols >= 6:
+                v1_re_idx, v1_im_idx, v2_re_idx, v2_im_idx = 2, 3, 4, 5
+            elif ncols >= 4:
+                v1_re_idx, v1_im_idx = 2, 3
+        elif v2_inc_idx is not None and v1_inc_idx is None:
+            if ncols >= 6:
+                v1_re_idx, v1_im_idx, v2_re_idx, v2_im_idx = 2, 3, 4, 5
+            elif ncols >= 4:
+                v2_re_idx, v2_im_idx = 2, 3
+
+    def _extract_complex(re_idx, im_idx):
+        if re_idx is None or re_idx >= ncols:
+            return None
+        re_vals = v_data[:, re_idx]
+        im_vals = v_data[:, im_idx] if (im_idx is not None and im_idx < ncols) else np.zeros_like(re_vals)
+        return re_vals + 1j * im_vals
+
+    v1 = _extract_complex(v1_re_idx, v1_im_idx)
+    v2 = _extract_complex(v2_re_idx, v2_im_idx)
+
+    v_inc1 = v_data[:, v1_inc_idx] if (v1_inc_idx is not None and v1_inc_idx < ncols) else None
+    v_inc2 = v_data[:, v2_inc_idx] if (v2_inc_idx is not None and v2_inc_idx < ncols) else None
+
+    has_vinc1 = v_inc1 is not None and np.any(np.abs(v_inc1) >= 1e-12)
+    has_vinc2 = v_inc2 is not None and np.any(np.abs(v_inc2) >= 1e-12)
+
+    s11_complex = None
+    s22_complex = None
+    s21_complex = None
+    s12_complex = None
+
+    if has_vinc1:
+        safe_vinc1 = np.where(np.abs(v_inc1) < 1e-12, 1e-12, v_inc1)
+        if v1 is not None:
+            s11_complex = (v1 - v_inc1) / safe_vinc1
+        if not has_vinc2 and v2 is not None:
+            s21_complex = v2 / safe_vinc1
+
+    if has_vinc2:
+        safe_vinc2 = np.where(np.abs(v_inc2) < 1e-12, 1e-12, v_inc2)
+        if v2 is not None:
+            s22_complex = (v2 - v_inc2) / safe_vinc2
+        if not has_vinc1 and v1 is not None:
+            s12_complex = v1 / safe_vinc2
+
+    return freqs, s11_complex, s22_complex, s21_complex, s12_complex
+
+

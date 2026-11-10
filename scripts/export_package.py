@@ -97,51 +97,53 @@ def resolve_export_path(root_dir, output_name=None, default_base="antena_export"
 
 
 def export_paraview_package(output_name=None, output_zip=None, run_name=None, **kwargs):
-    root_dir, data_dir = load_env()
-    os.chdir(root_dir)
-
-    # Zajistíme propojení na poslední AMR iteraci
-    ensure_paraview_linked(data_dir)
-
-    target_name = output_name if output_name is not None else (output_zip if output_zip is not None else run_name)
-    output_zip = resolve_export_path(root_dir, target_name)
-
-    # 1. Kontrola dostupných dat v DATA_DIR
-    postpro_dir = os.path.abspath(os.path.join(data_dir, "postpro"))
-    boundary_dir = os.path.abspath(os.path.join(postpro_dir, "paraview", "driven_boundary"))
-    has_boundary = os.path.exists(boundary_dir) and os.path.isdir(boundary_dir)
-
-    s11_file = os.path.join(postpro_dir, "port-S.csv")
-    step_file = os.path.join(data_dir, "antenna_model.step")
-    config_file = os.path.join(data_dir, "config.json")
-
-    has_any_data = (
-        has_boundary
-        or (os.path.exists(s11_file) and os.path.getsize(s11_file) > 0)
-        or (os.path.exists(step_file) and os.path.getsize(step_file) > 0)
-        or (os.path.exists(config_file) and os.path.getsize(config_file) > 0)
-    )
-
-    if not has_any_data:
-        print(f"[CHYBA] Ve složce {data_dir} nebyla nalezena žádná výstupní simulační data ani CAD model.")
-        print("Zkontrolujte parametr DATA_DIR v souboru .env nebo nejprve spusťte simulaci.")
-        return False
-
-    script_path = os.path.join(root_dir, "scripts", "paraview_dynamic_phase.py")
-
-    # Příprava výstupní složky
-    out_dir = os.path.dirname(output_zip)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-
-    # Dočasná exportní složka pro sestavení balíčku
-    zip_stem = os.path.splitext(os.path.basename(output_zip))[0]
-    temp_pack_dir = os.path.join(out_dir, f"{zip_stem}_temp")
-    if os.path.exists(temp_pack_dir):
-        shutil.rmtree(temp_pack_dir, ignore_errors=True)
-    os.makedirs(temp_pack_dir, exist_ok=True)
-
+    orig_cwd = os.getcwd()
+    temp_pack_dir = None
     try:
+        root_dir, data_dir = load_env()
+        os.chdir(root_dir)
+
+        # Zajistíme propojení na poslední AMR iteraci
+        ensure_paraview_linked(data_dir)
+
+        target_name = output_name if output_name is not None else (output_zip if output_zip is not None else run_name)
+        output_zip = resolve_export_path(root_dir, target_name)
+
+        # 1. Kontrola dostupných dat v DATA_DIR
+        postpro_dir = os.path.abspath(os.path.join(data_dir, "postpro"))
+        boundary_dir = os.path.abspath(os.path.join(postpro_dir, "paraview", "driven_boundary"))
+        has_boundary = os.path.exists(boundary_dir) and os.path.isdir(boundary_dir)
+
+        s11_file = os.path.join(postpro_dir, "port-S.csv")
+        step_file = os.path.join(data_dir, "antenna_model.step")
+        config_file = os.path.join(data_dir, "config.json")
+
+        has_any_data = (
+            has_boundary
+            or (os.path.exists(s11_file) and os.path.getsize(s11_file) > 0)
+            or (os.path.exists(step_file) and os.path.getsize(step_file) > 0)
+            or (os.path.exists(config_file) and os.path.getsize(config_file) > 0)
+        )
+
+        if not has_any_data:
+            print(f"[CHYBA] Ve složce {data_dir} nebyla nalezena žádná výstupní simulační data ani CAD model.")
+            print("Zkontrolujte parametr DATA_DIR v souboru .env nebo nejprve spusťte simulaci.")
+            return False
+
+        script_path = os.path.join(root_dir, "scripts", "paraview_dynamic_phase.py")
+
+        # Příprava výstupní složky
+        out_dir = os.path.dirname(output_zip)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+
+        # Dočasná exportní složka pro sestavení balíčku
+        zip_stem = os.path.splitext(os.path.basename(output_zip))[0]
+        temp_pack_dir = os.path.join(out_dir, f"{zip_stem}_temp")
+        if os.path.exists(temp_pack_dir):
+            shutil.rmtree(temp_pack_dir, ignore_errors=True)
+        os.makedirs(temp_pack_dir, exist_ok=True)
+
         print(f"--- 1. Kopíruji soubory do balíčku z {data_dir} ---")
 
         # A) Skripty pro ParaView, analýzu a pomocné utility
@@ -155,10 +157,11 @@ def export_paraview_package(output_name=None, output_zip=None, run_name=None, **
                 shutil.copy2(s_path, os.path.join(temp_pack_dir, s_script))
                 print(f"  + {s_script}")
 
-        utils_path = os.path.join(root_dir, "src", "postpro_utils.py")
-        if os.path.exists(utils_path):
-            shutil.copy2(utils_path, os.path.join(temp_pack_dir, "postpro_utils.py"))
-            print("  + postpro_utils.py")
+        for src_mod in ["postpro_utils.py", "rf_calc.py"]:
+            mod_path = os.path.join(root_dir, "src", src_mod)
+            if os.path.exists(mod_path):
+                shutil.copy2(mod_path, os.path.join(temp_pack_dir, src_mod))
+                print(f"  + {src_mod}")
 
         # B) Simulační data povrchu (driven_boundary)
         if has_boundary:
@@ -360,10 +363,12 @@ JAK PŘEGENEROVAT GRAFY:
         print("======================================================================")
         return True
     finally:
-        # 3. Úklid dočasné rozbalené složky
-        if os.path.exists(temp_pack_dir):
+        # 3. Úklid dočasné rozbalené složky a obnovení původního pracovního adresáře
+        if temp_pack_dir and os.path.exists(temp_pack_dir):
             shutil.rmtree(temp_pack_dir, ignore_errors=True)
             print(f"--- 3. Nezazipovaná složka {os.path.basename(temp_pack_dir)} byla smazána ---")
+        if os.path.exists(orig_cwd):
+            os.chdir(orig_cwd)
 
 
 if __name__ == "__main__":

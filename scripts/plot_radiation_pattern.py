@@ -28,33 +28,48 @@ from postpro_utils import load_env
 def compute_farfield_metrics(sub_df):
     """
     Vypočte sférické složky E-pole, LHCP/RHCP polarizaci, směrovost v dBi a osový poměr (AR).
+    Podporuje i více excitačních režimů (exc) koherentní superpozicí pro každý směr (theta, phi).
     """
-    th_deg = sub_df.iloc[:, 2].values
-    ph_deg = sub_df.iloc[:, 3].values
-    
+    if sub_df.shape[1] >= 10 and sub_df.iloc[:, 1].nunique() > 1:
+        cols = list(sub_df.columns)
+        work = sub_df.copy()
+        work["_th_key"] = np.round(work.iloc[:, 2].to_numpy(dtype=float), 6)
+        work["_ph_key"] = np.round(work.iloc[:, 3].to_numpy(dtype=float), 6)
+        agg_spec = {cols[2]: "first", cols[3]: "first"}
+        for col_name in cols[4:10]:
+            agg_spec[col_name] = "sum"
+        agg_df = work.groupby(["_th_key", "_ph_key"], as_index=False, sort=False).agg(agg_spec)
+        th_deg = agg_df[cols[2]].to_numpy(dtype=float)
+        ph_deg = agg_df[cols[3]].to_numpy(dtype=float)
+        e_vals = agg_df[cols[4:10]].to_numpy(dtype=float)
+    else:
+        th_deg = sub_df.iloc[:, 2].to_numpy(dtype=float)
+        ph_deg = sub_df.iloc[:, 3].to_numpy(dtype=float)
+        e_vals = sub_df.iloc[:, 4:10].to_numpy(dtype=float)
+
     th = np.deg2rad(th_deg)
     ph = np.deg2rad(ph_deg)
-    
-    ex = sub_df.iloc[:, 4].values + 1j * sub_df.iloc[:, 5].values
-    ey = sub_df.iloc[:, 6].values + 1j * sub_df.iloc[:, 7].values
-    ez = sub_df.iloc[:, 8].values + 1j * sub_df.iloc[:, 9].values
-    
+
+    ex = e_vals[:, 0] + 1j * e_vals[:, 1]
+    ey = e_vals[:, 2] + 1j * e_vals[:, 3]
+    ez = e_vals[:, 4] + 1j * e_vals[:, 5]
+
     # Sférické složky vektoru E
     e_th = (ex * np.cos(ph) + ey * np.sin(ph)) * np.cos(th) - ez * np.sin(th)
     e_ph = -ex * np.sin(ph) + ey * np.cos(ph)
-    
+
     # Kruhová polarizace dle IEEE standardu (+r šíření):
     # LHCP = (E_theta + j * E_phi) / sqrt(2)
     # RHCP = (E_theta - j * E_phi) / sqrt(2)
     e_lhcp = (e_th + 1j * e_ph) / np.sqrt(2.0)
     e_rhcp = (e_th - 1j * e_ph) / np.sqrt(2.0)
-    
+
     u_tot = np.abs(e_th)**2 + np.abs(e_ph)**2
     u_lhcp = np.abs(e_lhcp)**2
     u_rhcp = np.abs(e_rhcp)**2
-    
+
     # Průměrná vyzařovací intenzita (vzorky jsou rovnoměrně rozprostřeny po kouli)
-    u_avg = np.mean(u_tot)
+    u_avg = max(float(np.mean(u_tot)), 1e-30)
     
     d_tot_dbi = 10.0 * np.log10(np.maximum(u_tot / u_avg, 1e-4))
     d_lhcp_dbi = 10.0 * np.log10(np.maximum(u_lhcp / u_avg, 1e-4))
@@ -153,7 +168,7 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
     ax1.set_theta_direction(-1)            # Po směru hodinových ručiček
     
     r_min = -25
-    r_max = np.ceil(np.max(d_tot_xz) + 1)
+    r_max = np.ceil(max(np.max(d_tot_xz), np.max(d_tot_yz)) + 1)
     
     ax1.plot(angles_rad, np.clip(d_lhcp_xz, r_min, r_max), 'b-', lw=2.2, label='LHCP (hlavní)')
     ax1.plot(angles_rad, np.clip(d_tot_xz,  r_min, r_max), 'k:',  lw=1.2, label='Celková směrovost')

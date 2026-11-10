@@ -19,7 +19,7 @@ try:
 except ImportError:
     pass
 
-from postpro_utils import load_env
+from postpro_utils import load_env, load_port_v_voltages
 
 def plot_s_parameters(export_dir, output_png=None, params=None):
     """
@@ -137,43 +137,19 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
     # Fallback na port-V.csv
     if (s11_db is None and s22_db is None) and v_path and os.path.exists(v_path) and os.path.getsize(v_path) > 0:
         try:
-            with open(v_path, 'r', encoding='utf-8') as f:
-                v_header = [h.strip().lower() for h in f.readline().split(',')]
-            v_data = np.loadtxt(v_path, delimiter=',', skiprows=1)
-            if v_data.ndim == 1:
-                v_data = v_data.reshape(1, -1)
-            freqs = v_data[:, 0]
-
-            has_vinc1 = any("v_inc[1]" in h for h in v_header)
-            has_vinc2 = any("v_inc[2]" in h for h in v_header)
-
-            if has_vinc1 and has_vinc2 and v_data.shape[1] >= 7:
-                v_inc1 = v_data[:, 1]
-                v_inc2 = v_data[:, 2]
-                v1 = v_data[:, 3] + 1j * v_data[:, 4]
-                v2 = v_data[:, 5] + 1j * v_data[:, 6]
-                gamma1 = (v1 - v_inc1) / np.where(np.abs(v_inc1) < 1e-12, 1e-12, v_inc1)
-                gamma2 = (v2 - v_inc2) / np.where(np.abs(v_inc2) < 1e-12, 1e-12, v_inc2)
-                s11_db = 20.0 * np.log10(np.clip(np.abs(gamma1), 1e-10, 10.0))
-                s22_db = 20.0 * np.log10(np.clip(np.abs(gamma2), 1e-10, 10.0))
-                zin1 = z0 * (1.0 + gamma1) / (1.0 - gamma1 + 1e-12)
-                zin2 = z0 * (1.0 + gamma2) / (1.0 - gamma2 + 1e-12)
-            elif has_vinc1 and not has_vinc2 and v_data.shape[1] >= 6:
-                v_inc1 = v_data[:, 1]
-                v1 = v_data[:, 2] + 1j * v_data[:, 3]
-                v2 = v_data[:, 4] + 1j * v_data[:, 5]
-                gamma1 = (v1 - v_inc1) / np.where(np.abs(v_inc1) < 1e-12, 1e-12, v_inc1)
-                s11_db = 20.0 * np.log10(np.clip(np.abs(gamma1), 1e-10, 10.0))
-                zin1 = z0 * (1.0 + gamma1) / (1.0 - gamma1 + 1e-12)
-                s21_db = 20.0 * np.log10(np.clip(np.abs(v2 / v_inc1), 1e-10, 10.0))
-            elif has_vinc2 and not has_vinc1 and v_data.shape[1] >= 6:
-                v_inc2 = v_data[:, 1]
-                v1 = v_data[:, 2] + 1j * v_data[:, 3]
-                v2 = v_data[:, 4] + 1j * v_data[:, 5]
-                gamma2 = (v2 - v_inc2) / np.where(np.abs(v_inc2) < 1e-12, 1e-12, v_inc2)
-                s22_db = 20.0 * np.log10(np.clip(np.abs(gamma2), 1e-10, 10.0))
-                zin2 = z0 * (1.0 + gamma2) / (1.0 - gamma2 + 1e-12)
-                s12_db = 20.0 * np.log10(np.clip(np.abs(v1 / v_inc2), 1e-10, 10.0))
+            v_freqs, s11_c, s22_c, s21_c, s12_c = load_port_v_voltages(v_path)
+            if v_freqs is not None:
+                freqs = v_freqs
+                if s11_c is not None:
+                    s11_db = 20.0 * np.log10(np.clip(np.abs(s11_c), 1e-10, 10.0))
+                    zin1 = z0 * (1.0 + s11_c) / (1.0 - s11_c + 1e-12)
+                if s22_c is not None:
+                    s22_db = 20.0 * np.log10(np.clip(np.abs(s22_c), 1e-10, 10.0))
+                    zin2 = z0 * (1.0 + s22_c) / (1.0 - s22_c + 1e-12)
+                if s21_c is not None:
+                    s21_db = 20.0 * np.log10(np.clip(np.abs(s21_c), 1e-10, 10.0))
+                if s12_c is not None:
+                    s12_db = 20.0 * np.log10(np.clip(np.abs(s12_c), 1e-10, 10.0))
         except Exception as e:
             print(f"Upozornění při načítání {v_path}: {e}")
 

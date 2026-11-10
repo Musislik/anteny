@@ -33,7 +33,7 @@ try:
 except ImportError:
     pass
 
-from postpro_utils import load_env
+from postpro_utils import load_env, load_port_v_voltages
 from rf_calc import calculate_deembedding_model3, DESIGN_FREQ_GHZ
 
 
@@ -125,40 +125,14 @@ def _load_simulation_s_params(export_dir, driven_port=None):
     # 2. Pokus z port-V.csv (pokud chybí S-parametry)
     if (s11_complex is None and s22_complex is None) and v_path:
         try:
-            with open(v_path, 'r', encoding='utf-8') as f:
-                v_header = [h.strip().lower() for h in f.readline().split(',')]
-            v_data = np.loadtxt(v_path, delimiter=',', skiprows=1)
-            if v_data.ndim == 1:
-                v_data = v_data.reshape(1, -1)
-
-            if freqs is None:
-                freqs = v_data[:, 0]
-
-            has_vinc1 = any("v_inc[1]" in h for h in v_header)
-            has_vinc2 = any("v_inc[2]" in h for h in v_header)
-
-            if has_vinc1 and has_vinc2 and v_data.shape[1] >= 7:
-                # Oba porty
-                v_inc1 = v_data[:, 1]
-                v_inc2 = v_data[:, 2]
-                v1 = v_data[:, 3] + 1j * v_data[:, 4]
-                v2 = v_data[:, 5] + 1j * v_data[:, 6]
-                s11_complex = (v1 - v_inc1) / np.where(np.abs(v_inc1) < 1e-12, 1e-12, v_inc1)
-                s22_complex = (v2 - v_inc2) / np.where(np.abs(v_inc2) < 1e-12, 1e-12, v_inc2)
-            elif has_vinc1 and not has_vinc2 and v_data.shape[1] >= 6:
-                # Jen Port 1
-                v_inc1 = v_data[:, 1]
-                v1 = v_data[:, 2] + 1j * v_data[:, 3]
-                v2 = v_data[:, 4] + 1j * v_data[:, 5]
-                s11_complex = (v1 - v_inc1) / np.where(np.abs(v_inc1) < 1e-12, 1e-12, v_inc1)
-                s21_complex = v2 / np.where(np.abs(v_inc1) < 1e-12, 1e-12, v_inc1)
-            elif has_vinc2 and not has_vinc1 and v_data.shape[1] >= 6:
-                # Jen Port 2
-                v_inc2 = v_data[:, 1]
-                v1 = v_data[:, 2] + 1j * v_data[:, 3]
-                v2 = v_data[:, 4] + 1j * v_data[:, 5]
-                s22_complex = (v2 - v_inc2) / np.where(np.abs(v_inc2) < 1e-12, 1e-12, v_inc2)
-                s12_complex = v1 / np.where(np.abs(v_inc2) < 1e-12, 1e-12, v_inc2)
+            v_freqs, v_s11, v_s22, v_s21, v_s12 = load_port_v_voltages(v_path)
+            if v_freqs is not None:
+                if freqs is None:
+                    freqs = v_freqs
+                s11_complex = v_s11
+                s22_complex = v_s22
+                s21_complex = v_s21
+                s12_complex = v_s12
         except Exception as e:
             print(f"Upozornění při načítání {v_path}: {e}")
 
@@ -198,7 +172,6 @@ def _resolve_deembedding_params(export_dir, explicit_params=None):
     params_candidates = [
         os.path.join(export_dir, "params.json"),
         os.path.join(export_dir, "..", "params.json"),
-        os.path.join(_ROOT_DIR, "data", "params.json")
     ]
     for p_path in params_candidates:
         if os.path.exists(p_path) and os.path.getsize(p_path) > 0:
@@ -238,7 +211,9 @@ def _resolve_deembedding_params(export_dir, explicit_params=None):
             except Exception:
                 pass
 
-    # 3. Výchozí hodnoty (Model 3)
+    # 3. Výchozí hodnoty (Model 3, příp. 50 Ohm pro Model 1)
+    model_hint = int(params.get('antenna_model', 3) or 3)
+    default_z0 = 100.0 if model_hint in (2, 3) else 50.0
     defaults = {
         'antenna_model': 3,
         'sub_h': 1.52,
@@ -253,7 +228,7 @@ def _resolve_deembedding_params(export_dir, explicit_params=None):
         'inset_gap_l': 0.5,
         'sub_W': 80.0,
         'design_freq_ghz': DESIGN_FREQ_GHZ,
-        'port_impedance': 100.0,
+        'port_impedance': default_z0,
         'driven_port': os.getenv('DRIVEN_PORT', None),
     }
     for k, v in defaults.items():
@@ -321,6 +296,8 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
     rp3 = deemb['rp3']
     p_used = deemb['params_used']
     model = deemb['model']
+    z0_ref_rp1 = float(rp1['z0_ref'])
+    z0_ref_rp2 = float(np.mean(rp2['z0_ref']))
     z0_ref_rp3 = rp3['z0_ref']
 
     iso_db = 20.0 * np.log10(np.clip(np.abs(iso_complex), 1e-10, 10.0)) if iso_complex is not None else None
@@ -368,7 +345,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
         ax1_imp = axes[0, 0]
         ax1_imp.plot(freqs, z_rp1.real, label=rf"$\mathrm{{Re}}\{{Z_{{in}}\}}$ ({p_name})", color=c_re, lw=2.2)
         ax1_imp.plot(freqs, z_rp1.imag, label=rf"$\mathrm{{Im}}\{{Z_{{in}}\}}$ ({p_name})", color=c_im, lw=1.8, linestyle='--')
-        ax1_imp.axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Cíl $Z_0 = 100\ \Omega$")
+        ax1_imp.axhline(z0_ref_rp1, color='gray', linestyle='--', alpha=0.7, label=rf"Cíl $Z_0 = {z0_ref_rp1:.0f}\ \Omega$")
         ax1_imp.axhline(0.0, color='black', linestyle='-', alpha=0.4, label=r"$\mathrm{Im}\{Z\} = 0\ \Omega$")
         ax1_imp.set_title(rf"1. RP1 (Port): Vstupní impedance $Z_{{in}}$ — {p_name}", fontsize=11, fontweight='bold')
         ax1_imp.set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
@@ -392,11 +369,11 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
         # ---------------------------------------------------------------------
         # ŘÁDEK 2: RP2 (Svorka transformátoru)
         # ---------------------------------------------------------------------
-        # Graf Z_RP2 (Re a Im s referencí 100 Ω)
+        # Graf Z_RP2 (Re a Im s referencí)
         ax2_imp = axes[1, 0]
         ax2_imp.plot(freqs, z_rp2.real, label=rf"$\mathrm{{Re}}\{{Z_{{RP2}}\}}$", color=c_re, lw=2.2)
         ax2_imp.plot(freqs, z_rp2.imag, label=rf"$\mathrm{{Im}}\{{Z_{{RP2}}\}}$", color=c_im, lw=1.8, linestyle='--')
-        ax2_imp.axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Reference $100\ \Omega$")
+        ax2_imp.axhline(z0_ref_rp2, color='gray', linestyle='--', alpha=0.7, label=rf"Reference ${z0_ref_rp2:.0f}\ \Omega$")
         ax2_imp.axhline(0.0, color='black', linestyle='-', alpha=0.4, label=r"$\mathrm{Im}\{Z\} = 0\ \Omega$")
         ax2_imp.set_title(rf"3. RP2 (Svorka transformátoru): Impedance $Z_{{RP2}}$", fontsize=11, fontweight='bold')
         ax2_imp.set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
@@ -405,12 +382,12 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
 
         # Graf lokálního |Gamma_RP2| v dB
         ax2_gam = axes[1, 1]
-        ax2_gam.plot(freqs, gamma_rp2_db, label=r"Lokální $|\Gamma_{RP2}|$ (ref $100\ \Omega$)", color=c_re, lw=2.2)
+        ax2_gam.plot(freqs, gamma_rp2_db, label=rf"Lokální $|\Gamma_{{RP2}}|$ (ref ${z0_ref_rp2:.0f}\ \Omega$)", color=c_re, lw=2.2)
         min_g2_idx = np.argmin(gamma_rp2_db)
         ax2_gam.plot(freqs[min_g2_idx], gamma_rp2_db[min_g2_idx], 'o', color=c_re,
                      label=rf"Min $|\Gamma_{{RP2}}|: {gamma_rp2_db[min_g2_idx]:.2f}$ dB @ {freqs[min_g2_idx]:.3f} GHz")
         ax2_gam.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
-        ax2_gam.set_title(r"4. RP2 (Svorka): Lokální činitel odrazu $|\Gamma_{RP2}| (100\ \Omega)$", fontsize=11, fontweight='bold')
+        ax2_gam.set_title(rf"4. RP2 (Svorka): Lokální činitel odrazu $|\Gamma_{{RP2}}| ({z0_ref_rp2:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
         ax2_gam.set_ylabel(r"Magnituda [dB]", fontsize=10)
         ax2_gam.grid(True, linestyle=':', alpha=0.6)
         ax2_gam.legend(loc='best', fontsize=8)
@@ -475,7 +452,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             # Port 1: Zin1
             axes[0, 0].plot(freqs, rp1['z1'].real, label=r"$\mathrm{Re}\{Z_{in1}\}$", color=c_p1_re, lw=2.2)
             axes[0, 0].plot(freqs, rp1['z1'].imag, label=r"$\mathrm{Im}\{Z_{in1}\}$", color=c_p1_im, lw=1.8, linestyle='--')
-            axes[0, 0].axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Cíl $100\ \Omega$")
+            axes[0, 0].axhline(z0_ref_rp1, color='gray', linestyle='--', alpha=0.7, label=rf"Cíl ${z0_ref_rp1:.0f}\ \Omega$")
             axes[0, 0].axhline(0.0, color='black', linestyle='-', alpha=0.4)
             axes[0, 0].set_title(r"RP1 (Port 1, $E_y$): Impedance $Z_{in1}$", fontsize=11, fontweight='bold')
             axes[0, 0].set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
@@ -498,7 +475,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             # Port 2: Zin2
             axes[0, 2].plot(freqs, rp1['z2'].real, label=r"$\mathrm{Re}\{Z_{in2}\}$", color=c_p2_re, lw=2.2)
             axes[0, 2].plot(freqs, rp1['z2'].imag, label=r"$\mathrm{Im}\{Z_{in2}\}$", color=c_p2_im, lw=1.8, linestyle='--')
-            axes[0, 2].axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Cíl $100\ \Omega$")
+            axes[0, 2].axhline(z0_ref_rp1, color='gray', linestyle='--', alpha=0.7, label=rf"Cíl ${z0_ref_rp1:.0f}\ \Omega$")
             axes[0, 2].axhline(0.0, color='black', linestyle='-', alpha=0.4)
             axes[0, 2].set_title(r"RP1 (Port 2, $E_x$): Impedance $Z_{in2}$", fontsize=11, fontweight='bold')
             axes[0, 2].set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
@@ -522,7 +499,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             # Port 1: Z_RP2_1
             axes[1, 0].plot(freqs, rp2['z1'].real, label=r"$\mathrm{Re}\{Z_{RP2,1}\}$", color=c_p1_re, lw=2.2)
             axes[1, 0].plot(freqs, rp2['z1'].imag, label=r"$\mathrm{Im}\{Z_{RP2,1}\}$", color=c_p1_im, lw=1.8, linestyle='--')
-            axes[1, 0].axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Ref $100\ \Omega$")
+            axes[1, 0].axhline(z0_ref_rp2, color='gray', linestyle='--', alpha=0.7, label=rf"Ref ${z0_ref_rp2:.0f}\ \Omega$")
             axes[1, 0].axhline(0.0, color='black', linestyle='-', alpha=0.4)
             axes[1, 0].set_title(r"RP2 (Port 1): Impedance $Z_{RP2}$", fontsize=11, fontweight='bold')
             axes[1, 0].set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
@@ -532,7 +509,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             # Port 1: |Gamma_RP2_1|
             axes[1, 1].plot(freqs, rp2['gamma1_db'], label=r"$|\Gamma_{RP2,1}|$", color=c_p1_re, lw=2.2)
             axes[1, 1].axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='-10 dB')
-            axes[1, 1].set_title(r"RP2 (Port 1): Činitel odrazu $|\Gamma_{RP2}| (100\ \Omega)$", fontsize=11, fontweight='bold')
+            axes[1, 1].set_title(rf"RP2 (Port 1): Činitel odrazu $|\Gamma_{{RP2}}| ({z0_ref_rp2:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
             axes[1, 1].set_ylabel(r"Magnituda [dB]", fontsize=10)
             axes[1, 1].grid(True, linestyle=':', alpha=0.6)
             axes[1, 1].legend(loc='best', fontsize=8)
@@ -540,7 +517,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             # Port 2: Z_RP2_2
             axes[1, 2].plot(freqs, rp2['z2'].real, label=r"$\mathrm{Re}\{Z_{RP2,2}\}$", color=c_p2_re, lw=2.2)
             axes[1, 2].plot(freqs, rp2['z2'].imag, label=r"$\mathrm{Im}\{Z_{RP2,2}\}$", color=c_p2_im, lw=1.8, linestyle='--')
-            axes[1, 2].axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Ref $100\ \Omega$")
+            axes[1, 2].axhline(z0_ref_rp2, color='gray', linestyle='--', alpha=0.7, label=rf"Ref ${z0_ref_rp2:.0f}\ \Omega$")
             axes[1, 2].axhline(0.0, color='black', linestyle='-', alpha=0.4)
             axes[1, 2].set_title(r"RP2 (Port 2): Impedance $Z_{RP2}$", fontsize=11, fontweight='bold')
             axes[1, 2].set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
@@ -550,7 +527,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             # Port 2: |Gamma_RP2_2|
             axes[1, 3].plot(freqs, rp2['gamma2_db'], label=r"$|\Gamma_{RP2,2}|$", color=c_p2_re, lw=2.2)
             axes[1, 3].axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='-10 dB')
-            axes[1, 3].set_title(r"RP2 (Port 2): Činitel odrazu $|\Gamma_{RP2}| (100\ \Omega)$", fontsize=11, fontweight='bold')
+            axes[1, 3].set_title(rf"RP2 (Port 2): Činitel odrazu $|\Gamma_{{RP2}}| ({z0_ref_rp2:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
             axes[1, 3].set_ylabel(r"Magnituda [dB]", fontsize=10)
             axes[1, 3].grid(True, linestyle=':', alpha=0.6)
             axes[1, 3].legend(loc='best', fontsize=8)
@@ -624,7 +601,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             ax0.plot(freqs, rp1['z1'].imag, label=r"$\mathrm{Im}\{Z_{in1}\}$ (P1)", color=c_p1_im, lw=1.8, linestyle='--')
             ax0.plot(freqs, rp1['z2'].real, label=r"$\mathrm{Re}\{Z_{in2}\}$ (P2, $E_x$)", color=c_p2_re, lw=2.2)
             ax0.plot(freqs, rp1['z2'].imag, label=r"$\mathrm{Im}\{Z_{in2}\}$ (P2)", color=c_p2_im, lw=1.8, linestyle='--')
-            ax0.axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Cíl $100\ \Omega$")
+            ax0.axhline(z0_ref_rp1, color='gray', linestyle='--', alpha=0.7, label=rf"Cíl ${z0_ref_rp1:.0f}\ \Omega$")
             ax0.axhline(0.0, color='black', linestyle='-', alpha=0.4)
             ax0.set_title(r"1. RP1 (Port): Vstupní impedance $Z_{in}$ (Port 1 vs Port 2)", fontsize=11, fontweight='bold')
             ax0.set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
@@ -648,7 +625,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             ax2.plot(freqs, rp2['z1'].imag, label=r"$\mathrm{Im}\{Z_{RP2,1}\}$ (P1)", color=c_p1_im, lw=1.8, linestyle='--')
             ax2.plot(freqs, rp2['z2'].real, label=r"$\mathrm{Re}\{Z_{RP2,2}\}$ (P2)", color=c_p2_re, lw=2.2)
             ax2.plot(freqs, rp2['z2'].imag, label=r"$\mathrm{Im}\{Z_{RP2,2}\}$ (P2)", color=c_p2_im, lw=1.8, linestyle='--')
-            ax2.axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Ref $100\ \Omega$")
+            ax2.axhline(z0_ref_rp2, color='gray', linestyle='--', alpha=0.7, label=rf"Ref ${z0_ref_rp2:.0f}\ \Omega$")
             ax2.axhline(0.0, color='black', linestyle='-', alpha=0.4)
             ax2.set_title(r"3. RP2 (Svorka): Impedance $Z_{RP2}$", fontsize=11, fontweight='bold')
             ax2.set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
@@ -659,7 +636,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
             ax3.plot(freqs, rp2['gamma1_db'], label=r"$|\Gamma_{RP2,1}|$ (Port 1)", color=c_p1_re, lw=2.2)
             ax3.plot(freqs, rp2['gamma2_db'], label=r"$|\Gamma_{RP2,2}|$ (Port 2)", color=c_p2_re, lw=2.2, linestyle='--')
             ax3.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
-            ax3.set_title(r"4. RP2 (Svorka): Lokální činitel odrazu $|\Gamma_{RP2}| (100\ \Omega)$", fontsize=11, fontweight='bold')
+            ax3.set_title(rf"4. RP2 (Svorka): Lokální činitel odrazu $|\Gamma_{{RP2}}| ({z0_ref_rp2:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
             ax3.set_ylabel(r"Magnituda [dB]", fontsize=10)
             ax3.grid(True, linestyle=':', alpha=0.6)
             ax3.legend(loc='best', fontsize=8)
@@ -717,6 +694,8 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
 
 def _save_individual_rp_plots(export_dir, output_png, freqs, rp1, rp2, rp3, iso_db, driven_mode, z0_ref_rp3, m_info):
     """Uloží samostatné grafy impedancí a činitelů odrazu v rovinách RP1, RP2 a RP3 do podsložky grafy/."""
+    z0_ref_rp1 = float(rp1['z0_ref'])
+    z0_ref_rp2 = float(np.mean(rp2['z0_ref']))
     grafy_dirs = [os.path.join(export_dir, "grafy")]
     out_dir = os.path.dirname(output_png) if output_png else None
     if out_dir and os.path.abspath(out_dir) != os.path.abspath(export_dir):
@@ -747,7 +726,7 @@ def _save_individual_rp_plots(export_dir, output_png, freqs, rp1, rp2, rp3, iso_
             ax1_z.plot(freqs, rp1['z1'].imag, label=r"$\mathrm{Im}\{Z_{in1}\}$ (P1)", color=c_p1_im, lw=1.8, linestyle='--')
             ax1_z.plot(freqs, rp1['z2'].real, label=r"$\mathrm{Re}\{Z_{in2}\}$ (P2, $E_x$)", color=c_p2_re, lw=2.2)
             ax1_z.plot(freqs, rp1['z2'].imag, label=r"$\mathrm{Im}\{Z_{in2}\}$ (P2)", color=c_p2_im, lw=1.8, linestyle='--')
-        ax1_z.axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Cíl $Z_0 = 100\ \Omega$")
+        ax1_z.axhline(z0_ref_rp1, color='gray', linestyle='--', alpha=0.7, label=rf"Cíl $Z_0 = {z0_ref_rp1:.0f}\ \Omega$")
         ax1_z.axhline(0.0, color='black', linestyle='-', alpha=0.4, label=r"$\mathrm{Im}\{Z\} = 0\ \Omega$")
         ax1_z.set_title(r"Vstupní impedance $Z_{in}$ v rovině RP1", fontsize=11, fontweight='bold')
         ax1_z.set_xlabel("Frekvence [GHz]", fontsize=10)
@@ -798,7 +777,7 @@ def _save_individual_rp_plots(export_dir, output_png, freqs, rp1, rp2, rp3, iso_
             ax2_z.plot(freqs, rp2['z1'].imag, label=r"$\mathrm{Im}\{Z_{RP2,1}\}$ (P1)", color=c_p1_im, lw=1.8, linestyle='--')
             ax2_z.plot(freqs, rp2['z2'].real, label=r"$\mathrm{Re}\{Z_{RP2,2}\}$ (P2)", color=c_p2_re, lw=2.2)
             ax2_z.plot(freqs, rp2['z2'].imag, label=r"$\mathrm{Im}\{Z_{RP2,2}\}$ (P2)", color=c_p2_im, lw=1.8, linestyle='--')
-        ax2_z.axhline(100.0, color='gray', linestyle='--', alpha=0.7, label=r"Reference $100\ \Omega$")
+        ax2_z.axhline(z0_ref_rp2, color='gray', linestyle='--', alpha=0.7, label=rf"Reference ${z0_ref_rp2:.0f}\ \Omega$")
         ax2_z.axhline(0.0, color='black', linestyle='-', alpha=0.4, label=r"$\mathrm{Im}\{Z\} = 0\ \Omega$")
         ax2_z.set_title(r"Impedance $Z_{RP2}$ na svorce transformátoru", fontsize=11, fontweight='bold')
         ax2_z.set_xlabel("Frekvence [GHz]", fontsize=10)
@@ -814,7 +793,7 @@ def _save_individual_rp_plots(export_dir, output_png, freqs, rp1, rp2, rp3, iso_
             ax2_s.plot(freqs, rp2['gamma1_db'], label=r"$|\Gamma_{RP2,1}|$ (Port 1)", color=c_p1_re, lw=2.2)
             ax2_s.plot(freqs, rp2['gamma2_db'], label=r"$|\Gamma_{RP2,2}|$ (Port 2)", color=c_p2_re, lw=2.2, linestyle='--')
         ax2_s.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
-        ax2_s.set_title(r"Lokální činitel odrazu $|\Gamma_{RP2}| (100\ \Omega)$", fontsize=11, fontweight='bold')
+        ax2_s.set_title(rf"Lokální činitel odrazu $|\Gamma_{{RP2}}| ({z0_ref_rp2:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
         ax2_s.set_xlabel("Frekvence [GHz]", fontsize=10)
         ax2_s.set_ylabel(r"Magnituda [dB]", fontsize=10)
         ax2_s.grid(True, linestyle=':', alpha=0.6)
