@@ -117,52 +117,58 @@ def test_geometry_router():
 
 def test_palace_builder_configs():
     """Test generování Palace konfigurace pro Model 1 (1 port) i Model 2 (2 porty)."""
-    os.makedirs("data", exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        orig_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_dir)
+            os.makedirs("data", exist_ok=True)
 
-    # 1. Test Model 1
-    params_v1 = {
-        'antenna_model': 1,
-        'eps_r': 4.3,
-        'tan_delta': 0.02,
-        'freq_min': 2.32,
-        'freq_max': 2.345,
-        'freq_step': 0.005,
-    }
-    build_palace_config(params_v1)
-    with open("data/config.json", "r") as f:
-        cfg1 = json.load(f)
+            # 1. Test Model 1
+            params_v1 = {
+                'antenna_model': 1,
+                'eps_r': 4.3,
+                'tan_delta': 0.02,
+                'freq_min': 2.32,
+                'freq_max': 2.345,
+                'freq_step': 0.005,
+            }
+            build_palace_config(params_v1)
+            with open("data/config.json", "r") as f:
+                cfg1 = json.load(f)
 
-    ports1 = cfg1["Boundaries"]["LumpedPort"]
-    assert len(ports1) == 1, "Model 1 musí mít přesně 1 LumpedPort"
-    assert ports1[0]["Index"] == 1
-    assert ports1[0]["Attributes"] == [4]
-    assert ports1[0]["R"] == 50.0
+            ports1 = cfg1["Boundaries"]["LumpedPort"]
+            assert len(ports1) == 1, "Model 1 musí mít přesně 1 LumpedPort"
+            assert ports1[0]["Index"] == 1
+            assert ports1[0]["Attributes"] == [4]
+            assert ports1[0]["R"] == 50.0
 
-    # 2. Test Model 2
-    params_v2 = {
-        'antenna_model': 2,
-        'eps_r': 4.3,
-        'tan_delta': 0.02,
-        'freq_min': 2.32,
-        'freq_max': 2.345,
-        'freq_step': 0.005,
-        'driven_port': 'simultaneous',
-    }
-    build_palace_config(params_v2)
-    with open("data/config.json", "r") as f:
-        cfg2 = json.load(f)
+            # 2. Test Model 2
+            params_v2 = {
+                'antenna_model': 2,
+                'eps_r': 4.3,
+                'tan_delta': 0.02,
+                'freq_min': 2.32,
+                'freq_max': 2.345,
+                'freq_step': 0.005,
+                'driven_port': 'simultaneous',
+            }
+            build_palace_config(params_v2)
+            with open("data/config.json", "r") as f:
+                cfg2 = json.load(f)
 
-    ports2 = cfg2["Boundaries"]["LumpedPort"]
-    assert len(ports2) == 2, "Model 2 musí mít přesně 2 LumpedPorty"
-    assert ports2[0]["Index"] == 1
-    assert ports2[0]["Attributes"] == [4]
-    assert ports2[0]["R"] == 100.0
-    assert ports2[0]["Excitation"] is True
+            ports2 = cfg2["Boundaries"]["LumpedPort"]
+            assert len(ports2) == 2, "Model 2 musí mít přesně 2 LumpedPorty"
+            assert ports2[0]["Index"] == 1
+            assert ports2[0]["Attributes"] == [4]
+            assert ports2[0]["R"] == 100.0
+            assert ports2[0]["Excitation"] is True
 
-    assert ports2[1]["Index"] == 2
-    assert ports2[1]["Attributes"] == [6]
-    assert ports2[1]["R"] == 100.0
-    assert ports2[1]["Excitation"] is True
+            assert ports2[1]["Index"] == 2
+            assert ports2[1]["Attributes"] == [6]
+            assert ports2[1]["R"] == 100.0
+            assert ports2[1]["Excitation"] is True
+        finally:
+            os.chdir(orig_cwd)
 
 
 def test_tracker_model2_extraction():

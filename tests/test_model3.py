@@ -15,6 +15,7 @@ import sys
 import shutil
 import tempfile
 import json
+from unittest.mock import patch
 # import pytest (optional)
 try:
     import pytest
@@ -255,9 +256,12 @@ def test_main_skip_simulation_model3():
     """Ověření, že main(skip_simulation=True) kompletně a bez chyb vytvoří CAD STEP, náhled a síť pro Model 3."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         orig_cwd = os.getcwd()
+        tmp_data_dir = os.path.join(tmp_dir, "data")
+        tmp_export_dir = os.path.join(tmp_dir, "export")
+        fake_env = (tmp_dir, tmp_data_dir)
         try:
             os.chdir(tmp_dir)
-            os.makedirs("data", exist_ok=True)
+            os.makedirs(tmp_data_dir, exist_ok=True)
 
             custom_params = {
                 'antenna_model': 3,
@@ -270,12 +274,17 @@ def test_main_skip_simulation_model3():
                 'mesh_size_min': 2.0,
             }
 
-            main(custom_params=custom_params, skip_simulation=True, clean=False)
+            with patch.dict(os.environ, {"DATA_DIR": tmp_data_dir, "EXPORT_DIR": tmp_export_dir}), \
+                 patch("main.load_env", return_value=fake_env), \
+                 patch("postpro_utils.load_env", return_value=fake_env), \
+                 patch("geometry.load_env", return_value=fake_env):
+                main(custom_params=custom_params, skip_simulation=True, clean=False)
 
             assert os.path.exists("data/antenna_model.step"), "STEP CAD model musí být vyexportován"
             assert os.path.exists("data/mesh.msh"), "Mesh soubor musí být vygenerován"
             assert os.path.exists("data/config.json"), "Konfigurace Palace musí být vytvořena"
             assert os.path.exists("data/geometry_iso.png"), "Obrázek geometrie musí být vygenerován"
+            assert os.path.exists("data/params.json"), "Parametry modelu musí být uloženy v dočasné složce"
 
         finally:
             os.chdir(orig_cwd)

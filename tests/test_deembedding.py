@@ -234,19 +234,70 @@ def test_plot_impedance_deembedding_synthetic(tmp_path):
     assert os.path.getsize(out_png) > 10000, "Vygenerovaný graf musí mít validní velikost"
 
 
-def test_plot_impedance_deembedding_existing_export():
-    """Test generování de-embedding grafu na reálném exportu antena3_1_1."""
-    export_dir = os.path.join(PROJECT_ROOT, "export", "antena3_1_1")
-    if os.path.exists(export_dir) and (os.path.exists(os.path.join(export_dir, "port-S.csv")) or os.path.exists(os.path.join(export_dir, "port-V.csv"))):
-        out_png = os.path.join(export_dir, "test_deembedding_check.png")
-        try:
-            res = plot_impedance_deembedding(export_dir, output_png=out_png)
-            assert res is not None
-            assert os.path.exists(out_png)
-            assert os.path.getsize(out_png) > 10000
-        finally:
-            if os.path.exists(out_png):
-                os.remove(out_png)
+def test_plot_impedance_deembedding_two_port_split_layout(tmp_path):
+    """Test generování 2-portového de-embedding grafu v rozložení split a dílčích RP grafů."""
+    test_dir = str(tmp_path / "sim_2port")
+    os.makedirs(test_dir, exist_ok=True)
+
+    # Syntetický 2-portový port-S.csv (S11, S21, S12, S22 včetně fází)
+    freqs = np.linspace(2.320, 2.345, 11)
+    s_csv_path = os.path.join(test_dir, "port-S.csv")
+    with open(s_csv_path, "w", encoding="utf-8") as f:
+        f.write(
+            "f (GHz),|S[1][1]| (dB),arg(S[1][1]) (deg.),"
+            "|S[2][1]| (dB),arg(S[2][1]) (deg.),"
+            "|S[1][2]| (dB),arg(S[1][2]) (deg.),"
+            "|S[2][2]| (dB),arg(S[2][2]) (deg.)\n"
+        )
+        for fq in freqs:
+            delta = (fq - 2.3325) / 0.0125
+            s11_db = -24.0 + 18.0 * (delta ** 2)
+            s11_deg = -45.0 * delta
+            s22_db = -22.0 + 16.0 * (delta ** 2)
+            s22_deg = -40.0 * delta
+            s21_db = -18.5 - 1.5 * (delta ** 2)
+            s21_deg = -120.0 + 25.0 * delta
+            s12_db = s21_db
+            s12_deg = s21_deg
+            f.write(
+                f"{fq:.6e},{s11_db:.4e},{s11_deg:.4e},"
+                f"{s21_db:.4e},{s21_deg:.4e},"
+                f"{s12_db:.4e},{s12_deg:.4e},"
+                f"{s22_db:.4e},{s22_deg:.4e}\n"
+            )
+
+    params = {
+        'antenna_model': 3,
+        'driven_port': 'all',
+        'patch_L': 28.8,
+        'patch_W': 28.8,
+        'sub_h': 1.52,
+        'eps_r': 4.3,
+        'tan_delta': 0.02,
+        'trans_w': 0.42,
+        'feed_inset_b': 2.5,
+        'feed_inset_l': 2.5,
+        'inset_gap_b': 0.5,
+        'inset_gap_l': 0.5,
+        'feed_len_b': 37.5,
+        'feed_len_l': 18.8,
+        'port_impedance': 100.0,
+    }
+    with open(os.path.join(test_dir, "params.json"), "w", encoding="utf-8") as f:
+        json.dump(params, f)
+
+    result_path = plot_impedance_deembedding(test_dir, params=params, layout="split")
+
+    out_png = os.path.join(test_dir, "graf_impedance_skoky.png")
+    assert result_path is not None
+    assert os.path.abspath(result_path) == os.path.abspath(out_png)
+    assert os.path.exists(out_png)
+    assert os.path.getsize(out_png) > 10000
+
+    for rp_name in ("graf_impedance_RP1.png", "graf_impedance_RP2.png", "graf_impedance_RP3.png"):
+        rp_png = os.path.join(test_dir, "grafy", rp_name)
+        assert os.path.exists(rp_png), f"Dílčí graf {rp_name} musí existovat"
+        assert os.path.getsize(rp_png) > 10000, f"Dílčí graf {rp_name} musí mít nenulovou velikost"
 
 
 def test_plot_impedance_deembedding_single_port_rules(tmp_path):
