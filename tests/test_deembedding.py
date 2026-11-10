@@ -11,8 +11,12 @@ Ověřuje:
 import os
 import sys
 import json
+import shutil
+import zipfile
+from unittest.mock import patch, MagicMock
 import pytest
 import numpy as np
+import pandas as pd
 
 # Cesty k modulům projektu
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -32,7 +36,15 @@ from rf_calc import (
     calc_quarter_wave_length,
     DESIGN_FREQ_GHZ,
 )
+from postpro_utils import load_port_v_voltages
 from plot_deembedding import plot_impedance_deembedding
+from plot_s_parameters import plot_s_parameters
+from plot_radiation_pattern import (
+    compute_farfield_metrics,
+    plot_radiation_pattern_2d,
+    plot_radiation_pattern_3d,
+)
+import export_package
 
 
 def test_microstrip_propagation_parameters():
@@ -342,8 +354,6 @@ def test_plot_impedance_deembedding_single_port_rules(tmp_path):
 
 def test_plot_s_parameters_rules(tmp_path):
     """Test generování graf_S_parametry.png pro buzení 1 portem i oběma porty."""
-    from plot_s_parameters import plot_s_parameters
-
     test_dir = str(tmp_path / "sim_sparams")
     os.makedirs(test_dir, exist_ok=True)
 
@@ -359,6 +369,244 @@ def test_plot_s_parameters_rules(tmp_path):
     assert res is not None
     assert os.path.exists(out_png)
     assert os.path.getsize(out_png) > 10000
+
+
+def test_port_v_header_order_and_plots(tmp_path):
+    """Test načtení port-V.csv v pořadí [f, V_inc[1], Re{V[1]}, Im{V[1]}, V_inc[2], Re{V[2]}, Im{V[2]}] a vykreslení grafů."""
+    sim_2p = tmp_path / "portv_2p"
+    sim_2p.mkdir()
+    freqs = np.linspace(2.320, 2.345, 7)
+
+    # 1. Obouportové buzení (V_inc[1]=10, V_inc[2]=10)
+    v_2p_path = sim_2p / "port-V.csv"
+    expected_s11 = 0.10 - 0.05j
+    expected_s22 = -0.08 + 0.04j
+    with open(v_2p_path, "w", encoding="utf-8") as f:
+        f.write("f (GHz), V_inc[1], Re{V[1]}, Im{V[1]}, V_inc[2], Re{V[2]}, Im{V[2]}\n")
+        for fq in freqs:
+            v1 = 10.0 * (1.0 + expected_s11)
+            v2 = 10.0 * (1.0 + expected_s22)
+            f.write(f"{fq:.6e}, 10.0, {v1.real:.6f}, {v1.imag:.6f}, 10.0, {v2.real:.6f}, {v2.imag:.6f}\n")
+
+    f_loaded, s11_c, s22_c, s21_c, s12_c = load_port_v_voltages(str(v_2p_path))
+    assert f_loaded is not None and len(f_loaded) == len(freqs)
+    assert s11_c is not None and np.allclose(s11_c, expected_s11, atol=1e-6)
+    assert s22_c is not None and np.allclose(s22_c, expected_s22, atol=1e-6)
+    assert s21_c is None and s12_c is None
+
+    # Vykreslení grafů čistě z port-V.csv (bez port-S.csv)
+    params_m3 = {
+        'antenna_model': 3,
+        'patch_L': 28.8,
+        'patch_W': 28.8,
+        'sub_h': 1.52,
+        'eps_r': 4.3,
+        'trans_w': 0.42,
+        'feed_len_b': 37.5,
+        'feed_len_l': 18.8,
+        'port_impedance': 100.0,
+    }
+    with open(sim_2p / "params.json", "w", encoding="utf-8") as f:
+        json.dump(params_m3, f)
+
+    out_s = sim_2p / "graf_S_parametry.png"
+    res_s = plot_s_parameters(str(sim_2p), output_png=str(out_s), params=params_m3)
+    assert res_s is not None and out_s.exists() and out_s.stat().st_size > 10000
+
+    out_deemb = sim_2p / "graf_impedance_skoky.png"
+    res_d = plot_impedance_deembedding(str(sim_2p), params=params_m3, output_png=str(out_deemb))
+    assert res_d is not None and out_deemb.exists() and out_deemb.stat().st_size > 10000
+
+    # 2. Jednoportové buzení Port 1 (V_inc[2] == 0) ve stejném 7-sloupcovém rozložení
+    sim_1p = tmp_path / "portv_1p"
+    sim_1p.mkdir()
+    v_1p_path = sim_1p / "port-V.csv"
+    expected_s21 = -0.12 + 0.06j
+    with open(v_1p_path, "w", encoding="utf-8") as f:
+        f.write("f (GHz), V_inc[1], Re{V[1]}, Im{V[1]}, V_inc[2], Re{V[2]}, Im{V[2]}\n")
+        for fq in freqs:
+            v1 = 10.0 * (1.0 + expected_s11)
+            v2 = 10.0 * expected_s21
+            f.write(f"{fq:.6e}, 10.0, {v1.real:.6f}, {v1.imag:.6f}, 0.0, {v2.real:.6f}, {v2.imag:.6f}\n")
+
+    _, s11_1p, s22_1p, s21_1p, s12_1p = load_port_v_voltages(str(v_1p_path))
+    assert s11_1p is not None and np.allclose(s11_1p, expected_s11, atol=1e-6)
+    assert s21_1p is not None and np.allclose(s21_1p, expected_s21, atol=1e-6)
+    assert s22_1p is None and s12_1p is None
+
+
+def test_plot_impedance_deembedding_model1_50ohm(tmp_path):
+    """Test de-embedding grafu pro Model 1 (1 port, 50 Ohm)."""
+    sim_m1 = tmp_path / "sim_model1"
+    sim_m1.mkdir()
+
+    freqs = np.linspace(2.320, 2.345, 9)
+    with open(sim_m1 / "port-S.csv", "w", encoding="utf-8") as f:
+        f.write("f (GHz),|S[1][1]| (dB),arg(S[1][1]) (deg.)\n")
+        for fq in freqs:
+            s11_db = -18.0 + 10.0 * ((fq - 2.3325) / 0.0125) ** 2
+            f.write(f"{fq:.6e},{s11_db:.4e},-135.0\n")
+
+    params_m1 = {
+        'antenna_model': 1,
+        'patch_L': 30.3,
+        'patch_W': 30.3,
+        'port_impedance': 50.0,
+    }
+    with open(sim_m1 / "params.json", "w", encoding="utf-8") as f:
+        json.dump(params_m1, f)
+
+    out_png = sim_m1 / "graf_impedance_skoky.png"
+    res = plot_impedance_deembedding(str(sim_m1), output_png=str(out_png))
+    assert res is not None and out_png.exists() and out_png.stat().st_size > 10000
+    for rp_name in ("graf_impedance_RP1.png", "graf_impedance_RP2.png", "graf_impedance_RP3.png"):
+        rp_png = sim_m1 / "grafy" / rp_name
+        assert rp_png.exists() and rp_png.stat().st_size > 10000
+
+
+def test_plot_radiation_pattern_multi_exc(tmp_path):
+    """Test 2D a 3D vyzařovacího diagramu na syntetickém multi-excitačním farfield-rE.csv (exc=1 a exc=2)."""
+    ff_dir = tmp_path / "sim_farfield"
+    ff_dir.mkdir()
+    ff_csv = ff_dir / "farfield-rE.csv"
+
+    thetas = np.arange(0.0, 181.0, 30.0)
+    phis = np.arange(0.0, 360.0, 45.0)
+    f_val = 2.3325
+
+    rows = []
+    for exc in (1, 2):
+        for th in thetas:
+            amp = 0.35 + 0.65 * np.cos(np.deg2rad(th) / 2.0)
+            for ph in phis:
+                if exc == 1:
+                    # Port 1: Ey = -j * amp
+                    ex_re, ex_im, ey_re, ey_im = 0.0, 0.0, 0.0, -amp
+                else:
+                    # Port 2: Ex = +amp
+                    ex_re, ex_im, ey_re, ey_im = amp, 0.0, 0.0, 0.0
+                rows.append([f_val, exc, th, ph, ex_re, ex_im, ey_re, ey_im, 0.0, 0.0])
+
+    header_ff = (
+        "f (GHz), exc, theta (deg.), phi (deg.), "
+        "r*Re{E_x}, r*Im{E_x}, r*Re{E_y}, r*Im{E_y}, r*Re{E_z}, r*Im{E_z}"
+    )
+    np.savetxt(ff_csv, np.array(rows), delimiter=",", header=header_ff, comments="")
+
+    df = pd.read_csv(ff_csv)
+    metrics = compute_farfield_metrics(df)
+    assert len(metrics['th_deg']) == len(thetas) * len(phis)
+    zenith_mask = np.isclose(metrics['th_deg'], 0.0)
+    assert np.all(metrics['ar_db'][zenith_mask] < 0.1)
+
+    out_2d = ff_dir / "vyzarovaci_diagram_2d.png"
+    out_3d = ff_dir / "vyzarovaci_diagram_3d.png"
+    plot_radiation_pattern_2d(str(ff_dir), freq_target=f_val, output_png=str(out_2d))
+    plot_radiation_pattern_3d(str(ff_dir), freq_target=f_val, output_png=str(out_3d))
+
+    assert out_2d.exists() and out_2d.stat().st_size > 10000
+    assert out_3d.exists() and out_3d.stat().st_size > 10000
+    for sub_png in ("vyzarovaci_diagram_rez_XZ.png", "vyzarovaci_diagram_rez_YZ.png", "graf_osovy_pomer_AR.png"):
+        p = ff_dir / "grafy" / sub_png
+        assert p.exists() and p.stat().st_size > 10000
+
+
+def test_export_paraview_package_cwd_and_rf_calc(tmp_path):
+    """Test export_paraview_package: obnovení CWD při prázdném i platném běhu a přítomnost rf_calc.py v ZIPu."""
+    fake_root = tmp_path / "proj"
+    fake_src = fake_root / "src"
+    fake_data = tmp_path / "data"
+    fake_export = tmp_path / "export"
+    caller_cwd = tmp_path / "caller"
+
+    fake_src.mkdir(parents=True)
+    fake_data.mkdir()
+    fake_export.mkdir()
+    caller_cwd.mkdir()
+
+    for mod_name in ("rf_calc.py", "postpro_utils.py"):
+        shutil.copy2(os.path.join(SRC_DIR, mod_name), fake_src / mod_name)
+
+    orig_cwd = os.getcwd()
+    try:
+        os.chdir(str(caller_cwd))
+        with patch.object(export_package, "load_env", return_value=(str(fake_root), str(fake_data))), \
+             patch.object(export_package, "get_export_dir", return_value=str(fake_export)), \
+             patch.object(export_package, "ensure_paraview_linked", return_value=None):
+            # 1. Prázdná data -> vrací False a obnoví CWD
+            res_empty = export_package.export_paraview_package(output_name="empty_pkg")
+            assert res_empty is False
+            assert os.path.realpath(os.getcwd()) == os.path.realpath(str(caller_cwd))
+
+            # 2. Platný běh -> vrací True, obnoví CWD a ZIP obsahuje rf_calc.py
+            postpro_dir = fake_data / "postpro"
+            postpro_dir.mkdir()
+            with open(postpro_dir / "port-S.csv", "w", encoding="utf-8") as f:
+                f.write("f (GHz),|S[1][1]| (dB),arg(S[1][1]) (deg.)\n")
+                f.write("2.330000e+00,-20.0,-140.0\n")
+                f.write("2.335000e+00,-22.0,-145.0\n")
+            with open(fake_data / "params.json", "w", encoding="utf-8") as f:
+                json.dump({'antenna_model': 1, 'port_impedance': 50.0}, f)
+
+            res_valid = export_package.export_paraview_package(output_name="valid_pkg")
+            assert res_valid is True
+            assert os.path.realpath(os.getcwd()) == os.path.realpath(str(caller_cwd))
+
+            zip_path = fake_export / "valid_pkg.zip"
+            assert zip_path.exists()
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                names = zf.namelist()
+            assert "rf_calc.py" in names
+            assert "postpro_utils.py" in names
+    finally:
+        os.chdir(orig_cwd)
+
+
+def test_plot_efield_mocked_pyvista(tmp_path):
+    """Test plot_efield.plot_e_field s mockovaným pyvista: prostřední Cycle*/data.pvtu, rodičovský adresář a close()."""
+    data_dir = tmp_path / "data"
+    driven_dir = data_dir / "postpro" / "paraview" / "driven_boundary"
+    for cname in ("Cycle000001", "Cycle000002", "Cycle000003"):
+        cdir = driven_dir / cname
+        cdir.mkdir(parents=True)
+        (cdir / "data.pvtu").write_text("<VTKFile/>", encoding="utf-8")
+
+    expected_pvtu = str(driven_dir / "Cycle000002" / "data.pvtu")
+    output_img = tmp_path / "nested_out" / "sub" / "efield.png"
+    assert not output_img.parent.exists()
+
+    fake_pv = MagicMock()
+    fake_mesh = MagicMock()
+    fake_mesh.point_data = {"E_real": np.zeros((4, 3))}
+    fake_pv.read.return_value = fake_mesh
+    fake_plotter = MagicMock()
+    fake_pv.Plotter.return_value = fake_plotter
+
+    with patch.dict(sys.modules, {"pyvista": fake_pv}):
+        sys.modules.pop("plot_efield", None)
+        import plot_efield
+        try:
+            with patch.object(plot_efield, "load_env", return_value=(str(tmp_path), str(data_dir))), \
+                 patch.object(plot_efield, "ensure_paraview_linked", return_value=None):
+                plot_efield.plot_e_field(vtu_file=None, output_image=str(output_img))
+
+                fake_pv.read.assert_called_once_with(expected_pvtu)
+                fake_pv.Plotter.assert_called_once_with(off_screen=True)
+                assert output_img.parent.is_dir()
+                fake_plotter.screenshot.assert_called_once_with(str(output_img))
+                fake_plotter.close.assert_called_once()
+
+                # Ověření close() i při chybě screenshot()
+                fake_plotter.reset_mock()
+                fake_plotter.screenshot.side_effect = RuntimeError("render error")
+                try:
+                    plot_efield.plot_e_field(vtu_file=None, output_image=str(output_img))
+                    assert False, "Měla být vyvolána výjimka RuntimeError"
+                except RuntimeError:
+                    pass
+                fake_plotter.close.assert_called_once()
+        finally:
+            sys.modules.pop("plot_efield", None)
 
 
 if __name__ == "__main__":

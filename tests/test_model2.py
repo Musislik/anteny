@@ -6,6 +6,9 @@ import os
 import sys
 import tempfile
 import json
+import warnings
+from unittest.mock import patch
+import gmsh
 import numpy as np
 # Cesty k modulům projektu
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +26,9 @@ from rf_calc import (
 )
 from geometry_v2 import build_model_v2
 from geometry import build_model
+from main import main
 from palace_builder import build_palace_config
+import sweep_model1
 from tracker import (
     extract_s_parameters_model2,
     extract_farfield_metrics,
@@ -60,31 +65,32 @@ def test_geometry_model2_properties():
         'sub_W': 80.0,
     }
 
-    sub_tag, air_tag = build_model_v2(params)
-    assert sub_tag is not None
-    assert air_tag is not None
+    try:
+        sub_tag, air_tag = build_model_v2(params)
+        assert sub_tag is not None
+        assert air_tag is not None
 
-    # Ověření portů
-    assert len(params['port1_tags']) > 0, "Port 1 fragmenty musí existovat"
-    assert len(params['port2_tags']) > 0, "Port 2 fragmenty musí existovat"
-    assert len(params['pec_tags']) > 0, "PEC fragmenty musí existovat"
+        # Ověření portů
+        assert len(params['port1_tags']) > 0, "Port 1 fragmenty musí existovat"
+        assert len(params['port2_tags']) > 0, "Port 2 fragmenty musí existovat"
+        assert len(params['pec_tags']) > 0, "PEC fragmenty musí existovat"
 
-    # Ověření fázovací podmínky: L_feed_bottom = L_ref + lambda_g_4
-    assert np.isclose(params['L_feed_bottom'], params['L_ref'] + params['lambda_g_4'], atol=1e-3), \
-        f"L_feed_bottom ({params['L_feed_bottom']}) musí být přesně L_ref + lambda_g/4 ({params['L_ref'] + params['lambda_g_4']})"
+        # Ověření fázovací podmínky: L_feed_bottom = L_ref + lambda_g_4
+        assert np.isclose(params['L_feed_bottom'], params['L_ref'] + params['lambda_g_4'], atol=1e-3), \
+            f"L_feed_bottom ({params['L_feed_bottom']}) musí být přesně L_ref + lambda_g/4 ({params['L_ref'] + params['lambda_g_4']})"
 
-    # Ověření polohy spodního portu: y_port = -L/2 + inset_b - L_feed_bottom
-    expected_y_port = -params['patch_L'] / 2.0 + params['feed_inset_b'] - params['L_feed_bottom']
-    assert np.isclose(params['y_port'], expected_y_port, atol=1e-3), \
-        f"y_port ({params['y_port']}) musí odpovídat hraně substrátu ({expected_y_port})"
+        # Ověření polohy spodního portu: y_port = -L/2 + inset_b - L_feed_bottom
+        expected_y_port = -params['patch_L'] / 2.0 + params['feed_inset_b'] - params['L_feed_bottom']
+        assert np.isclose(params['y_port'], expected_y_port, atol=1e-3), \
+            f"y_port ({params['y_port']}) musí odpovídat hraně substrátu ({expected_y_port})"
 
-    # Ověření, že port 1 a port 2 mají disjunktní plochy
-    p1_set = set(params['port1_tags'])
-    p2_set = set(params['port2_tags'])
-    assert p1_set.isdisjoint(p2_set), "Plochy Portu 1 a Portu 2 se nesmí překrývat"
-
-    import gmsh
-    gmsh.clear()
+        # Ověření, že port 1 a port 2 mají disjunktní plochy
+        p1_set = set(params['port1_tags'])
+        p2_set = set(params['port2_tags'])
+        assert p1_set.isdisjoint(p2_set), "Plochy Portu 1 a Portu 2 se nesmí překrývat"
+    finally:
+        if gmsh.isInitialized():
+            gmsh.finalize()
 
 
 def test_geometry_router():
@@ -100,13 +106,16 @@ def test_geometry_router():
         'feed_inset_b': 0.0,
         'feed_inset_l': 0.0,
     }
-    s2, a2 = build_model(params_v2)
-    assert params_v2.get('antenna_model') == 2
-    assert 'port1_tags' in params_v2
-    assert 'port2_tags' in params_v2
-
-    import gmsh
-    gmsh.clear()
+    try:
+        s2, a2 = build_model(params_v2)
+        assert s2 is not None
+        assert a2 is not None
+        assert params_v2.get('antenna_model') == 2
+        assert 'port1_tags' in params_v2
+        assert 'port2_tags' in params_v2
+    finally:
+        if gmsh.isInitialized():
+            gmsh.finalize()
 
 
 def test_palace_builder_configs():
@@ -474,8 +483,17 @@ def test_tracker_model2_record_with_gain_max():
 
 def test_geometry_model2_feed_lengths():
     """Test parametrického zadávání délek přívodů a dynamického dimenzování substrátu."""
-    import gmsh
-    gmsh.clear()
+    def _assert_invalid_v2(bad_params, fail_msg, substr=None):
+        try:
+            try:
+                build_model_v2(bad_params)
+                assert False, fail_msg
+            except ValueError as e:
+                if substr is not None:
+                    assert substr in str(e).lower()
+        finally:
+            if gmsh.isInitialized():
+                gmsh.finalize()
 
     # 1. Test explicitních délek přívodů
     params = {
@@ -489,28 +507,30 @@ def test_geometry_model2_feed_lengths():
         'feed_len_b': 40.0,
         'feed_len_l': 20.0,
     }
-    sub_tag, air_tag = build_model_v2(params)
-    assert sub_tag is not None
-    assert air_tag is not None
+    try:
+        sub_tag, air_tag = build_model_v2(params)
+        assert sub_tag is not None
+        assert air_tag is not None
 
-    # Ověření uložených parametrů
-    assert np.isclose(params['feed_len_b'], 40.0)
-    assert np.isclose(params['feed_len_l'], 20.0)
-    assert np.isclose(params['feed_delta_l'], 20.0)
-    assert np.isclose(params['L_feed_bottom'], 40.0)
+        # Ověření uložených parametrů
+        assert np.isclose(params['feed_len_b'], 40.0)
+        assert np.isclose(params['feed_len_l'], 20.0)
+        assert np.isclose(params['feed_delta_l'], 20.0)
+        assert np.isclose(params['L_feed_bottom'], 40.0)
 
-    # Ověření poloh portů:
-    # x_port = -W/2 + inset_l - feed_len_l = -15.15 + 2.5 - 20.0 = -32.65
-    expected_x_port = -30.3 / 2.0 + 2.5 - 20.0
-    expected_y_port = -30.3 / 2.0 + 3.0 - 40.0
-    assert np.isclose(params['x_port'], expected_x_port, atol=1e-3)
-    assert np.isclose(params['y_port'], expected_y_port, atol=1e-3)
+        # Ověření poloh portů:
+        # x_port = -W/2 + inset_l - feed_len_l = -15.15 + 2.5 - 20.0 = -32.65
+        expected_x_port = -30.3 / 2.0 + 2.5 - 20.0
+        expected_y_port = -30.3 / 2.0 + 3.0 - 40.0
+        assert np.isclose(params['x_port'], expected_x_port, atol=1e-3)
+        assert np.isclose(params['y_port'], expected_y_port, atol=1e-3)
 
-    # Ověření dynamických rozměrů substrátu:
-    assert np.isclose(params['sub_W'], 2.0 * abs(expected_x_port), atol=1e-2)
-    assert np.isclose(params['sub_L'], 2.0 * abs(expected_y_port), atol=1e-2)
-
-    gmsh.clear()
+        # Ověření dynamických rozměrů substrátu:
+        assert np.isclose(params['sub_W'], 2.0 * abs(expected_x_port), atol=1e-2)
+        assert np.isclose(params['sub_L'], 2.0 * abs(expected_y_port), atol=1e-2)
+    finally:
+        if gmsh.isInitialized():
+            gmsh.finalize()
 
     # 2. Test zadání feed_delta_l (bez explicitního feed_len_b)
     params_dl = {
@@ -524,88 +544,66 @@ def test_geometry_model2_feed_lengths():
         'sub_W': 80.0,
         'feed_delta_l': 17.5,
     }
-    build_model_v2(params_dl)
-    # L_ref = (80 / 2) - (30.3 / 2) = 24.85
-    expected_l_ref = 40.0 - 15.15
-    assert np.isclose(params_dl['feed_len_l'], expected_l_ref, atol=1e-3)
-    assert np.isclose(params_dl['feed_delta_l'], 17.5, atol=1e-3)
-    assert np.isclose(params_dl['feed_len_b'], expected_l_ref + 17.5, atol=1e-3)
-
-    gmsh.clear()
+    try:
+        build_model_v2(params_dl)
+        # L_ref = (80 / 2) - (30.3 / 2) = 24.85
+        expected_l_ref = 40.0 - 15.15
+        assert np.isclose(params_dl['feed_len_l'], expected_l_ref, atol=1e-3)
+        assert np.isclose(params_dl['feed_delta_l'], 17.5, atol=1e-3)
+        assert np.isclose(params_dl['feed_len_b'], expected_l_ref + 17.5, atol=1e-3)
+    finally:
+        if gmsh.isInitialized():
+            gmsh.finalize()
 
     # 3. Test chyby při neplatné délce (<= 0)
-    try:
-        build_model_v2({
-            'patch_L': 30.3,
-            'patch_W': 30.3,
-            'sub_h': 1.52,
-            'eps_r': 4.3,
-            'air_margin': 30.0,
-            'feed_len_b': -5.0,
-            'feed_len_l': 20.0,
-        })
-        assert False, "Měla být vyhozena výjimka ValueError při záporné délce"
-    except ValueError:
-        pass
-
-    gmsh.clear()
+    _assert_invalid_v2({
+        'patch_L': 30.3,
+        'patch_W': 30.3,
+        'sub_h': 1.52,
+        'eps_r': 4.3,
+        'air_margin': 30.0,
+        'feed_len_b': -5.0,
+        'feed_len_l': 20.0,
+    }, "Měla být vyhozena výjimka ValueError při záporné délce")
 
     # 4. Test chyby při feed_len_l <= inset_l
-    try:
-        build_model_v2({
-            'patch_L': 30.3,
-            'patch_W': 30.3,
-            'sub_h': 1.52,
-            'eps_r': 4.3,
-            'air_margin': 30.0,
-            'feed_inset_b': 2.0,
-            'feed_inset_l': 10.0,
-            'feed_len_b': 30.0,
-            'feed_len_l': 10.0,
-        })
-        assert False, "Měla být vyhozena výjimka ValueError při feed_len_l <= inset_l"
-    except ValueError as e:
-        assert "feed_len_l" in str(e)
-
-    gmsh.clear()
+    _assert_invalid_v2({
+        'patch_L': 30.3,
+        'patch_W': 30.3,
+        'sub_h': 1.52,
+        'eps_r': 4.3,
+        'air_margin': 30.0,
+        'feed_inset_b': 2.0,
+        'feed_inset_l': 10.0,
+        'feed_len_b': 30.0,
+        'feed_len_l': 10.0,
+    }, "Měla být vyhozena výjimka ValueError při feed_len_l <= inset_l", substr="feed_len_l")
 
     # 5. Test chyby při feed_len_b <= inset_b
-    try:
-        build_model_v2({
-            'patch_L': 30.3,
-            'patch_W': 30.3,
-            'sub_h': 1.52,
-            'eps_r': 4.3,
-            'air_margin': 30.0,
-            'feed_inset_b': 12.0,
-            'feed_inset_l': 2.0,
-            'feed_len_b': 10.0,
-            'feed_len_l': 20.0,
-        })
-        assert False, "Měla být vyhozena výjimka ValueError při feed_len_b <= inset_b"
-    except ValueError as e:
-        assert "feed_len_b" in str(e)
-
-    gmsh.clear()
+    _assert_invalid_v2({
+        'patch_L': 30.3,
+        'patch_W': 30.3,
+        'sub_h': 1.52,
+        'eps_r': 4.3,
+        'air_margin': 30.0,
+        'feed_inset_b': 12.0,
+        'feed_inset_l': 2.0,
+        'feed_len_b': 10.0,
+        'feed_len_l': 20.0,
+    }, "Měla být vyhozena výjimka ValueError při feed_len_b <= inset_b", substr="feed_len_b")
 
     # 6. Test chyby při záporném zanoření (inset < 0)
-    try:
-        build_model_v2({
-            'patch_L': 30.3,
-            'patch_W': 30.3,
-            'sub_h': 1.52,
-            'eps_r': 4.3,
-            'air_margin': 30.0,
-            'feed_inset_b': -2.0,
-            'feed_inset_l': 2.0,
-            'feed_len_b': 30.0,
-            'feed_len_l': 20.0,
-        })
-        assert False, "Měla být vyhozena výjimka ValueError při záporném inset_b"
-    except ValueError as e:
-        assert "inset" in str(e).lower()
-
-    gmsh.clear()
+    _assert_invalid_v2({
+        'patch_L': 30.3,
+        'patch_W': 30.3,
+        'sub_h': 1.52,
+        'eps_r': 4.3,
+        'air_margin': 30.0,
+        'feed_inset_b': -2.0,
+        'feed_inset_l': 2.0,
+        'feed_len_b': 30.0,
+        'feed_len_l': 20.0,
+    }, "Měla být vyhozena výjimka ValueError při záporném inset_b", substr="inset")
 
 
 def test_tracker_model2_feed_lengths_and_migration():
@@ -782,6 +780,218 @@ def test_sweep_model2_patch_lengths():
     assert "patch_l" in desc_auto
 
 
+def test_main_skip_simulation_model1_and_model2():
+    """Ověření main(skip_simulation=True) pro Model 1 i Model 2 bez legend UserWarning a s port_impedance=50.0 pro M1."""
+    def _run_case(tmp_dir, data_subdir, custom_params, env_extra=None, clear_port_z0=True):
+        data_dir = os.path.join(tmp_dir, data_subdir)
+        export_dir = os.path.join(tmp_dir, f"{data_subdir}_export")
+        env_patch = {"DATA_DIR": data_dir, "EXPORT_DIR": export_dir}
+        if env_extra:
+            env_patch.update(env_extra)
+
+        with patch.dict(os.environ, env_patch), \
+             patch("postpro_utils.get_project_root", return_value=tmp_dir):
+            os.environ.pop("ANTENNA_MODEL", None)
+            if clear_port_z0:
+                os.environ.pop("PORT_IMPEDANCE", None)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                main(custom_params=custom_params, skip_simulation=True, clean=False)
+
+        legend_warns = [
+            w for w in caught
+            if issubclass(w.category, UserWarning)
+            and (
+                "legend" in str(w.message).lower()
+                or "artists with labels" in str(w.message).lower()
+                or "visualization" in (w.filename or "").lower()
+            )
+        ]
+        assert not legend_warns, f"Neočekávané legend/vizualizační varování: {[str(w.message) for w in legend_warns]}"
+
+        for fname in ("antenna_model.step", "mesh.msh", "config.json", "geometry_iso.png", "params.json"):
+            fpath = os.path.join(data_dir, fname)
+            assert os.path.exists(fpath) and os.path.getsize(fpath) > 0, f"Chybí výstup {fname} v {data_dir}"
+        assert os.path.exists(os.path.join(data_dir, "obrazky", "geometrie_shora.png"))
+        assert os.path.exists(os.path.join(data_dir, "obrazky", "geometrie_detail_transformatoru.png"))
+
+        with open(os.path.join(data_dir, "config.json"), "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        with open(os.path.join(data_dir, "params.json"), "r", encoding="utf-8") as f:
+            saved_params = json.load(f)
+        return cfg, saved_params
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        orig_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_dir)
+
+            # 1a. Model 1 výchozí 50.0 Ohm (bez PORT_IMPEDANCE)
+            cfg1_def, p1_def = _run_case(
+                tmp_dir,
+                "m1_default",
+                {'antenna_model': 1, 'patch_L': 30.3, 'patch_W': 30.3, 'mesh_size_max': 12.0, 'mesh_size_min': 2.0},
+            )
+            assert len(cfg1_def["Boundaries"]["LumpedPort"]) == 1
+            assert cfg1_def["Boundaries"]["LumpedPort"][0]["R"] == 50.0
+            assert np.isclose(p1_def["port_impedance"], 50.0)
+
+            # 1b. Model 1 explicitní port_impedance=50.0 přepíše PORT_IMPEDANCE=100.0
+            cfg1_exp, p1_exp = _run_case(
+                tmp_dir,
+                "m1_explicit",
+                {
+                    'antenna_model': 1,
+                    'patch_L': 30.3,
+                    'patch_W': 30.3,
+                    'port_impedance': 50.0,
+                    'mesh_size_max': 12.0,
+                    'mesh_size_min': 2.0,
+                },
+                env_extra={"PORT_IMPEDANCE": "100.0"},
+                clear_port_z0=False,
+            )
+            assert cfg1_exp["Boundaries"]["LumpedPort"][0]["R"] == 50.0
+            assert np.isclose(p1_exp["port_impedance"], 50.0)
+
+            # 2. Model 2 (2 porty 100.0 Ohm)
+            cfg2, p2 = _run_case(
+                tmp_dir,
+                "m2_data",
+                {
+                    'antenna_model': 2,
+                    'patch_L': 28.8,
+                    'patch_W': 28.8,
+                    'feed_inset_b': 3.0,
+                    'feed_inset_l': 2.5,
+                    'mesh_size_max': 12.0,
+                    'mesh_size_min': 2.0,
+                },
+            )
+            ports2 = cfg2["Boundaries"]["LumpedPort"]
+            assert len(ports2) == 2
+            assert ports2[0]["R"] == 100.0 and ports2[1]["R"] == 100.0
+            assert np.isclose(p2["port_impedance"], 100.0)
+
+            assert not os.path.exists(os.path.join(tmp_dir, "data"))
+        finally:
+            if gmsh.isInitialized():
+                gmsh.finalize()
+            os.chdir(orig_cwd)
+
+
+def test_sweep_model1_patch_l_and_options():
+    """Ověření sweep_model1.run_sweep_model1(param='patch_l', ...) s přepínači simulace a SWEEP_EXPORT_EACH."""
+    clear_keys = (
+        "SWEEP_PATCH_LENGTHS", "SWEEP_FREQ_MIN", "FREQ_MIN", "SWEEP_FREQ_MAX", "FREQ_MAX",
+        "SWEEP_FREQ_STEP", "FREQ_STEP", "SWEEP_AMR_MAX_ITS", "AMR_MAX_ITS",
+        "SWEEP_AMR_THRESHOLD", "AMR_THRESHOLD", "SWEEP_FARFIELD_NSAMPLE", "FARFIELD_NSAMPLE",
+        "SWEEP_SAVE_STEP", "SAVE_STEP", "SWEEP_LINEAR_TOL", "LINEAR_TOL",
+        "SWEEP_LINEAR_MAX_ITS", "LINEAR_MAX_ITS", "PATCH_L", "PATCH_W",
+    )
+
+    with patch.dict(os.environ, {"SWEEP_EXPORT_EACH": "true"}):
+        for k in clear_keys:
+            os.environ.pop(k, None)
+
+        with patch.object(sweep_model1, "main") as mock_main, \
+             patch.object(sweep_model1, "export_paraview_package") as mock_export, \
+             patch.object(sweep_model1, "print_summary_table") as mock_summary, \
+             patch.object(sweep_model1.time, "sleep"):
+            sweep_model1.run_sweep_model1(
+                param='patch_l',
+                patch_lengths=[29.8, 30.3],
+                freq_min=2.30,
+                freq_max=2.36,
+                freq_step=0.002,
+                amr_max_its=3,
+                amr_threshold=0.1,
+                farfield_nsample=4050,
+                save_step=0,
+                linear_tol=1e-7,
+                linear_max_its=250,
+                skip_simulation=False,
+            )
+
+            assert mock_main.call_count == 2
+            c0 = mock_main.call_args_list[0].kwargs['custom_params']
+            c1 = mock_main.call_args_list[1].kwargs['custom_params']
+            assert c0['antenna_model'] == 1 and c0['patch_L'] == 29.8 and c0['patch_W'] == 29.8
+            assert c1['antenna_model'] == 1 and c1['patch_L'] == 30.3 and c1['patch_W'] == 30.3
+            assert c0['run_name'] == "m1_patchL_29.80mm"
+            assert c1['run_name'] == "m1_patchL_30.30mm"
+            assert np.isclose(c0['freq_min'], 2.30)
+            assert np.isclose(c0['freq_max'], 2.36)
+            assert np.isclose(c0['freq_step'], 0.002)
+            assert c0['amr_max_its'] == 3
+            assert np.isclose(c0['amr_threshold'], 0.1)
+            assert c0['farfield_nsample'] == 4050
+            assert c0['save_step'] == 0
+            assert np.isclose(c0['linear_tol'], 1e-7)
+            assert c0['linear_max_its'] == 250
+
+            assert mock_export.call_count == 2
+            assert mock_export.call_args_list[0].kwargs['output_name'] == "m1_patchL_29.80mm"
+            assert mock_export.call_args_list[1].kwargs['output_name'] == "m1_patchL_30.30mm"
+            mock_summary.assert_called_once_with(model_version=1)
+
+            # Explicitní export_each=False přepíše SWEEP_EXPORT_EACH="true"
+            mock_main.reset_mock()
+            mock_export.reset_mock()
+            sweep_model1.run_sweep_model1(
+                param='patch_l', patch_lengths=[30.0], export_each=False, skip_simulation=False
+            )
+            assert mock_main.call_count == 1
+            assert mock_export.call_count == 0
+
+            # SWEEP_EXPORT_EACH="false" vypne export bez explicitního export_each
+            mock_main.reset_mock()
+            mock_export.reset_mock()
+            os.environ["SWEEP_EXPORT_EACH"] = "false"
+            sweep_model1.run_sweep_model1(
+                param='patch_l', patch_lengths=[30.0], skip_simulation=False
+            )
+            assert mock_main.call_count == 1
+            assert mock_export.call_count == 0
+
+
+def test_extract_farfield_metrics_merged_siblings_power():
+    """Ověření, že sloučený farfield-rE.csv se sourozenci p1/p2 dává stejný zisk jako 2-excitační superpozice (~-3.01 dB)."""
+    header_ff = "f (GHz), exc, theta (deg.), phi (deg.), r*Re{E_x}, r*Im{E_x}, r*Re{E_y}, r*Im{E_y}, r*Re{E_z}, r*Im{E_z}"
+    row_p1 = [2.33, 1, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0]
+    row_p2 = [2.33, 1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    row_merged = [2.33, 1, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0]
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dir_multi = os.path.join(tmp_dir, "multi_exc")
+        dir_merged = os.path.join(tmp_dir, "merged_siblings")
+        dir_single = os.path.join(tmp_dir, "single_only")
+        for d in (dir_multi, dir_merged, dir_single):
+            os.makedirs(d, exist_ok=True)
+
+        ff_multi = os.path.join(dir_multi, "farfield-rE.csv")
+        np.savetxt(ff_multi, np.array([row_p1, [2.33, 2, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]]), delimiter=',', header=header_ff)
+
+        ff_merged = os.path.join(dir_merged, "farfield-rE.csv")
+        np.savetxt(ff_merged, np.array([row_merged]), delimiter=',', header=header_ff)
+        np.savetxt(os.path.join(dir_merged, "farfield_p1-rE.csv"), np.array([row_p1]), delimiter=',', header=header_ff)
+        np.savetxt(os.path.join(dir_merged, "farfield_p2-rE.csv"), np.array([row_p2]), delimiter=',', header=header_ff)
+
+        ff_single = os.path.join(dir_single, "farfield-rE.csv")
+        np.savetxt(ff_single, np.array([row_merged]), delimiter=',', header=header_ff)
+
+        m_multi = extract_farfield_metrics(ff_multi, target_freq=2.33, s11_min_db=-20.0)
+        m_merged = extract_farfield_metrics(ff_merged, target_freq=2.33, s11_min_db=-20.0)
+        m_single = extract_farfield_metrics(ff_single, target_freq=2.33, s11_min_db=-20.0)
+
+        assert m_merged['polarization'] == "LHCP"
+        assert m_merged['axial_ratio_db'] < 0.1
+        assert np.isclose(m_merged['gain_lhcp_dbi'], m_multi['gain_lhcp_dbi'], atol=1e-6)
+        assert np.isclose(m_merged['gain_max_lhcp_dbi'], m_multi['gain_max_lhcp_dbi'], atol=1e-6)
+        diff_db = m_single['gain_lhcp_dbi'] - m_merged['gain_lhcp_dbi']
+        assert np.isclose(diff_db, 10.0 * np.log10(2.0), atol=1e-3), f"Očekáván rozdíl ~3.01 dB, je {diff_db:.4f} dB"
+
+
 if __name__ == "__main__":
     tests = [
         test_rf_calculations,
@@ -800,6 +1010,9 @@ if __name__ == "__main__":
         test_tracker_model2_feed_lengths_and_migration,
         test_sweep_model2_feed_targets,
         test_sweep_model2_patch_lengths,
+        test_main_skip_simulation_model1_and_model2,
+        test_sweep_model1_patch_l_and_options,
+        test_extract_farfield_metrics_merged_siblings_power,
     ]
     passed = 0
     failed = 0
