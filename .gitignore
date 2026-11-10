@@ -25,7 +25,6 @@ venv/
 
 # Docker a editor
 .env
-.dockerignore
 .vscode/
 .idea/
 *.swp
@@ -43,6 +42,8 @@ config.json
 *.step
 *.brep
 *.png
+!assets/
+!assets/*.png
 *.gif
 *.pvd
 *.vtu
