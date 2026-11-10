@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt
-RUN git clone --depth 1 https://github.com/awslabs/palace.git
+ARG PALACE_VERSION=v0.19.0
+RUN git clone --depth 1 --branch ${PALACE_VERSION} https://github.com/awslabs/palace.git
 
 WORKDIR /opt/palace/build
 RUN cmake .. \
@@ -25,7 +26,7 @@ RUN cmake .. \
     -DPALACE_WITH_SUPERLU=ON \
     -DPALACE_BUILD_EXTERNAL_DEPS=ON
 
-RUN cmake --build . -j$(nproc) && cmake --install . --prefix /opt/palace_install
+RUN cmake --build . -j$(nproc)
 
 # Nyní bezpečně posbíráme všechny postavené knihovny, ať už jsou kdekoliv v adresáři build
 RUN mkdir -p /opt/palace_libs && find /opt/palace/build -name "*.so*" -exec cp {} /opt/palace_libs/ \;

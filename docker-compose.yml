@@ -7,6 +7,8 @@ services:
       dockerfile: docker/Dockerfile.palace
     command: ["-np", "${PALACE_CORES:-5}", "/workspace/data/config.json"]
     volumes:
+      # Při spuštění `palace` zevnitř `pipeline` kontejneru (Docker-out-of-Docker) musí `CONF_DIR` a `DATA_DIR`
+      # odpovídat absolutní cestě na hostiteli (nebo lze spouštět `python src/main.py` lokálně a pouze `palace` v Dockeru).
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data
     environment:
@@ -15,56 +17,18 @@ services:
     working_dir: /workspace
     profiles: ["worker"]
 
-  # 2. Průzkumník simulací (MLflow Web UI) - dlouhoběžící server
-  # Spuštění: docker compose up -d mlflow
-  mlflow:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.pipeline
-    ports:
-      - "5000:5000"
-    environment:
-      - MLFLOW_TRACKING_URI=sqlite:////workspace/data/mlflow.db
-      - CONF_DIR=${CONF_DIR:-.}
-      - DATA_DIR=${DATA_DIR:-./data}
-      - "MLFLOW_SERVER_ALLOWED_HOSTS=*"
-      - "MLFLOW_SERVER_CORS_ALLOWED_ORIGINS=http://testudines-vm:5000"
-    volumes:
-      - ${CONF_DIR:-.}:/workspace
-      - ${DATA_DIR:-./data}:/workspace/data
-    working_dir: /workspace
-    command: mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////workspace/data/mlflow.db --default-artifact-root /workspace/data/mlruns
-
-  # 3. Nástroj pro orchestraci simulací a generování sítě
+  # 2. Nástroj pro orchestraci simulací a generování sítě
   # Spuštění: docker compose run --rm pipeline
   pipeline:
     build:
       context: .
       dockerfile: docker/Dockerfile.pipeline
-    environment:
-      - MLFLOW_TRACKING_URI=sqlite:////workspace/data/mlflow.db
-      - CONF_DIR=${CONF_DIR:-.}
-      - DATA_DIR=${DATA_DIR:-./data}
-      - EXPORT_DIR=${EXPORT_DIR:-./export}
-      - PALACE_CORES=${PALACE_CORES:-5}
-      - FREQ_MIN=${FREQ_MIN:-2.320}
-      - FREQ_MAX=${FREQ_MAX:-2.345}
-      - FREQ_STEP=${FREQ_STEP:-0.005}
-      - MESH_SIZE_MAX=${MESH_SIZE_MAX:-8.0}
-      - MESH_SIZE_MIN=${MESH_SIZE_MIN:-0.5}
-      - MESH_DIST_MIN=${MESH_DIST_MIN:-0.5}
-      - MESH_DIST_MAX=${MESH_DIST_MAX:-6.0}
-      - AMR_MAX_ITS=${AMR_MAX_ITS:-2}
-      - AMR_THRESHOLD=${AMR_THRESHOLD:-0.2}
-      - FARFIELD_NSAMPLE=${FARFIELD_NSAMPLE:-16200}
-      - SWEEP_FARFIELD_NSAMPLE=${SWEEP_FARFIELD_NSAMPLE:-}
-      - SAVE_STEP=${SAVE_STEP:-1}
-      - PATCH_L=${PATCH_L:-30.3}
-      - PATCH_W=${PATCH_W:-30.3}
-      - FEED_INSET=${FEED_INSET:-0.0}
-      - FEED_INSET_GAP=${FEED_INSET_GAP:-}
-      - FEED_INSET_WIDTH=${FEED_INSET_WIDTH:-}
+    env_file:
+      - path: .env
+        required: false
     volumes:
+      # Při spuštění `palace` zevnitř `pipeline` kontejneru (Docker-out-of-Docker) musí `CONF_DIR` a `DATA_DIR`
+      # odpovídat absolutní cestě na hostiteli (nebo lze spouštět `python src/main.py` lokálně a pouze `palace` v Dockeru).
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data
       - ${EXPORT_DIR:-./export}:/workspace/export

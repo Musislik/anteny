@@ -1,0 +1,28 @@
+# Verzovací systém a dokumentace
+.git
+.gitignore
+README.md
+LICENSE
+
+# Konfigurace a lokální prostředí
+.env
+.venv
+venv
+
+# Python cache a testy
+.pytest_cache
+.ruff_cache
+**/__pycache__
+**/*.py[cod]
+tests
+
+# Data, výsledky simulací a vizuální výstupy
+data
+export
+postpro
+assets
+mlruns
+*.db
+*.db-journal
+*.zip
+*.png
