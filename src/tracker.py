@@ -3,6 +3,7 @@ tracker.py - Jednoduchý, robustní a transparentní systém pro sledování par
 Podporuje:
   - Model 1 (1 port, T-dělič): zapisuje do export/sweep_results.csv a .md
   - Model 2 (2 porty, 100 Ohm LHCP): zapisuje do export/sweep_results_model2.csv a .md
+  - Model 3 (2 porty, 100 Ohm + lambda_g/4 transformátor): zapisuje do export/sweep_results_model3.csv a .md
 """
 
 import os

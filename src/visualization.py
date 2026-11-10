@@ -456,9 +456,33 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
 
 
 if __name__ == "__main__":
-    target_path = sys.argv[1] if len(sys.argv) > 1 else r"D:\code\anteny\export\antena4_2_2\m3_tw0.30mm_4"
+    import argparse
+
+    _SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+    if _SRC_DIR not in sys.path:
+        sys.path.insert(0, _SRC_DIR)
+    from postpro_utils import load_env
+
+    parser = argparse.ArgumentParser(description="2D a detailní vizualizace geometrie patch antény")
+    parser.add_argument(
+        "target_path",
+        nargs="?",
+        default=None,
+        help="Cesta ke složce se simulací, souboru params.json nebo výstupnímu PNG (výchozí: DATA_DIR z .env)",
+    )
+    args = parser.parse_args()
+
+    _, data_dir = load_env()
+    target_path = args.target_path
     loaded_params = {}
-    if os.path.isdir(target_path):
+
+    if target_path is None:
+        p_json = os.path.join(data_dir, "params.json")
+        if os.path.exists(p_json):
+            with open(p_json, 'r', encoding='utf-8') as f:
+                loaded_params = json.load(f)
+        out_png = os.path.join(data_dir, "geometry_iso.png")
+    elif os.path.isdir(target_path):
         p_json = os.path.join(target_path, "params.json")
         if os.path.exists(p_json):
             with open(p_json, 'r', encoding='utf-8') as f:
@@ -472,7 +496,10 @@ if __name__ == "__main__":
         else:
             out_png = target_path
     else:
-        out_png = "data/geometry_iso.png"
+        if target_path.lower().endswith(".png"):
+            out_png = target_path
+        else:
+            out_png = os.path.join(data_dir, "geometry_iso.png")
 
     if not loaded_params:
         loaded_params = {

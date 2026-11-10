@@ -5,7 +5,7 @@ Možnosti spuštění:
 1. Pomocí Dockeru:
     docker compose run --rm pipeline python scripts/export_lhcp_gif.py
 2. Pomocí pvpython (ParaView):
-    & "D:\\Programy\\ParaView\\bin\\pvpython.exe" scripts/export_lhcp_gif.py
+    pvpython scripts/export_lhcp_gif.py
 3. Přímo v Pythonu (pokud máte pyvista nebo vtk s matplotlib):
     python scripts/export_lhcp_gif.py
 """
@@ -13,6 +13,7 @@ Možnosti spuštění:
 import os
 import sys
 import glob
+import json
 import shutil
 import numpy as np
 import matplotlib.pyplot as plt
@@ -100,12 +101,37 @@ def read_mesh_fields(vtu_path):
     return points, e_real, e_imag
 
 
+def _load_params_for_vtu(vtu_path, data_dir):
+    """Načte params.json ze složky u vtu_path, jejích nadřazených složek nebo z data_dir."""
+    candidates = []
+    if vtu_path:
+        cur = os.path.dirname(os.path.abspath(vtu_path))
+        for _ in range(7):
+            candidates.append(os.path.join(cur, "params.json"))
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+    if data_dir:
+        candidates.append(os.path.join(data_dir, "params.json"))
+
+    for p_path in candidates:
+        if os.path.exists(p_path) and os.path.getsize(p_path) > 0:
+            try:
+                with open(p_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+    return {}
+
+
 def export_lhcp_gif(vtu_path=None,
                     output_gif=None,
                     n_frames=36,
-                    sub_h_mm=1.52,
+                    sub_h_mm=None,
                     domain_extent_mm=32.0):
-    load_env()
     _, data_dir = load_env()
     if output_gif is None:
         output_gif = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")
@@ -116,6 +142,15 @@ def export_lhcp_gif(vtu_path=None,
             print("CHYBA: Nebyl nalezen žádný výstupní soubor simulace (.pvtu/.vtu)!")
             print(f"Zkontrolujte DATA_DIR ({data_dir}) nebo nejprve spusťte simulaci.")
             return
+
+    model_params = _load_params_for_vtu(vtu_path, data_dir)
+    if sub_h_mm is None:
+        sub_h_mm = float(model_params.get("sub_h", 1.52))
+    else:
+        sub_h_mm = float(sub_h_mm)
+
+    patch_w = float(model_params.get("patch_W", model_params.get("patch_L", 28.8)))
+    patch_l = float(model_params.get("patch_L", patch_w))
 
     points, e_real, e_imag = read_mesh_fields(vtu_path)
 
@@ -202,7 +237,6 @@ def export_lhcp_gif(vtu_path=None,
     plt.subplots_adjust(left=0.1, right=0.86, top=0.9, bottom=0.1)
     cax = fig.add_axes([0.88, 0.15, 0.03, 0.7])
 
-    patch_w = 30.9
     step = 4  # krok pro vektorové šipky quiveru
 
     def update(frame):
@@ -226,9 +260,9 @@ def export_lhcp_gif(vtu_path=None,
             alpha=0.9, width=0.005
         )
 
-        # Obrys flíčku antény (30.9 x 30.9 mm)
+        # Obrys flíčku antény (patch_W x patch_L)
         rect = plt.Rectangle(
-            (-patch_w / 2, -patch_w / 2), patch_w, patch_w,
+            (-patch_w / 2, -patch_l / 2), patch_w, patch_l,
             fill=False, edgecolor='cyan', linestyle='--', linewidth=1.5, label='Patch'
         )
         ax.add_patch(rect)
@@ -265,7 +299,6 @@ def export_lhcp_gif(vtu_path=None,
 
 
 if __name__ == "__main__":
-    load_env()
     _, data_dir = load_env()
     vtu = sys.argv[1] if len(sys.argv) > 1 else None
     default_out = os.path.join(data_dir, "postpro", "lhcp_rotation.gif")

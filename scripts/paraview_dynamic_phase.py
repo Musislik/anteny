@@ -41,12 +41,32 @@ def setup_dynamic_phase_scene():
 
     # Načtení databáze všech frekvencí
     reader = PVDReader(registrationName='Palace_Frekvencni_Data', FileName=pvd_file)
+    reader.UpdatePipelineInformation()
     reader.UpdatePipeline()
 
-    # Filtr pro výběr a uzamčení konkrétní frekvence (výchozí 2.330 GHz)
-    print("--- 2. Vytvářím volič frekvence (ForceTime) ---")
+    raw_timesteps = getattr(reader, "TimestepValues", None)
+    try:
+        freqs = sorted({float(f) for f in raw_timesteps}) if raw_timesteps else []
+    except TypeError:
+        freqs = []
+
+    if len(freqs) >= 2:
+        default_freq = freqs[len(freqs) // 2]
+        f_min = min(freqs)
+        f_max = max(freqs)
+    elif len(freqs) == 1:
+        default_freq = freqs[0]
+        f_min = default_freq - 0.005
+        f_max = default_freq + 0.005
+    else:
+        default_freq = 2.330
+        f_min = 2.320
+        f_max = 2.345
+
+    # Filtr pro výběr a uzamčení konkrétní frekvence
+    print(f"--- 2. Vytvářím volič frekvence (ForceTime, výchozí {default_freq:.3f} GHz) ---")
     ft = ForceTime(registrationName='Zvolena_Frekvence_GHz', Input=reader)
-    ft.ForcedTime = 2.330
+    ft.ForcedTime = default_freq
     ft.UpdateVTKObjects()
     ft.UpdatePipeline()
 
@@ -92,7 +112,7 @@ def setup_dynamic_phase_scene():
 
     # Textový popisek s frekvencí a fází
     info_text = Text(registrationName='Popisek_Info')
-    info_text.Text = "Frekvence: 2.330 GHz  |  Fáze φ: 000°"
+    info_text.Text = f"Frekvence: {default_freq:.3f} GHz  |  Fáze φ: 000°"
     info_text.UpdateVTKObjects()
     info_text.UpdatePipeline()
 
@@ -141,7 +161,7 @@ def tick(cue):
     txt = FindSource('Popisek_Info')
     if txt:
         ft = FindSource('Zvolena_Frekvence_GHz')
-        f_val = ft.ForcedTime if ft else 2.330
+        f_val = float(ft.ForcedTime) if ft else 2.330
         txt.Text = f'Frekvence: {f_val:.3f} GHz  |  Fáze φ: {deg:03d}°'
         txt.UpdateVTKObjects()
         txt.UpdatePipeline()
@@ -163,9 +183,9 @@ def end_cue(cue):
     interactor = render_window.GetInteractor()
 
     slider_rep = vtk.vtkSliderRepresentation2D()
-    slider_rep.SetMinimumValue(2.320)
-    slider_rep.SetMaximumValue(2.345)
-    slider_rep.SetValue(2.330)
+    slider_rep.SetMinimumValue(f_min)
+    slider_rep.SetMaximumValue(f_max)
+    slider_rep.SetValue(default_freq)
     slider_rep.SetTitleText("Frekvence [GHz]")
     slider_rep.GetPoint1Coordinate().SetCoordinateSystemToNormalizedDisplay()
     slider_rep.GetPoint1Coordinate().SetValue(0.15, 0.07)
@@ -180,8 +200,11 @@ def end_cue(cue):
 
     def on_freq_change(obj, event):
         raw_val = obj.GetRepresentation().GetValue()
-        snapped = round(raw_val / 0.005) * 0.005
-        snapped = max(2.320, min(2.345, snapped))
+        if freqs:
+            snapped = min(freqs, key=lambda f: abs(f - raw_val))
+        else:
+            snapped = round(raw_val / 0.005) * 0.005
+            snapped = max(f_min, min(f_max, snapped))
         obj.GetRepresentation().SetValue(snapped)
 
         # 1. Změna frekvence na ForceTime
@@ -206,7 +229,7 @@ def end_cue(cue):
         # 5. Aktualizace textu na obrazovce
         txt = FindSource('Popisek_Info')
         if txt:
-            txt.Text = f'Frekvence: {snapped:.3f} GHz'
+            txt.Text = f'Frekvence: {float(ft.ForcedTime):.3f} GHz'
             txt.UpdateVTKObjects()
             txt.UpdatePipeline()
 

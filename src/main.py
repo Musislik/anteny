@@ -576,7 +576,7 @@ def _process_results_model1(params, output_dir, data_dir, run_name):
 
 def _process_results_model2(params, output_dir, data_dir, run_name):
     from tracker import extract_s_parameters_model2
-    s_params = extract_s_parameters_model2(output_dir, z0=100.0)
+    s_params = extract_s_parameters_model2(output_dir, z0=float(params.get('port_impedance', 100.0)))
     
     if s_params and 'freqs' in s_params:
         try:

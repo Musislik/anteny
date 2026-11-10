@@ -43,7 +43,7 @@ def setup_scene():
     sub_h_mm = 1.52  # Vychozi hodnota pro FR4
     config_file = os.path.join(data_dir, "config.json")
     if not os.path.exists(config_file):
-        config_file = os.path.join(conf_dir, "config.json")
+        config_file = os.path.join(root_dir, "config.json")
     if os.path.exists(config_file):
         try:
             with open(config_file, "r") as f:

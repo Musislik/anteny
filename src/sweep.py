@@ -3,6 +3,7 @@ sweep.py - Štíhlý dispečer parametrického sweepu mikropáskové antény.
 Podle proměnné ANTENNA_MODEL v .env (nebo přepínače --model v CLI) automaticky deleguje:
   - ANTENNA_MODEL=1 -> src/sweep_model1.py (Původní T-dělič, 1 port, 50 Ohm)
   - ANTENNA_MODEL=2 -> src/sweep_model2.py (Nový dvouportový model, 100 Ohm LHCP)
+  - ANTENNA_MODEL=3 -> src/sweep_model3.py (Hybridní dvoustupňové přizpůsobení)
 """
 
 import os

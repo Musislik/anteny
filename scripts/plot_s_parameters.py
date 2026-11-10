@@ -1,10 +1,25 @@
 import os
 import sys
 import json
+import argparse
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT_DIR = os.path.abspath(os.path.join(_CURRENT_DIR, ".."))
+_SRC_DIR = os.path.join(_ROOT_DIR, "src")
+for _p in (_CURRENT_DIR, _SRC_DIR, _ROOT_DIR):
+    if os.path.exists(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:
+    import _env  # noqa: F401
+except ImportError:
+    pass
+
+from postpro_utils import load_env
 
 def plot_s_parameters(export_dir, output_png=None, params=None):
     """
@@ -279,6 +294,40 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
             plt.close(fig_iso)
     return output_png
 
+def _has_port_csv(directory):
+    return any(
+        os.path.exists(os.path.join(directory, fn)) and os.path.getsize(os.path.join(directory, fn)) > 0
+        for fn in ("port-S.csv", "port-V.csv")
+    )
+
+
 if __name__ == "__main__":
-    target = sys.argv[1] if len(sys.argv) > 1 else r"D:\code\anteny\export\antena3_1_1"
-    plot_s_parameters(target)
+    parser = argparse.ArgumentParser(
+        description="Vykreslení diagnostických grafů S-parametrů a vstupní impedance z port-S.csv nebo port-V.csv"
+    )
+    parser.add_argument(
+        "export_dir",
+        nargs="?",
+        default=None,
+        help="Cesta k exportní složce s výsledky simulace (výchozí: DATA_DIR/postpro nebo DATA_DIR z .env)",
+    )
+    args = parser.parse_args()
+
+    target = args.export_dir
+    if target is None:
+        _, data_dir = load_env()
+        postpro_dir = os.path.join(data_dir, "postpro")
+        if _has_port_csv(postpro_dir):
+            target = postpro_dir
+        elif _has_port_csv(data_dir):
+            target = data_dir
+        else:
+            print(f"[CHYBA] Soubory port-S.csv ani port-V.csv nebyly nalezeny v {postpro_dir} ani v {data_dir}.")
+            print("Zadejte cestu k exportní složce jako argument nebo nejprve spusťte simulaci.")
+            parser.print_help()
+            sys.exit(1)
+
+    res = plot_s_parameters(target)
+    if res is None:
+        parser.print_help()
+        sys.exit(1)

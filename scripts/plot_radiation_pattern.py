@@ -11,6 +11,20 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
 
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT_DIR = os.path.abspath(os.path.join(_CURRENT_DIR, ".."))
+_SRC_DIR = os.path.join(_ROOT_DIR, "src")
+for _p in (_CURRENT_DIR, _SRC_DIR, _ROOT_DIR):
+    if os.path.exists(_p) and _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:
+    import _env  # noqa: F401
+except ImportError:
+    pass
+
+from postpro_utils import load_env
+
 def compute_farfield_metrics(sub_df):
     """
     Vypočte sférické složky E-pole, LHCP/RHCP polarizaci, směrovost v dBi a osový poměr (AR).
@@ -323,9 +337,32 @@ def plot_radiation_pattern_3d(export_dir, freq_target=None, output_png=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vykreslení vyzařovacích diagramů antény z farfield-rE.csv")
-    parser.add_argument("export_dir", nargs="?", default=r"D:\code\anteny\export\antena3_1_1", help="Cesta k exportní složce")
+    parser.add_argument(
+        "export_dir",
+        nargs="?",
+        default=None,
+        help="Cesta k exportní složce (výchozí: DATA_DIR/postpro z .env)",
+    )
     parser.add_argument("--freq", type=float, default=2.333, help="Frekvence pro vyhodnocení v GHz")
     args = parser.parse_args()
-    
-    plot_radiation_pattern_2d(args.export_dir, freq_target=args.freq)
-    plot_radiation_pattern_3d(args.export_dir, freq_target=args.freq)
+
+    target_dir = args.export_dir
+    if target_dir is None:
+        _, data_dir = load_env()
+        postpro_dir = os.path.join(data_dir, "postpro")
+        if _find_farfield_csv(postpro_dir):
+            target_dir = postpro_dir
+        elif _find_farfield_csv(data_dir):
+            target_dir = data_dir
+        else:
+            print(f"[CHYBA] Soubor farfield-rE.csv nebyl nalezen v {postpro_dir} ani v {data_dir}.")
+            print("Zadejte cestu k exportní složce jako argument nebo nejprve spusťte simulaci.")
+            parser.print_help()
+            sys.exit(1)
+    elif not _find_farfield_csv(target_dir):
+        print(f"[CHYBA] Soubor farfield-rE.csv nebyl nalezen v {target_dir}.")
+        parser.print_help()
+        sys.exit(1)
+
+    plot_radiation_pattern_2d(target_dir, freq_target=args.freq)
+    plot_radiation_pattern_3d(target_dir, freq_target=args.freq)

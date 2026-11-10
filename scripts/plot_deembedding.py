@@ -20,14 +20,20 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-# Zajištění přístupu k src modulům (rf_calc)
+# Zajištění přístupu k src modulům (rf_calc, postpro_utils)
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR = os.path.abspath(os.path.join(_CURRENT_DIR, ".."))
 _SRC_DIR = os.path.join(_ROOT_DIR, "src")
-for p in (_ROOT_DIR, _SRC_DIR, _CURRENT_DIR):
-    if p not in sys.path:
+for p in (_CURRENT_DIR, _SRC_DIR, _ROOT_DIR):
+    if os.path.exists(p) and p not in sys.path:
         sys.path.insert(0, p)
 
+try:
+    import _env  # noqa: F401
+except ImportError:
+    pass
+
+from postpro_utils import load_env
 from rf_calc import calculate_deembedding_model3, DESIGN_FREQ_GHZ
 
 
@@ -874,15 +880,39 @@ def _save_individual_rp_plots(export_dir, output_png, freqs, rp1, rp2, rp3, iso_
         plt.close(fig3)
 
 
+def _has_port_csv(directory):
+    return any(
+        os.path.exists(os.path.join(directory, fn)) and os.path.getsize(os.path.join(directory, fn)) > 0
+        for fn in ("port-S.csv", "port-V.csv")
+    )
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Analytický de-embedding impedančních skoků napájecí sítě patch antény")
-    parser.add_argument("export_dir", nargs="?", default=os.path.join(_ROOT_DIR, "export", "antena3_1_1"),
-                        help="Cesta k exportní složce s výsledky simulace (výchozí: export/antena3_1_1)")
+    parser.add_argument("export_dir", nargs="?", default=None,
+                        help="Cesta k exportní složce s výsledky simulace (výchozí: DATA_DIR/postpro nebo DATA_DIR z .env)")
     parser.add_argument("--output", "-o", default=None,
                         help="Cesta k výstupnímu PNG grafu (výchozí: <export_dir>/graf_impedance_skoky.png)")
     parser.add_argument("--layout", choices=["split", "compact"], default="split",
                         help="Rozložení pro obouportové buzení (split=3x4 dva sloupce portů, compact=3x2)")
     args = parser.parse_args()
 
-    plot_impedance_deembedding(args.export_dir, output_png=args.output, layout=args.layout)
+    target_dir = args.export_dir
+    if target_dir is None:
+        _, data_dir = load_env()
+        postpro_dir = os.path.join(data_dir, "postpro")
+        if _has_port_csv(postpro_dir):
+            target_dir = postpro_dir
+        elif _has_port_csv(data_dir):
+            target_dir = data_dir
+        else:
+            print(f"[CHYBA] Soubory port-S.csv ani port-V.csv nebyly nalezeny v {postpro_dir} ani v {data_dir}.")
+            print("Zadejte cestu k exportní složce jako argument nebo nejprve spusťte simulaci.")
+            parser.print_help()
+            sys.exit(1)
+
+    res = plot_impedance_deembedding(target_dir, output_png=args.output, layout=args.layout)
+    if res is None:
+        parser.print_help()
+        sys.exit(1)

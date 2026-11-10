@@ -31,6 +31,27 @@ def get_project_root():
     return os.path.abspath(parent)
 
 
+def _resolve_env_dir(env_dir, root_dir, default_subdir):
+    """
+    Vyhodnotí cestu ke složce z proměnné prostředí s bezpečným fallbackem
+    do <root_dir>/<default_subdir> (např. pro kontejner nebo Unixovou cestu na Windows).
+    """
+    default_dir = os.path.abspath(os.path.join(root_dir, default_subdir))
+    if not env_dir:
+        return default_dir
+
+    is_container = os.path.exists("/.dockerenv") or os.path.exists("/workspace")
+    is_win_unix_path = sys.platform == "win32" and env_dir.startswith("/")
+
+    if not os.path.exists(env_dir) and (is_container or is_win_unix_path or not os.path.isabs(env_dir)):
+        return default_dir
+    if os.path.isabs(env_dir):
+        if not os.path.exists(env_dir) and os.path.exists(default_dir):
+            return default_dir
+        return os.path.abspath(env_dir)
+    return os.path.abspath(os.path.join(root_dir, env_dir))
+
+
 def load_env(env_path=None):
     """
     Načte proměnné prostředí ze souboru .env v kořeni projektu.
@@ -53,23 +74,10 @@ def load_env(env_path=None):
         except Exception as e:
             print(f"Upozornění při čtení .env: {e}")
 
-    env_data_dir = os.getenv("DATA_DIR")
     # Pokud zadaná cesta existuje v aktuálním souborovém systému, použijeme ji.
-    # Pokud neexistuje (např. hostitelská cesta jako /mnt/data-nosync/... spuštěná uvnitř Docker kontejneru),
-    # použijeme lokální složku projektu data/ (v kontejneru odpovídá /workspace/data).
-    if env_data_dir:
-        is_container = os.path.exists("/.dockerenv") or os.path.exists("/workspace")
-        if not os.path.exists(env_data_dir) and (is_container or not os.path.isabs(env_data_dir)):
-            data_dir = os.path.abspath(os.path.join(root_dir, "data"))
-        elif os.path.isabs(env_data_dir):
-            if not os.path.exists(env_data_dir) and os.path.exists(os.path.join(root_dir, "data")):
-                data_dir = os.path.abspath(os.path.join(root_dir, "data"))
-            else:
-                data_dir = os.path.abspath(env_data_dir)
-        else:
-            data_dir = os.path.abspath(os.path.join(root_dir, env_data_dir))
-    else:
-        data_dir = os.path.abspath(os.path.join(root_dir, "data"))
+    # Pokud neexistuje (např. hostitelská cesta jako /host/cesta/k/datum spuštěná uvnitř Docker kontejneru
+    # nebo Unixová cesta na Windows), použijeme lokální složku projektu data/ (v kontejneru /workspace/data).
+    data_dir = _resolve_env_dir(os.getenv("DATA_DIR"), root_dir, "data")
 
     return root_dir, data_dir
 
@@ -78,25 +86,12 @@ def get_export_dir(root_dir=None):
     """
     Vrátí platnou lokální cestu k exportní složce pro aktuální běhové prostředí podle EXPORT_DIR v .env.
     Pokud EXPORT_DIR z .env ukazuje na hostitelskou cestu, která v kontejneru neexistuje
-    (např. /mnt/data-nosync/anteny/export), automaticky použije /workspace/export (připojený svazek).
+    (např. /host/cesta/k/exportu), automaticky použije /workspace/export (připojený svazek).
     """
     if root_dir is None:
         root_dir = get_project_root()
 
-    env_export_dir = os.getenv("EXPORT_DIR")
-    if env_export_dir:
-        is_container = os.path.exists("/.dockerenv") or os.path.exists("/workspace")
-        if not os.path.exists(env_export_dir) and (is_container or not os.path.isabs(env_export_dir)):
-            export_dir = os.path.join(root_dir, "export")
-        elif os.path.isabs(env_export_dir):
-            if not os.path.exists(env_export_dir) and os.path.exists(os.path.join(root_dir, "export")):
-                export_dir = os.path.join(root_dir, "export")
-            else:
-                export_dir = env_export_dir
-        else:
-            export_dir = os.path.join(root_dir, env_export_dir)
-    else:
-        export_dir = os.path.join(root_dir, "export")
+    export_dir = _resolve_env_dir(os.getenv("EXPORT_DIR"), root_dir, "export")
 
     os.makedirs(export_dir, exist_ok=True)
     return os.path.abspath(export_dir)
