@@ -43,6 +43,61 @@ DEFAULT_DELTA_L_VALUES_M3 = [17.0, 17.5, 18.0, 18.66, 19.5, 20.0]
 DEFAULT_PATCH_LENGTHS_M3 = [28.40, 28.60, 28.80, 29.00, 29.20]
 
 
+def resolve_sweep_sim_settings(
+    freq_min=None,
+    freq_max=None,
+    freq_step=None,
+    amr_max_its=None,
+    amr_threshold=None,
+    farfield_nsample=None,
+    linear_tol=None,
+    linear_max_its=None,
+    save_step=None,
+):
+    """Vyhodnotí simulační profil sweepu ('precise' vs 'fast') a přepisy parametrů."""
+    sweep_profile = os.getenv("SWEEP_PROFILE", "precise").lower().strip()
+    prefix = "SWEEP_FAST_" if sweep_profile == "fast" else "SWEEP_PRECISE_"
+
+    def _get_prof_env(key, default_val):
+        v = os.getenv(f"{prefix}{key}")
+        if v is not None and v != "":
+            return v
+        v = os.getenv(f"SWEEP_{key}")
+        if v is not None and v != "":
+            return v
+        return str(default_val)
+
+    if sweep_profile == "fast":
+        default_amr, default_amr_tol = "0", "0.15"
+        default_mesh_min, default_mesh_max = "0.35", "8.0"
+        default_dist_min, default_dist_max = "0.5", "5.0"
+        default_linear_tol, default_linear_max_its = "1e-5", "100"
+        default_ff_nsample, default_freq_step = "2025", "0.002"
+    else:
+        default_amr, default_amr_tol = "3", "0.06"
+        default_mesh_min, default_mesh_max = "0.28", "6.0"
+        default_dist_min, default_dist_max = "0.4", "4.5"
+        default_linear_tol, default_linear_max_its = "1e-6", "200"
+        default_ff_nsample, default_freq_step = "4050", "0.001"
+
+    return {
+        'sweep_profile': sweep_profile,
+        'freq_min': float(freq_min if freq_min is not None else _get_prof_env("FREQ_MIN", os.getenv("FREQ_MIN", "2.320"))),
+        'freq_max': float(freq_max if freq_max is not None else _get_prof_env("FREQ_MAX", os.getenv("FREQ_MAX", "2.345"))),
+        'freq_step': float(freq_step if freq_step is not None else _get_prof_env("FREQ_STEP", default_freq_step)),
+        'amr_max_its': int(amr_max_its if amr_max_its is not None else _get_prof_env("AMR_MAX_ITS", default_amr)),
+        'amr_threshold': float(amr_threshold if amr_threshold is not None else _get_prof_env("AMR_THRESHOLD", default_amr_tol)),
+        'mesh_size_min': float(_get_prof_env("MESH_SIZE_MIN", default_mesh_min)),
+        'mesh_size_max': float(_get_prof_env("MESH_SIZE_MAX", default_mesh_max)),
+        'mesh_dist_min': float(_get_prof_env("MESH_DIST_MIN", default_dist_min)),
+        'mesh_dist_max': float(_get_prof_env("MESH_DIST_MAX", default_dist_max)),
+        'linear_tol': float(linear_tol if linear_tol is not None else _get_prof_env("LINEAR_TOL", default_linear_tol)),
+        'linear_max_its': int(linear_max_its if linear_max_its is not None else _get_prof_env("LINEAR_MAX_ITS", default_linear_max_its)),
+        'farfield_nsample': int(farfield_nsample if farfield_nsample is not None else _get_prof_env("FARFIELD_NSAMPLE", default_ff_nsample)),
+        'save_step': int(save_step if save_step is not None else _get_prof_env("SAVE_STEP", "0")),
+    }
+
+
 def _parse_float_list(val):
     if not val:
         return None
@@ -377,55 +432,31 @@ def run_sweep_model3(
     if export_each is None:
         export_each = _resolve_env_bool("SWEEP_EXPORT_EACH", default_val=True)
 
-    # Globální parametry simulace a profil sweepu ('precise' vs 'fast')
-    sweep_profile = os.getenv("SWEEP_PROFILE", "precise").lower().strip()
-    prefix = "SWEEP_FAST_" if sweep_profile == "fast" else "SWEEP_PRECISE_"
-
-    def _get_prof_env(key, default_val):
-        v = os.getenv(f"{prefix}{key}")
-        if v is not None and v != "":
-            return v
-        v = os.getenv(f"SWEEP_{key}")
-        if v is not None and v != "":
-            return v
-        return str(default_val)
-
-    if sweep_profile == "fast":
-        default_amr = "0"
-        default_amr_tol = "0.15"
-        default_mesh_min = "0.35"
-        default_mesh_max = "8.0"
-        default_dist_min = "0.5"
-        default_dist_max = "5.0"
-        default_linear_tol = "1e-5"
-        default_linear_max_its = "100"
-        default_ff_nsample = "2025"
-        default_freq_step = "0.002"
-    else:  # 'precise' (výchozí konvergovaný profil)
-        default_amr = "3"
-        default_amr_tol = "0.06"
-        default_mesh_min = "0.28"
-        default_mesh_max = "6.0"
-        default_dist_min = "0.4"
-        default_dist_max = "4.5"
-        default_linear_tol = "1e-6"
-        default_linear_max_its = "200"
-        default_ff_nsample = "4050"
-        default_freq_step = "0.001"
-
-    s_fmin = float(freq_min if freq_min is not None else _get_prof_env("FREQ_MIN", os.getenv("FREQ_MIN", "2.320")))
-    s_fmax = float(freq_max if freq_max is not None else _get_prof_env("FREQ_MAX", os.getenv("FREQ_MAX", "2.345")))
-    s_fstep = float(freq_step if freq_step is not None else _get_prof_env("FREQ_STEP", default_freq_step))
-    s_amr = int(amr_max_its if amr_max_its is not None else _get_prof_env("AMR_MAX_ITS", default_amr))
-    s_amr_tol = float(amr_threshold if amr_threshold is not None else _get_prof_env("AMR_THRESHOLD", default_amr_tol))
-    s_mesh_size_min = float(_get_prof_env("MESH_SIZE_MIN", default_mesh_min))
-    s_mesh_size_max = float(_get_prof_env("MESH_SIZE_MAX", default_mesh_max))
-    s_mesh_dist_min = float(_get_prof_env("MESH_DIST_MIN", default_dist_min))
-    s_mesh_dist_max = float(_get_prof_env("MESH_DIST_MAX", default_dist_max))
-    s_linear_tol = float(linear_tol if linear_tol is not None else _get_prof_env("LINEAR_TOL", default_linear_tol))
-    s_linear_max_its = int(linear_max_its if linear_max_its is not None else _get_prof_env("LINEAR_MAX_ITS", default_linear_max_its))
-    s_ff_nsample = int(farfield_nsample if farfield_nsample is not None else _get_prof_env("FARFIELD_NSAMPLE", default_ff_nsample))
-    s_save_step = int(save_step if save_step is not None else _get_prof_env("SAVE_STEP", "0"))
+    sim_cfg = resolve_sweep_sim_settings(
+        freq_min=freq_min,
+        freq_max=freq_max,
+        freq_step=freq_step,
+        amr_max_its=amr_max_its,
+        amr_threshold=amr_threshold,
+        farfield_nsample=farfield_nsample,
+        linear_tol=linear_tol,
+        linear_max_its=linear_max_its,
+        save_step=save_step,
+    )
+    sweep_profile = sim_cfg['sweep_profile']
+    s_fmin = sim_cfg['freq_min']
+    s_fmax = sim_cfg['freq_max']
+    s_fstep = sim_cfg['freq_step']
+    s_amr = sim_cfg['amr_max_its']
+    s_amr_tol = sim_cfg['amr_threshold']
+    s_mesh_size_min = sim_cfg['mesh_size_min']
+    s_mesh_size_max = sim_cfg['mesh_size_max']
+    s_mesh_dist_min = sim_cfg['mesh_dist_min']
+    s_mesh_dist_max = sim_cfg['mesh_dist_max']
+    s_linear_tol = sim_cfg['linear_tol']
+    s_linear_max_its = sim_cfg['linear_max_its']
+    s_ff_nsample = sim_cfg['farfield_nsample']
+    s_save_step = sim_cfg['save_step']
     s_driven_port = str(driven_port if driven_port is not None else os.getenv("SWEEP_DRIVEN_PORT", os.getenv("DRIVEN_PORT", "all"))).lower().strip()
 
     print("\n" + "=" * 105)

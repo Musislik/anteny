@@ -173,7 +173,8 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
     # 1. Panel: S-parametry
     if s11_db is not None:
         min1_idx = np.argmin(s11_db)
-        ax1.plot(freqs, s11_db, label=r"$S_{11}$ (Port 1 - spodní, $E_y$)", color='royalblue', lw=2.2)
+        s11_label = r"$S_{11}$ (Port 1 — $50\ \Omega$ T-článek)" if model == 4 else r"$S_{11}$ (Port 1 - spodní, $E_y$)"
+        ax1.plot(freqs, s11_db, label=s11_label, color='royalblue', lw=2.2)
         ax1.plot(freqs[min1_idx], s11_db[min1_idx], 'bo', label=f'Min $S_{{11}}$: {s11_db[min1_idx]:.2f} dB @ {freqs[min1_idx]:.3f} GHz')
 
     if s22_db is not None:
@@ -189,6 +190,8 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
     
     if s11_db is not None and s22_db is not None:
         title_s = rf"S-parametry ($S_{{11}}$, $S_{{22}}$) — $Z_0 = {z0:.0f}\ \Omega$"
+    elif model == 4:
+        title_s = rf"S-parametry — Model 4 (Finální $50\ \Omega$ T-článek, $Z_0 = {z0:.0f}\ \Omega$)"
     elif driven_mode == "1":
         title_s = r"S-parametry — Buzení Portu 1 ($E_y$, spodní rameno)"
     else:

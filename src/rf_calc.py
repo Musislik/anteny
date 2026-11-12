@@ -448,7 +448,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         z2_rp1 = None
         gamma2_rp1_db = None
 
-    # Fallback pro Model 1
+    # Fallback pro Model 1 a finální Model 4 (1-port 50 Ohm de-embedding)
     if model == 1:
         return {
             'freqs': freqs_arr,
@@ -478,6 +478,65 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
                 'z0_ref': port_z0,
             },
             'params_used': {'antenna_model': 1, 'port_z0': port_z0}
+        }
+
+    if model == 4:
+        w_50 = float(params.get('w_50', params.get('feed_50_w', synth_microstrip_w(port_z0, h, eps_r))))
+        l_50 = float(params.get('feed_50_len', params.get('l1', 9.0)))
+        z0_50, _, _, _, gamma_50 = calc_microstrip_propagation(w_50, h, eps_r, tan_delta, freqs_arr)
+
+        if z1_rp1 is not None:
+            z1_rp2 = deembed_transmission_line(z1_rp1, z0_50, gamma_50, l_50)
+            gamma1_rp2 = (z1_rp2 - z0_50) / (z1_rp2 + z0_50 + 1e-12)
+            gamma1_rp2_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp2), 1e-10, 10.0))
+
+            # Ekvivalentní paralelní větev na vstupu T-uzlu (2 * Z_T vůči 100 Ohm)
+            z1_rp3 = 2.0 * z1_rp2
+            z0_branch = 2.0 * port_z0
+            gamma1_rp3 = (z1_rp3 - z0_branch) / (z1_rp3 + z0_branch + 1e-12)
+            gamma1_rp3_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp3), 1e-10, 10.0))
+        else:
+            z1_rp2 = None
+            gamma1_rp2_db = None
+            z1_rp3 = None
+            gamma1_rp3_db = None
+
+        return {
+            'freqs': freqs_arr,
+            'model': 4,
+            'rp1': {
+                'name': 'RP1 (Port 50 Ω)',
+                'z1': z1_rp1,
+                'z2': None,
+                'gamma1_db': gamma1_rp1_db,
+                'gamma2_db': None,
+                'z0_ref': port_z0,
+            },
+            'rp2': {
+                'name': 'RP2 (T-článek 50 Ω)',
+                'z1': z1_rp2,
+                'z2': None,
+                'gamma1_db': gamma1_rp2_db,
+                'gamma2_db': None,
+                'z0_ref': z0_50,
+            },
+            'rp3': {
+                'name': 'RP3 (Ekvivalentní větev 2·Z_T)',
+                'z1': z1_rp3,
+                'z2': None,
+                'gamma1_db': gamma1_rp3_db,
+                'gamma2_db': None,
+                'z0_ref': 2.0 * port_z0,
+            },
+            'params_used': {
+                'antenna_model': 4,
+                'port_z0': port_z0,
+                'w_50': w_50,
+                'z0_50': float(np.mean(z0_50)),
+                'feed_50_len': l_50,
+                'w_T_b': float(params.get('trans_w_b', params.get('trans_w', 0.42))),
+                'l_T_b': float(params.get('trans_l_b', params.get('trans_l', 18.88))),
+            }
         }
 
     # Parametry vnějšího 100 Ohm mikropáskového vedení

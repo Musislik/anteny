@@ -12,7 +12,7 @@ The workflow automates parametric OpenCASCADE geometry construction, conformal G
 | :--- | :--- | :--- |
 | **Frequency Band** | `2.320 – 2.345 GHz` | SDARS band (`B = 25 MHz`), center frequency `f_c = 2.3325 GHz` |
 | **Polarization** | LHCP | Left-Hand Circular Polarization (`E_LHCP` via quadrature feed) |
-| **Reflection Coefficient (`S11`)** | `< -10 dB` across band | Stretch target `< -15 dB` (`50 Ω` for Model 1; `100 Ω` per port for Models 2 & 3) |
+| **Reflection Coefficient (`S11`)** | `< -10 dB` across band | Stretch target `< -15 dB` (`50 Ω` for Models 1 & 4; `100 Ω` per port for Models 2 & 3) |
 | **Antenna Gain (`G_LHCP`)** | `>= 5.5 dBi` (+Z boresight) | Stretch target `> 6.0 dBi` |
 | **Axial Ratio (`AR`)** | `< 3.0 dB` across band | Stretch target `< 1.5 dB` at `f_c` |
 | **Substrate (FR-4)** | `h = 1.52 mm`, `ε_r = 4.3`, `tan δ = 0.02` | `36 μm` copper modeled as zero-thickness PEC boundary surfaces |
@@ -28,7 +28,7 @@ The workflow automates parametric OpenCASCADE geometry construction, conformal G
 
 ## Antenna Architectures
 
-Three progressively refined antenna topologies are implemented and selectable via `ANTENNA_MODEL` in `.env` or `--model` on the CLI:
+Four antenna topologies are implemented and selectable via `ANTENNA_MODEL` in `.env` or `--model` on the CLI:
 
 ### 1. Model 1 (obsolete) — 50 Ω T-Junction Power Divider ([`src/geometry_v1.py`](src/geometry_v1.py))
 - **Topology:** Single `50 Ω` input feed (`w1 ≈ 2.98 mm`) connected to a symmetric T-junction power divider splitting into two orthogonal `100 Ω` branches (`w2 ≈ 0.69 mm`, natural match `Z_in,T = 100 Ω || 100 Ω = 50 Ω`).
@@ -45,6 +45,11 @@ Three progressively refined antenna topologies are implemented and selectable vi
 - **Physical Advantage:**
   - The shallow notch reduces patch edge resistance (`R_edge ≈ 180–220 Ω`) to `~140 Ω` without distorting the orthogonal `TM_10` / `TM_01` modal currents, yielding a manufacturable transformer width (`w_T ≈ 0.42 mm` nominal for `Z_T ≈ 118.7 Ω`, tunable down to `0.30 mm`).
   - Matching occurs *before* the outer `100 Ω` feed line, so the `λ_g / 4` phase-delay section on Port 1 operates in a matched `100 Ω` environment without acting as an impedance inverter, restoring symmetry between Port 1 and Port 2.
+
+### 4. Model 4 (Final) — Single-Port Rotated Left-Edge 50 Ω T-Junction with Smooth Curved Bends ([`src/geometry_v4.py`](src/geometry_v4.py))
+- **Topology:** Completes Model 3 by combining both `100 Ω` branches (`E_y` and `E_x`) through a rotated `100 Ω || 100 Ω = 50 Ω` T-junction fed horizontally from the **left substrate edge** (`w_50 ≈ 2.98 mm`, default `FEED_50_LEN = 9.0 mm`).
+- **Meanderless Smooth Arcs & Phase Balance:** Eliminates the `180°` meander completely—only three `90°` circular arcs (`FEED_BEND_RADIUS`, default `3.0 mm`) are used in total (`1` bend upward on `E_x`, `2` bends downward and right on `E_y`), plus small inner corner fillets at the T-junction (`FEED_T_FILLET_R`, default `0.8 mm`). The T-junction vertical position `y_T` is solved analytically so `E_y` exceeds `E_x` by exact `FEED_DELTA_L` (`≈ λ_g / 4 ≈ 18.66 mm`) while respecting RF clearance rules (`FEED_END_STRAIGHT = 4.6 mm >= 3h`).
+- **Inherited Defaults & `.env` Parameterization:** Inherits Model 3 defaults (`PATCH_L`/`PATCH_W`, `FEED_INSET_B/L = 2.5 mm`, `FEED_INSET_GAP_B/L = 0.5 mm`, `TRANS_W = 0.42 mm`, auto `TRANS_L`, auto `FEED_DELTA_L`) while defaulting `PORT_IMPEDANCE` to `50.0 Ω` and exposing `FEED_BEND_RADIUS`, `FEED_T_FILLET_R`, `FEED_50_LEN`, `FEED_END_STRAIGHT`, `FEED_ARM_OFFSET`, `SUB_MARGIN`, and `DESIGN_FREQ_GHZ` in `.env`.
 
 ---
 
@@ -102,7 +107,7 @@ docker compose run --rm pipeline python src/main.py
 python src/main.py
 ```
 
-Common CLI overrides are available on [`src/main.py`](src/main.py) (e.g., `--model 3`, `--patch-l 29.95`, `--trans-w 0.30`, `--inset-b 2.5 --inset-l 2.5`, `--driven-port all`, `--port-impedance 100.0`, `--freq-min 2.320 --freq-max 2.345 --freq-step 0.001`, `--amr-its 2`, `--clean`). By default, port impedance automatically selects `50.0 Ω` for Model 1 and `100.0 Ω` for Models 2 & 3 unless overridden via `PORT_IMPEDANCE` in `.env` or `--port-impedance`.
+Common CLI overrides are available on [`src/main.py`](src/main.py) (e.g., `--model 4`, `--patch-l 29.81`, `--trans-w 0.42`, `--inset-b 2.5 --inset-l 2.5`, `--bend-radius 3.0`, `--feed-50-len 9.0`, `--freq-min 2.320 --freq-max 2.345 --freq-step 0.001`, `--amr-its 2`, `--clean`). By default, port impedance automatically selects `50.0 Ω` for Models 1 & 4 and `100.0 Ω` for Models 2 & 3 unless overridden via `PORT_IMPEDANCE` in `.env` or `--port-impedance`.
 
 To generate the CAD `.step` geometry, conformal `.msh` mesh, `config.json`, and layout previews **locally without invoking the Palace Docker solver**:
 
@@ -117,7 +122,7 @@ Execute a parametric sweep via the unified dispatcher [`src/sweep.py`](src/sweep
 docker compose run --rm pipeline python src/sweep.py
 ```
 
-The dispatcher routes to the active model (`ANTENNA_MODEL` or `--model {1,2,3}`) and supports `.env` profiles (`SWEEP_PROFILE=precise` with AMR enabled or `SWEEP_PROFILE=fast` for rapid exploration), sweep targets (`--sweep-target` supporting `patch_l`, `trans_w`, `trans_l`, `delta_l`, `inset`, `feed_lens` for Models 2 & 3; `--param {inset,patch_l}` for Model 1), explicit value overrides (such as `--patch-lengths` across Models 1–3), sweep modes (`--mode {symmetric,single_fixed,grid,manual}`), and local dry-runs (`--skip-simulation`).
+The dispatcher routes to the active model (`ANTENNA_MODEL` or `--model {1,2,3,4}`) and supports `.env` profiles (`SWEEP_PROFILE=precise` with AMR enabled or `SWEEP_PROFILE=fast` for rapid exploration), sweep targets (`--sweep-target` supporting `patch_l`, `trans_w`, `trans_l`, `delta_l`, `inset`, plus `bend_radius` and `feed_50_len` for Model 4 and `feed_lens` for Model 2; `--param {inset,patch_l}` for Model 1), explicit value overrides (such as `--patch-lengths` across Models 1–4), sweep modes (`--mode {symmetric,single_fixed,grid,manual}`), and local dry-runs (`--skip-simulation`).
 
 ### 5. Run Tests
 Install local development dependencies from [`requirements-dev.txt`](requirements-dev.txt) and verify analytical RF calculations, de-embedding math, CAD/mesh generation, Palace config generation, plotting rules, and code linting:
@@ -137,6 +142,7 @@ Each simulation and sweep step automatically extracts RF metrics in [`src/tracke
 - **Model 1:** (obsolete) `export/sweep_results.csv` and `export/sweep_results.md`
 - **Model 2:** (obsolete) `export/sweep_results_model2.csv` and `export/sweep_results_model2.md`
 - **Model 3:** `export/sweep_results_model3.csv` and `export/sweep_results_model3.md`
+- **Model 4:** `export/sweep_results_model4.csv` and `export/sweep_results_model4.md`
 
 Tracked metrics include resonant frequencies (`f0`, `f0_b`, `f0_l`), reflection minima (`S11_min`, `S22_min`), `-10 dB` impedance bandwidth, port input impedance (`Zin`), LHCP/RHCP gain (`Gain_LHCP`, `Gain_max_LHCP` and `fGainMaxLhcp`), Axial Ratio (`AR`), and polarization sense. When `SWEEP_EXPORT_EACH=true`, each step can also archive plots, CAD geometry, and solver configs into a self-contained ZIP package.
 
@@ -224,10 +230,11 @@ When `SAVE_STEP=1` is enabled, Palace writes `.pvd` / `.pvtu` surface and volume
 │   ├── plot_radiation_pattern.py    # 2D/3D LHCP/RHCP & Axial Ratio plotter
 │   └── plot_s_parameters.py    # S-parameters, isolation & Zin plotter
 ├── src/
-│   ├── geometry.py             # Antenna model router (Models 1, 2, 3)
+│   ├── geometry.py             # Antenna model router (Models 1, 2, 3, 4)
 │   ├── geometry_v1.py          # Model 1: 50 Ω T-junction divider patch
 │   ├── geometry_v2.py          # Model 2: Dual-port 100 Ω direct inset patch
 │   ├── geometry_v3.py          # Model 3: Hybrid shallow notch + λg/4 transformer
+│   ├── geometry_v4.py          # Model 4: Final 50 Ω curved T-junction completion of Model 3
 │   ├── main.py                 # Single-run pipeline CLI & orchestration
 │   ├── mesh.py                 # Gmsh physical groups & adaptive mesh sizing
 │   ├── palace_builder.py       # AWS Palace config.json generator
@@ -238,12 +245,14 @@ When `SAVE_STEP=1` is enabled, Palace writes `.pvd` / `.pvtu` surface and volume
 │   ├── sweep_model1.py         # Parametric sweep logic for Model 1
 │   ├── sweep_model2.py         # Parametric sweep logic for Model 2
 │   ├── sweep_model3.py         # Parametric sweep logic for Model 3
+│   ├── sweep_model4.py         # Parametric sweep logic for Model 4
 │   ├── tracker.py              # RF metric extraction & CSV/Markdown logging
 │   └── visualization.py        # 2D geometry & transformer detail rendering
 ├── tests/
 │   ├── test_deembedding.py     # Propagation, de-embedding & plotting tests
 │   ├── test_model2.py          # Model 2 RF, CAD, tracker & sweep tests
-│   └── test_model3.py          # Model 3 RF, CAD, mesh, Palace & sweep tests
+│   ├── test_model3.py          # Model 3 RF, CAD, mesh, Palace & sweep tests
+│   └── test_model4.py          # Model 4 RF, curved CAD, mesh, sweep & pipeline tests
 ├── .env.example                # Documented template configuration
 ├── .gitignore
 ├── docker-compose.yml          # Docker services (pipeline & palace worker)

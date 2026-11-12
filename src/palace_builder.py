@@ -3,8 +3,8 @@ import json
 
 # Fyzikalni a konfiguracni konstanty
 SCALE_MM_TO_M = 1e-3
-DEFAULT_PORT_IMPEDANCE_V1 = 50.0
-DEFAULT_PORT_IMPEDANCE_V2 = 100.0
+DEFAULT_PORT_IMPEDANCE_V1 = 50.0   # Model 1 a Model 4 (jediný 50 Ohm port)
+DEFAULT_PORT_IMPEDANCE_V2 = 100.0  # Model 2 a Model 3 (dva 100 Ohm porty)
 
 def build_palace_config(params, data_dir=None):
     model_version = int(params.get('antenna_model', 1))
@@ -49,11 +49,12 @@ def build_palace_config(params, data_dir=None):
             }
         ]
     else:
+        # Jednoportový model (Model 1 nebo finální Model 4 s 50 Ohm T-článkem)
         port_r = float(params.get('port_impedance', DEFAULT_PORT_IMPEDANCE_V1))
         lumped_ports = [
             {
                 "Index": 1,
-                "Attributes": [4],  # 4: Port (Model 1)
+                "Attributes": [4],  # 4: Výstupní/vstupní 50 Ohm port
                 "Direction": "+Z",  # Vektor excitace od z=0 do z=h
                 "R": port_r,
                 "Excitation": True

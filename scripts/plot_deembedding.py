@@ -311,7 +311,9 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
     c_limit = 'red'
 
     m_info = f"Model {model}"
-    if model == 3:
+    if model == 4:
+        m_info += f" (Finální $50\\ \\Omega$ T-článek + oblouky: $L_{{50}}={p_used.get('feed_50_len', 9.0):.1f}\\ \\mathrm{{mm}}$, $w_T={p_used.get('w_T_b', 0.42):.2f}\\ \\mathrm{{mm}}$)"
+    elif model == 3:
         m_info += f" (Hybridní dvoustupňové přizpůsobení: $w_T={p_used.get('w_T_b', 0.42):.2f}\\ \\mathrm{{mm}}$, $l_T={p_used.get('l_T_b', 18.9):.2f}\\ \\mathrm{{mm}}$)"
     elif model == 2:
         m_info += " (Dvouportový $100\\ \\Omega$ bez transformátoru)"
@@ -321,7 +323,10 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
     # =========================================================================
     if driven_mode in ("1", "2"):
         active_p = int(driven_mode)
-        p_name = r"Port 1 ($E_y$, spodní)" if active_p == 1 else r"Port 2 ($E_x$, levý)"
+        if model == 4:
+            p_name = r"Port ($50\ \Omega$ T-článek)"
+        else:
+            p_name = r"Port 1 ($E_y$, spodní)" if active_p == 1 else r"Port 2 ($E_x$, levý)"
         s_lbl = r"S_{11}" if active_p == 1 else r"S_{22}"
         iso_lbl = r"S_{21}" if active_p == 1 else r"S_{12}"
         c_re = c_p1_re if active_p == 1 else c_p2_re
@@ -375,7 +380,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
         ax2_imp.plot(freqs, z_rp2.imag, label=rf"$\mathrm{{Im}}\{{Z_{{RP2}}\}}$", color=c_im, lw=1.8, linestyle='--')
         ax2_imp.axhline(z0_ref_rp2, color='gray', linestyle='--', alpha=0.7, label=rf"Reference ${z0_ref_rp2:.0f}\ \Omega$")
         ax2_imp.axhline(0.0, color='black', linestyle='-', alpha=0.4, label=r"$\mathrm{Im}\{Z\} = 0\ \Omega$")
-        ax2_imp.set_title(rf"3. RP2 (Svorka transformátoru): Impedance $Z_{{RP2}}$", fontsize=11, fontweight='bold')
+        ax2_imp.set_title(rf"3. {rp2['name']}: Impedance $Z_{{RP2}}$", fontsize=11, fontweight='bold')
         ax2_imp.set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
         ax2_imp.grid(True, linestyle=':', alpha=0.6)
         ax2_imp.legend(loc='best', fontsize=8, ncol=2)
@@ -387,23 +392,25 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
         ax2_gam.plot(freqs[min_g2_idx], gamma_rp2_db[min_g2_idx], 'o', color=c_re,
                      label=rf"Min $|\Gamma_{{RP2}}|: {gamma_rp2_db[min_g2_idx]:.2f}$ dB @ {freqs[min_g2_idx]:.3f} GHz")
         ax2_gam.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
-        ax2_gam.set_title(rf"4. RP2 (Svorka): Lokální činitel odrazu $|\Gamma_{{RP2}}| ({z0_ref_rp2:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
+        ax2_gam.set_title(rf"4. {rp2['name']}: Lokální činitel odrazu $|\Gamma_{{RP2}}| ({z0_ref_rp2:.0f}\ \Omega)$", fontsize=11, fontweight='bold')
         ax2_gam.set_ylabel(r"Magnituda [dB]", fontsize=10)
         ax2_gam.grid(True, linestyle=':', alpha=0.6)
         ax2_gam.legend(loc='best', fontsize=8)
 
         # ---------------------------------------------------------------------
-        # ŘÁDEK 3: RP3 (Vstup do flíčku)
+        # ŘÁDEK 3: RP3 (Vstup do flíčku / větev T-uzlu)
         # ---------------------------------------------------------------------
-        # Graf Z_patch (Re a Im s referencí 140 Ω a nulou pro rezonanci f0)
+        # Graf Z_patch (Re a Im s referencí a nulou pro rezonanci f0)
         ax3_imp = axes[2, 0]
-        ax3_imp.plot(freqs, z_rp3.real, label=rf"$\mathrm{{Re}}\{{Z_{{patch}}\}}$", color=c_re, lw=2.2)
-        ax3_imp.plot(freqs, z_rp3.imag, label=rf"$\mathrm{{Im}}\{{Z_{{patch}}\}}$", color=c_im, lw=1.8, linestyle='--')
+        rp3_z_sym = r"Z_{branch}" if model == 4 else r"Z_{patch}"
+        rp3_gam_sym = r"\Gamma_{branch}" if model == 4 else r"\Gamma_{patch}"
+        ax3_imp.plot(freqs, z_rp3.real, label=rf"$\mathrm{{Re}}\{{{rp3_z_sym}\}}$", color=c_re, lw=2.2)
+        ax3_imp.plot(freqs, z_rp3.imag, label=rf"$\mathrm{{Im}}\{{{rp3_z_sym}\}}$", color=c_im, lw=1.8, linestyle='--')
         ax3_imp.axhline(z0_ref_rp3, color='mediumvioletred', linestyle='--', alpha=0.8,
-                        label=rf"Cíl $R_{{patch}} \approx {z0_ref_rp3:.1f}\ \Omega$")
+                        label=rf"Cíl $R \approx {z0_ref_rp3:.1f}\ \Omega$")
         ax3_imp.axhline(0.0, color='black', linestyle='-', alpha=0.5, label=r"Rezonance $\mathrm{Im}\{Z\}=0$")
 
-        # Detekce a označení vlastní rezonance flíčku f0
+        # Detekce a označení vlastní rezonance f0
         f0_patch = _detect_resonance(freqs, z_rp3.imag)
         if f0_patch is not None and (freqs[0] <= f0_patch <= freqs[-1]):
             r_at_f0 = float(np.interp(f0_patch, freqs, z_rp3.real))
@@ -414,7 +421,7 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
                              arrowprops=dict(arrowstyle="->", color='crimson', lw=1.5),
                              fontsize=9, fontweight='bold', color='crimson')
 
-        ax3_imp.set_title(rf"5. RP3 (Vstup do flíčku): Impedance flíčku $Z_{{patch}}$", fontsize=11, fontweight='bold')
+        ax3_imp.set_title(rf"5. {rp3['name']}: Impedance ${rp3_z_sym}$", fontsize=11, fontweight='bold')
         ax3_imp.set_xlabel("Frekvence [GHz]", fontsize=10)
         ax3_imp.set_ylabel(r"Impedance [$\Omega$]", fontsize=10)
         ax3_imp.grid(True, linestyle=':', alpha=0.6)
@@ -422,12 +429,12 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
 
         # Graf lokálního |Gamma_patch| v dB
         ax3_gam = axes[2, 1]
-        ax3_gam.plot(freqs, gamma_rp3_db, label=rf"Lokální $|\Gamma_{{patch}}|$ (ref {z0_ref_rp3:.0f} $\Omega$)", color=c_re, lw=2.2)
+        ax3_gam.plot(freqs, gamma_rp3_db, label=rf"Lokální $|{rp3_gam_sym}|$ (ref {z0_ref_rp3:.0f} $\Omega$)", color=c_re, lw=2.2)
         min_g3_idx = np.argmin(gamma_rp3_db)
         ax3_gam.plot(freqs[min_g3_idx], gamma_rp3_db[min_g3_idx], 'o', color=c_re,
-                     label=rf"Min $|\Gamma_{{patch}}|: {gamma_rp3_db[min_g3_idx]:.2f}$ dB @ {freqs[min_g3_idx]:.3f} GHz")
+                     label=rf"Min $|{rp3_gam_sym}|: {gamma_rp3_db[min_g3_idx]:.2f}$ dB @ {freqs[min_g3_idx]:.3f} GHz")
         ax3_gam.axhline(-10.0, color=c_limit, linestyle='--', lw=1.5, label='Kritérium -10 dB')
-        ax3_gam.set_title(rf"6. RP3 (Flíček): Lokální činitel odrazu $|\Gamma_{{patch}}| ({z0_ref_rp3:.0f}\ \Omega)$",
+        ax3_gam.set_title(rf"6. {rp3['name']}: Lokální činitel odrazu $|{rp3_gam_sym}| ({z0_ref_rp3:.0f}\ \Omega)$",
                           fontsize=11, fontweight='bold')
         ax3_gam.set_xlabel("Frekvence [GHz]", fontsize=10)
         ax3_gam.set_ylabel(r"Magnituda [dB]", fontsize=10)

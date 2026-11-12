@@ -4,6 +4,7 @@ Podle proměnné ANTENNA_MODEL v .env (nebo přepínače --model v CLI) automati
   - ANTENNA_MODEL=1 -> src/sweep_model1.py (Původní T-dělič, 1 port, 50 Ohm)
   - ANTENNA_MODEL=2 -> src/sweep_model2.py (Nový dvouportový model, 100 Ohm LHCP)
   - ANTENNA_MODEL=3 -> src/sweep_model3.py (Hybridní dvoustupňové přizpůsobení)
+  - ANTENNA_MODEL=4 -> src/sweep_model4.py (Finální model: 50 Ohm T-článek s oblouky)
 """
 
 import os
@@ -25,7 +26,10 @@ def run_sweep(**kwargs):
     """Univerzální rozhraní pro spuštění sweepu zvoleného modelu antény."""
     model_version = int(kwargs.get('antenna_model') or os.getenv("ANTENNA_MODEL", "1"))
     
-    if model_version == 3:
+    if model_version == 4:
+        from sweep_model4 import run_sweep_model4
+        return run_sweep_model4(**kwargs)
+    elif model_version == 3:
         from sweep_model3 import run_sweep_model3
         return run_sweep_model3(**kwargs)
     elif model_version == 2:
@@ -41,17 +45,95 @@ if __name__ == "__main__":
     env_model = int(os.getenv("ANTENNA_MODEL", "1"))
     
     parser = argparse.ArgumentParser(
-        description="Dispečer parametrického sweepu antény (Model 1: T-dělič / Model 2: 2-port LHCP / Model 3: Hybridní přizpůsobení)",
+        description="Dispečer parametrického sweepu antény (Model 1..4)",
         add_help=False,
         allow_abbrev=False
     )
-    parser.add_argument("--model", type=int, choices=[1, 2, 3], default=env_model, dest="antenna_model",
-                        help="Verze modelu antény (1: T-dělič, 2: dvouportový LHCP, 3: hybridní přizpůsobení). Výchozí z ANTENNA_MODEL.")
+    parser.add_argument("--model", type=int, choices=[1, 2, 3, 4], default=env_model, dest="antenna_model",
+                        help="Verze modelu antény (1: T-dělič, 2: dvouportový LHCP, 3: hybridní přizpůsobení, 4: finální 50 Ohm T-článek). Výchozí z ANTENNA_MODEL.")
     known_args, remaining_argv = parser.parse_known_args()
 
     selected_model = known_args.antenna_model
 
-    if selected_model == 3:
+    if selected_model == 4:
+        from sweep_model4 import run_sweep_model4
+        parser_m4 = argparse.ArgumentParser(description="Parametrický sweep Modelu 4 (Finální 50 Ohm T-článek s oblouky)")
+        parser_m4.add_argument("--sweep-target", choices=["patch_l", "delta_l", "trans_w", "w_t", "trans_l", "l_t", "inset", "y0", "bend_radius", "feed_50_len"], default=None)
+        parser_m4.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
+        parser_m4.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")
+        parser_m4.add_argument("--insets", type=float, nargs="+", default=None)
+        parser_m4.add_argument("--insets-b", type=float, nargs="+", default=None)
+        parser_m4.add_argument("--insets-l", type=float, nargs="+", default=None)
+        parser_m4.add_argument("--fixed-name", choices=["inset_b", "inset_l"], default=None)
+        parser_m4.add_argument("--fixed-val", type=float, default=None)
+        parser_m4.add_argument("--trans-w-list", "--w-t-list", type=float, nargs="+", default=None, dest="trans_w_list")
+        parser_m4.add_argument("--trans-l-list", "--l-t-list", type=float, nargs="+", default=None, dest="trans_l_list")
+        parser_m4.add_argument("--delta-l", "--sweep-delta-l", type=float, nargs="+", default=None, dest="delta_l")
+        parser_m4.add_argument("--patch-lengths", type=float, nargs="+", default=None, dest="patch_lengths")
+        parser_m4.add_argument("--bend-radii", type=float, nargs="+", default=None, dest="bend_radii")
+        parser_m4.add_argument("--feed-50-lens", type=float, nargs="+", default=None, dest="feed_50_lens")
+        parser_m4.add_argument("--trans-w", "--w-t", type=float, default=None, dest="trans_w")
+        parser_m4.add_argument("--trans-l", "--l-t", type=float, default=None, dest="trans_l")
+        parser_m4.add_argument("--inset-b", type=float, default=None, dest="inset_b")
+        parser_m4.add_argument("--inset-l", type=float, default=None, dest="inset_l")
+        parser_m4.add_argument("--feed-delta-l", type=float, default=None, dest="feed_delta_l")
+        parser_m4.add_argument("--patch-l", type=float, default=None, dest="patch_l")
+        parser_m4.add_argument("--patch-w", type=float, default=None, dest="patch_w")
+        parser_m4.add_argument("--bend-radius", type=float, default=None, dest="bend_radius")
+        parser_m4.add_argument("--t-fillet", type=float, default=None, dest="t_fillet_r")
+        parser_m4.add_argument("--feed-50-len", type=float, default=None, dest="feed_50_len")
+        parser_m4.add_argument("--arm-offset", type=float, default=None, dest="arm_offset")
+        parser_m4.add_argument("--end-straight", "--feed-end-straight", type=float, default=None, dest="end_straight")
+        parser_m4.add_argument("--freq-min", type=float, default=None, dest="freq_min")
+        parser_m4.add_argument("--freq-max", type=float, default=None, dest="freq_max")
+        parser_m4.add_argument("--freq-step", type=float, default=None, dest="freq_step")
+        parser_m4.add_argument("--amr-its", type=int, default=None, dest="amr_max_its")
+        parser_m4.add_argument("--linear-tol", type=float, default=None, dest="linear_tol")
+        parser_m4.add_argument("--linear-its", type=int, default=None, dest="linear_max_its")
+        parser_m4.add_argument("--farfield-nsample", type=int, default=None, dest="farfield_nsample")
+        parser_m4.add_argument("--no-export", dest="export_each", action="store_false", default=None)
+        parser_m4.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true", default=False)
+        m4_args = parser_m4.parse_args(remaining_argv)
+
+        run_sweep_model4(
+            mode=m4_args.mode,
+            sweep_target=m4_args.sweep_target,
+            insets=m4_args.insets,
+            insets_b=m4_args.insets_b,
+            insets_l=m4_args.insets_l,
+            fixed_name=m4_args.fixed_name,
+            fixed_val=m4_args.fixed_val,
+            manual_pairs=m4_args.manual_pairs,
+            trans_w_list=m4_args.trans_w_list,
+            trans_l_list=m4_args.trans_l_list,
+            delta_l=m4_args.delta_l,
+            patch_lengths=m4_args.patch_lengths,
+            bend_radii=m4_args.bend_radii,
+            feed_50_lens=m4_args.feed_50_lens,
+            trans_w=m4_args.trans_w,
+            trans_l=m4_args.trans_l,
+            inset_b=m4_args.inset_b,
+            inset_l=m4_args.inset_l,
+            feed_delta_l=m4_args.feed_delta_l,
+            patch_l=m4_args.patch_l,
+            patch_w=m4_args.patch_w,
+            bend_radius=m4_args.bend_radius,
+            t_fillet_r=m4_args.t_fillet_r,
+            feed_50_len=m4_args.feed_50_len,
+            arm_offset=m4_args.arm_offset,
+            end_straight=m4_args.end_straight,
+            freq_min=m4_args.freq_min,
+            freq_max=m4_args.freq_max,
+            freq_step=m4_args.freq_step,
+            amr_max_its=m4_args.amr_max_its,
+            farfield_nsample=m4_args.farfield_nsample,
+            linear_tol=m4_args.linear_tol,
+            linear_max_its=m4_args.linear_max_its,
+            export_each=m4_args.export_each,
+            skip_simulation=m4_args.skip_simulation,
+        )
+
+    elif selected_model == 3:
         from sweep_model3 import run_sweep_model3
         parser_m3 = argparse.ArgumentParser(description="Parametrický sweep Modelu 3 (Hybridní dvoustupňové přizpůsobení)")
         parser_m3.add_argument("--sweep-target", choices=["inset", "y0", "trans_w", "w_t", "trans_l", "l_t", "delta_l", "patch_l"], default=None,

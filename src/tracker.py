@@ -4,6 +4,7 @@ Podporuje:
   - Model 1 (1 port, T-dělič): zapisuje do export/sweep_results.csv a .md
   - Model 2 (2 porty, 100 Ohm LHCP): zapisuje do export/sweep_results_model2.csv a .md
   - Model 3 (2 porty, 100 Ohm + lambda_g/4 transformátor): zapisuje do export/sweep_results_model3.csv a .md
+  - Model 4 (Finální model, 50 Ohm T-článek + oblouky): zapisuje do export/sweep_results_model4.csv a .md
 """
 
 import os
@@ -140,6 +141,38 @@ FIELDNAMES_V3 = [
     'export_zip',
 ]
 FIELDNAMES_MODEL3 = FIELDNAMES_V3
+
+# ==============================================================================
+# 4. KONFIGURACE PRO MODEL 4 (Finální model: 50 Ohm T-článek + oblouky)
+# ==============================================================================
+FIELDNAMES_V4 = [
+    'run_name',
+    'patch_L_mm',
+    'trans_w_mm',
+    'trans_l_mm',
+    'inset_b_mm',
+    'inset_l_mm',
+    'delta_l_mm',
+    'bend_radius_mm',
+    'feed_50_len_mm',
+    'L_100_b_mm',
+    'L_100_l_mm',
+    'f0_GHz',
+    'S11_min [dB]',
+    'BW_-10dB [MHz]',
+    'Zin_Re [Ohm]',
+    'Zin_Im [Ohm]',
+    'fGainMaxLhcp [GHz]',
+    'Gain_max_LHCP [dBi]',
+    'E_LHCP [V]',
+    'E_RHCP [V]',
+    'AR [dB]',
+    'Polarizace',
+    'Gain_LHCP [dBi]',
+    'Gain_RHCP [dBi]',
+    'export_zip',
+]
+FIELDNAMES_MODEL4 = FIELDNAMES_V4
 
 
 def extract_s11_metrics(s11_file, z0=50.0):
@@ -605,7 +638,9 @@ def record_run(params, output_dir="data/postpro", run_name=None, export_zip=None
 
     os.makedirs(results_dir, exist_ok=True)
 
-    if model_version == 3:
+    if model_version == 4:
+        return _record_run_model4(params, output_dir, run_name, export_zip, results_dir)
+    elif model_version == 3:
         return _record_run_model3(params, output_dir, run_name, export_zip, results_dir)
     elif model_version == 2:
         return _record_run_model2(params, output_dir, run_name, export_zip, results_dir)
@@ -887,6 +922,111 @@ def _record_run_model3(params, output_dir, run_name, export_zip, results_dir):
 record_run_model3 = _record_run_model3
 
 
+def _append_csv_with_migration(csv_file, fieldnames, row):
+    """Zapíše řádek do CSV a při přidaných sloupcích bezpečně migruje hlavičku."""
+    file_exists = os.path.exists(csv_file) and os.path.getsize(csv_file) > 0
+    file_rewritten = False
+
+    if file_exists:
+        try:
+            with open(csv_file, mode='r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                existing_headers = reader.fieldnames or []
+                existing_rows = list(reader)
+
+            if any(col not in existing_headers for col in fieldnames):
+                with open(csv_file, mode='w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+                    writer.writeheader()
+                    for old_r in existing_rows:
+                        writer.writerow(old_r)
+                    writer.writerow(row)
+                file_rewritten = True
+        except Exception:
+            file_rewritten = False
+
+    if not file_rewritten:
+        with open(csv_file, mode='a', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow(row)
+
+
+def _record_run_model4(params, output_dir, run_name, export_zip, results_dir):
+    csv_file = os.path.join(results_dir, "sweep_results_model4.csv")
+    md_file = os.path.join(results_dir, "sweep_results_model4.md")
+
+    s11_path = os.path.join(output_dir, "port-S.csv")
+    farfield_path = os.path.join(output_dir, "farfield-rE.csv")
+
+    port_z0 = float(params.get('port_impedance', 50.0))
+    s11_metrics = extract_s11_metrics(s11_path, z0=port_z0)
+    f0 = s11_metrics.get('f0_GHz')
+    s11_min = s11_metrics.get('s11_min_dB')
+    farfield_metrics = extract_farfield_metrics(farfield_path, target_freq=f0 or DESIGN_FREQ_GHZ, s11_min_db=s11_min)
+
+    trans_w_val = params.get('trans_w', params.get('w_T', params.get('w_trans', 0.42)))
+    trans_l_val = params.get('trans_l', params.get('l_T', params.get('l_trans', 18.88)))
+    delta_l_val = params.get('feed_delta_l', params.get('delta_l', params.get('phase_delay_mm')))
+
+    row = {
+        'run_name': run_name or params.get('run_name', 'run_m4'),
+        'patch_L_mm': format_value(params.get('patch_L', 28.8), '{:.2f}'),
+        'trans_w_mm': format_value(trans_w_val, '{:.2f}'),
+        'trans_l_mm': format_value(trans_l_val, '{:.2f}'),
+        'inset_b_mm': format_value(params.get('feed_inset_b', params.get('inset_b', 2.5)), '{:.2f}'),
+        'inset_l_mm': format_value(params.get('feed_inset_l', params.get('inset_l', 2.5)), '{:.2f}'),
+        'delta_l_mm': format_value(delta_l_val, '{:.2f}'),
+        'bend_radius_mm': format_value(params.get('feed_bend_radius', params.get('bend_radius', 3.0)), '{:.2f}'),
+        'feed_50_len_mm': format_value(params.get('feed_50_len', 9.0), '{:.2f}'),
+        'L_100_b_mm': format_value(params.get('L_100_b'), '{:.2f}'),
+        'L_100_l_mm': format_value(params.get('L_100_l'), '{:.2f}'),
+        'f0_GHz': format_value(s11_metrics.get('f0_GHz'), '{:.3f}'),
+        'S11_min [dB]': format_value(s11_metrics.get('s11_min_dB'), '{:.2f}'),
+        'BW_-10dB [MHz]': format_value(s11_metrics.get('bw_mhz'), '{:.1f}'),
+        'Zin_Re [Ohm]': format_value(s11_metrics.get('zin_re_ohm'), '{:.1f}'),
+        'Zin_Im [Ohm]': format_value(s11_metrics.get('zin_im_ohm'), '{:.1f}'),
+        'fGainMaxLhcp [GHz]': format_value(farfield_metrics.get('f_gain_max_lhcp_ghz'), '{:.3f}'),
+        'Gain_max_LHCP [dBi]': format_value(farfield_metrics.get('gain_max_lhcp_dbi'), '{:.2f}'),
+        'E_LHCP [V]': format_value(farfield_metrics.get('e_lhcp'), '{:.2f}'),
+        'E_RHCP [V]': format_value(farfield_metrics.get('e_rhcp'), '{:.2f}'),
+        'AR [dB]': format_value(farfield_metrics.get('axial_ratio_db'), '{:.2f}'),
+        'Polarizace': format_value(farfield_metrics.get('polarization'), '{}'),
+        'Gain_LHCP [dBi]': format_value(farfield_metrics.get('gain_lhcp_dbi'), '{:.2f}'),
+        'Gain_RHCP [dBi]': format_value(farfield_metrics.get('gain_rhcp_dbi'), '{:.2f}'),
+        'export_zip': export_zip or (f"{run_name}.zip" if run_name else "-"),
+    }
+
+    _append_csv_with_migration(csv_file, FIELDNAMES_V4, row)
+    update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků Modelu 4 (Finální model 50 Ohm T-článek)")
+
+    print("\n" + "=" * 125)
+    print("VÝSLEDKY SIMULAČNÍHO KROKU MODELU 4 (Zaznamenáno do export/sweep_results_model4.csv):")
+    print("-" * 125)
+    info_parts = [
+        f"Krok: {row['run_name']}",
+        f"L={row['patch_L_mm']} mm",
+        f"w_T={row['trans_w_mm']} mm",
+        f"dL={row['delta_l_mm']} mm",
+        f"R={row['bend_radius_mm']} mm",
+        f"f0={row['f0_GHz']} GHz",
+        f"S11={row['S11_min [dB]']} dB",
+        f"BW={row['BW_-10dB [MHz]']} MHz",
+        f"Zin={row['Zin_Re [Ohm]']}+j{row['Zin_Im [Ohm]']} Ohm",
+        f"Pol={row['Polarizace']}",
+        f"AR={row['AR [dB]']} dB",
+        f"G_LHCP={row['Gain_LHCP [dBi]']} dBi",
+    ]
+    print(" | ".join([p for p in info_parts if p]))
+    print("=" * 125)
+
+    return row
+
+
+record_run_model4 = _record_run_model4
+
+
 def update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků simulací"):
     """Převede CSV soubor na přehlednou Markdown tabulku."""
     if not os.path.exists(csv_file):
@@ -1036,12 +1176,80 @@ def print_summary_table_model3(csv_file=None):
     print("=" * 175)
 
 
+def _print_csv_table(csv_file, title, disp_cols, empty_msg, sep_width=165):
+    if not os.path.exists(csv_file):
+        print(f"Tabulka {csv_file} zatím neexistuje.")
+        return
+
+    with open(csv_file, mode='r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    if not rows:
+        print(empty_msg)
+        return
+
+    print("\n" + "=" * sep_width)
+    print(title)
+    print("=" * sep_width)
+    header_str = " | ".join([f"{title:^{width}}" for _, title, width in disp_cols])
+    sep_str = "-+-".join(["-" * width for _, _, width in disp_cols])
+    print(header_str)
+    print(sep_str)
+
+    for r in rows:
+        row_str = " | ".join([f"{str(r.get(key) if r.get(key) not in (None, '') else '-'):^{width}}" for key, _, width in disp_cols])
+        print(row_str)
+
+    print("=" * sep_width)
+    print(f"Kompletní data uložena v: {csv_file}")
+    print(f"Markdown přehled uložen v: {os.path.splitext(csv_file)[0] + '.md'}")
+    print("=" * sep_width)
+
+
+def print_summary_table_model4(csv_file=None):
+    """Vytiskne celou souhrnnou tabulku Modelu 4 (Finální model 50 Ohm T-článek) do konzole."""
+    if csv_file is None:
+        try:
+            from postpro_utils import get_export_dir
+            exp_dir = get_export_dir()
+        except ImportError:
+            exp_dir = "export"
+        csv_file = os.path.join(exp_dir, "sweep_results_model4.csv")
+
+    disp_cols = [
+        ('run_name', 'Krok', 22),
+        ('patch_L_mm', 'L [mm]', 8),
+        ('trans_w_mm', 'w_T [mm]', 9),
+        ('delta_l_mm', 'dL [mm]', 8),
+        ('bend_radius_mm', 'R [mm]', 7),
+        ('feed_50_len_mm', 'L50 [mm]', 8),
+        ('f0_GHz', 'f0 [GHz]', 9),
+        ('S11_min [dB]', 'S11 [dB]', 9),
+        ('BW_-10dB [MHz]', 'BW [MHz]', 9),
+        ('Zin_Re [Ohm]', 'Zin_Re', 8),
+        ('Zin_Im [Ohm]', 'Zin_Im', 8),
+        ('AR [dB]', 'AR [dB]', 8),
+        ('Polarizace', 'Pol', 6),
+        ('Gain_LHCP [dBi]', 'G_LHCP', 8),
+    ]
+    _print_csv_table(
+        csv_file=csv_file,
+        title="KOMPLETNÍ SOUHRNNÁ TABULKA MODELU 4 (FINÁLNÍ MODEL 50 OHM T-ČLÁNEK):",
+        disp_cols=disp_cols,
+        empty_msg="Tabulka výsledků Modelu 4 je prázdná.",
+        sep_width=165,
+    )
+
+
 def print_summary_table(csv_file=None, model_version=None):
     """Vytiskne celou souhrnnou tabulku přehledně do konzole."""
     if model_version is None:
         model_version = int(os.getenv("ANTENNA_MODEL", "1"))
 
-    if model_version == 3:
+    if model_version == 4:
+        return print_summary_table_model4(csv_file=csv_file)
+    elif model_version == 3:
         return print_summary_table_model3(csv_file=csv_file)
     elif model_version == 2:
         return print_summary_table_model2(csv_file=csv_file)
