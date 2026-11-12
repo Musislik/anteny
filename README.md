@@ -51,6 +51,10 @@ Four antenna topologies are implemented and selectable via `ANTENNA_MODEL` in `.
 - **Meanderless Smooth Arcs & Phase Balance:** Eliminates the `180°` meander completely—only three `90°` circular arcs (`FEED_BEND_RADIUS`, default `3.0 mm`) are used in total (`1` bend upward on `E_x`, `2` bends downward and right on `E_y`), plus small inner corner fillets at the T-junction (`FEED_T_FILLET_R`, default `0.8 mm`). The T-junction vertical position `y_T` is solved analytically so `E_y` exceeds `E_x` by exact `FEED_DELTA_L` (`≈ λ_g / 4 ≈ 18.66 mm`) while respecting RF clearance rules (`FEED_END_STRAIGHT = 4.6 mm >= 3h`).
 - **Inherited Defaults & `.env` Parameterization:** Inherits Model 3 defaults (`PATCH_L`/`PATCH_W`, `FEED_INSET_B/L = 2.5 mm`, `FEED_INSET_GAP_B/L = 0.5 mm`, `TRANS_W = 0.42 mm`, auto `TRANS_L`, auto `FEED_DELTA_L`) while defaulting `PORT_IMPEDANCE` to `50.0 Ω` and exposing `FEED_BEND_RADIUS`, `FEED_T_FILLET_R`, `FEED_50_LEN`, `FEED_END_STRAIGHT`, `FEED_ARM_OFFSET`, `SUB_MARGIN`, and `DESIGN_FREQ_GHZ` in `.env`.
 
+| Current Model 4 Top-Down Layout (`L = W = 29.81 mm`, `L_50 = 9.0 mm`) | Transformer, Notch & Rotated Left-Edge `50 Ω` T-Junction Detail |
+| :---: | :---: |
+| ![Model 4 Top View](assets/model4_geometry_top_view.png) | ![Model 4 Detail](assets/model4_detail.png) |
+
 ---
 
 ## Sample Simulation Results
@@ -211,6 +215,8 @@ When `SAVE_STEP=1` is enabled, Palace writes `.pvd` / `.pvtu` surface and volume
 ├── assets/                     # Representative figures for documentation
 │   ├── deembedding_sample.png
 │   ├── geometry_top_view.png
+│   ├── model4_detail.png
+│   ├── model4_geometry_top_view.png
 │   ├── radiation_pattern_2d.png
 │   ├── radiation_pattern_3d.png
 │   ├── s_parameters_sample.png
