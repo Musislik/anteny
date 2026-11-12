@@ -16,6 +16,10 @@ from matplotlib.patches import Polygon
 import numpy as np
 
 from geometry_v4 import compute_model4_routing, compute_curved_ribbon_outline
+try:
+    from geometry_v5 import compute_model5_routing
+except ImportError:
+    compute_model5_routing = None
 
 
 def _t_junction_polygon_pts(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, arc_samples=18):
@@ -46,6 +50,105 @@ def _t_junction_polygon_pts(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, arc_samp
         pts.append((x_fs + r_f * np.cos(ang), (y_T + d_t) + r_f * np.sin(ang)))
     pts.append((x_port, y_T + hw_50))
     return pts
+
+
+def _draw_model5_top_view(ax, params, is_detail=False):
+    """Vykreslí geometrii dvouportového Modelu 5 (100 Ohm Port 1 a Port 2 bez T-článku) v rovině XY."""
+    info = compute_model5_routing(params)
+    L, W = info['L'], info['W']
+    W_sub, L_sub = info['W_sub'], info['L_sub']
+    w_feed = info['w_feed']
+    w_T_b, w_T_l = info['w_T_b'], info['w_T_l']
+    l_T_b, l_T_l = info['l_T_b'], info['l_T_l']
+    inset_b, inset_l = info['inset_b'], info['inset_l']
+    gap_b, gap_l = info['inset_gap_b'], info['inset_gap_l']
+    bend_r = info['bend_radius']
+    x_port = info['x_port']
+    y_port_1 = info['y_port_1']
+    y_port_2 = info['y_port_2']
+    y_junc_b, x_junc_l = info['y_junc_b'], info['x_junc_l']
+
+    # 1. Substrát
+    ax.add_patch(patches.Rectangle(
+        (-W_sub / 2.0, -L_sub / 2.0), W_sub, L_sub,
+        linewidth=1.2, edgecolor='#2E7D32', facecolor='#E8F5E9',
+        zorder=1, label=rf'Substrát ({W_sub:.1f} $\times$ {L_sub:.1f} mm)'
+    ))
+
+    # 2. Flíček se zářezy
+    notch_b_w = w_T_b + 2.0 * gap_b if inset_b > 0 else 0.0
+    notch_l_h = w_T_l + 2.0 * gap_l if inset_l > 0 else 0.0
+    x_l, x_r, y_b, y_t = -W / 2.0, W / 2.0, -L / 2.0, L / 2.0
+    verts_patch = [
+        (notch_b_w / 2.0, y_b), (x_r, y_b), (x_r, y_t), (x_l, y_t),
+        (x_l, notch_l_h / 2.0), (x_l + inset_l, notch_l_h / 2.0),
+        (x_l + inset_l, -notch_l_h / 2.0), (x_l, -notch_l_h / 2.0),
+        (x_l, y_b), (-notch_b_w / 2.0, y_b),
+        (-notch_b_w / 2.0, y_b + inset_b), (notch_b_w / 2.0, y_b + inset_b),
+    ]
+    ax.add_patch(Polygon(
+        verts_patch, closed=True,
+        facecolor='#E67E22', edgecolor='#935116',
+        linewidth=1.3, zorder=3, label=rf'Vyzařující flíček ({W:.1f} $\times$ {L:.1f} mm)'
+    ))
+
+    # 3. Transformátory u flíčku
+    ax.add_patch(patches.Rectangle(
+        (-w_T_b / 2.0, y_junc_b), w_T_b, l_T_b,
+        linewidth=0.8, edgecolor='#B7770D', facecolor='#F1C40F',
+        zorder=5, label=rf'Transformátor $w_T$ ({w_T_b:.2f} mm)'
+    ))
+    ax.add_patch(patches.Rectangle(
+        (x_junc_l, -w_T_l / 2.0), l_T_l, w_T_l,
+        linewidth=0.8, edgecolor='#B7770D', facecolor='#F1C40F',
+        zorder=5
+    ))
+
+    # 4. Zakřivené 100 Ohm větve
+    pts_l = info.get('arm_l_build_waypoints', info.get('arm_l_waypoints'))
+    pts_b = info.get('arm_b_build_waypoints', info.get('arm_b_waypoints'))
+    arm_l_poly = compute_curved_ribbon_outline(pts_l, w_feed, bend_r)
+    arm_b_poly = compute_curved_ribbon_outline(pts_b, w_feed, bend_r)
+    ax.add_patch(Polygon(
+        arm_l_poly, closed=True, facecolor='#D35400', edgecolor='#78281F',
+        linewidth=0.8, zorder=4, label=rf'Větve $100\ \Omega$ ($w={w_feed:.2f}$ mm, $R={bend_r:.1f}$ mm)'
+    ))
+    ax.add_patch(Polygon(
+        arm_b_poly, closed=True, facecolor='#D35400', edgecolor='#78281F',
+        linewidth=0.8, zorder=4
+    ))
+
+    # 5. Samostatné 100 Ohm porty na levé hraně substrátu
+    port_hw = max(w_feed * 0.75, 1.2)
+    # Port 1 (spodní větev, Ey, zpoždění Delta L)
+    ax.add_patch(patches.Rectangle(
+        (x_port - 0.8, y_port_1 - port_hw), 0.8, 2.0 * port_hw,
+        facecolor='blue', edgecolor='darkblue', lw=1.2, zorder=6, label=r'Port 1 ($100\ \Omega$, Spodní, $E_y$)'
+    ))
+    # Port 2 (levá větev, Ex, ref 0°)
+    ax.add_patch(patches.Rectangle(
+        (x_port - 0.8, y_port_2 - port_hw), 0.8, 2.0 * port_hw,
+        facecolor='crimson', edgecolor='darkred', lw=1.2, zorder=6, label=r'Port 2 ($100\ \Omega$, Levý, $E_x$)'
+    ))
+
+    if not is_detail:
+        ax.text(
+            0.0, 2.5,
+            "Vyzařující flíček\n" + rf"($W={W:.1f} \times L={L:.1f}\ \mathrm{{mm}}$)",
+            ha='center', va='center', fontsize=9.5, fontweight='bold', color='#5D2E08',
+            bbox=dict(boxstyle="round,pad=0.3", fc="#FFF8EB", ec="#E67E22", alpha=0.92),
+            zorder=7,
+        )
+        ax.text(
+            x_port - 1.5, y_port_1, "Port 1 (Ey, -90°)",
+            ha='right', va='center', fontsize=8.5, fontweight='bold', color='blue',
+            bbox=dict(boxstyle="round,pad=0.2", fc="#EBF5FB", ec="blue", alpha=0.9), zorder=7
+        )
+        ax.text(
+            x_port - 1.5, y_port_2, "Port 2 (Ex, ref 0°)",
+            ha='right', va='center', fontsize=8.5, fontweight='bold', color='crimson',
+            bbox=dict(boxstyle="round,pad=0.2", fc="#FDEDEC", ec="crimson", alpha=0.9), zorder=7
+        )
 
 
 def _draw_model4_top_view(ax, params, is_detail=False):
@@ -463,7 +566,18 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
     fig, ax = plt.subplots(figsize=(11, 10))
     ax.set_aspect('equal')
 
-    if model_version == 4:
+    if model_version == 5:
+        info_m5 = compute_model5_routing(params)
+        L_sub = info_m5['L_sub']
+        W_sub = info_m5['W_sub']
+        _draw_model5_top_view(ax, params, is_detail=False)
+        plot_title = (
+            f"Model 5: Dvouportový model ($100\\ \\Omega$ Port 1 a Port 2) — 2D pohled shora (rovina XY)\n"
+            f"Flíček $W={W:.1f}\\times L={L:.1f}\\ \\mathrm{{mm}}$, "
+            f"$w_T={info_m5['w_T_b']:.2f}\\ \\mathrm{{mm}}$, $y_0={info_m5['inset_b']:.2f}\\ \\mathrm{{mm}}$, "
+            f"$R_{{\\mathrm{{obl}}}}={info_m5['bend_radius']:.1f}\\ \\mathrm{{mm}}$, $\\Delta L={info_m5['feed_delta_l']:.2f}\\ \\mathrm{{mm}}$, $\\Delta_{{\\mathrm{{port}}}}={info_m5['port_offset']:.2f}\\ \\mathrm{{mm}}$"
+        )
+    elif model_version == 4:
         info_m4 = compute_model4_routing(params)
         L_sub = info_m4['L_sub']
         W_sub = info_m4['W_sub']
@@ -524,8 +638,14 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
         fig_det, ax_det = plt.subplots(figsize=(10, 8.5))
         ax_det.set_aspect('equal')
 
-    if model_version in (3, 4):
-        if model_version == 4:
+    if model_version in (3, 4, 5):
+        if model_version == 5:
+            w_feed = info_m5['w_feed']
+            w_T = info_m5['w_T_b']
+            l_T = info_m5['l_T_b']
+            inset_b = info_m5['inset_b']
+            gap_b = info_m5['inset_gap_b']
+        elif model_version == 4:
             w_feed = info_m4['w_feed']
             w_T = info_m4['w_T_b']
             l_T = info_m4['l_T_b']

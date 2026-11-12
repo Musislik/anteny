@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.palace
-    command: ["-np", "${PALACE_CORES:-5}", "/workspace/data/config.json"]
+    command: ["-np", "${PALACE_CORES:-4}", "/workspace/data/config.json"]
     volumes:
       # Při spuštění `palace` zevnitř `pipeline` kontejneru (Docker-out-of-Docker) musí `CONF_DIR` a `DATA_DIR`
       # odpovídat absolutní cestě na hostiteli (nebo lze spouštět `python src/main.py` lokálně a pouze `palace` v Dockeru).

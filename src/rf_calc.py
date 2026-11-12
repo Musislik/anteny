@@ -485,6 +485,25 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         l_50 = float(params.get('feed_50_len', params.get('l1', 9.0)))
         z0_50, _, _, _, gamma_50 = calc_microstrip_propagation(w_50, h, eps_r, tan_delta, freqs_arr)
 
+        # 100 Ohm mikropáskové větve a čtvrtvlnný transformátor pro plný de-embedding k flíčku
+        w_feed = float(params.get('w_feed', params.get('feed_W', synth_microstrip_w(2.0 * port_z0, h, eps_r))))
+        z0_feed, eps_eff_feed, _, _, gamma_feed = calc_microstrip_propagation(w_feed, h, eps_r, tan_delta, freqs_arr)
+
+        w_T = float(params.get('trans_w', params.get('w_T', 0.42)))
+        eps_eff_trans = calc_microstrip_eps_eff(w_T, h, eps_r)
+        l_T_def = calc_quarter_wave_length(f_design, eps_eff_trans)
+        l_T = float(params.get('trans_l', params.get('l_T', l_T_def)))
+        z0_trans, _, _, _, gamma_trans = calc_microstrip_propagation(w_T, h, eps_r, tan_delta, freqs_arr)
+
+        raw_L_b = params.get('L_100_b')
+        raw_L_l = params.get('L_100_l')
+        if raw_L_b is not None and raw_L_l is not None:
+            l_100_avg = 0.5 * (float(raw_L_b) + float(raw_L_l))
+        elif params.get('feed_len_b') is not None and params.get('feed_len_l') is not None:
+            l_100_avg = 0.5 * (float(params['feed_len_b']) + float(params['feed_len_l'])) - l_T
+        else:
+            l_100_avg = 44.5
+
         if z1_rp1 is not None:
             z1_rp2 = deembed_transmission_line(z1_rp1, z0_50, gamma_50, l_50)
             gamma1_rp2 = (z1_rp2 - z0_50) / (z1_rp2 + z0_50 + 1e-12)
@@ -495,11 +514,22 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
             z0_branch = 2.0 * port_z0
             gamma1_rp3 = (z1_rp3 - z0_branch) / (z1_rp3 + z0_branch + 1e-12)
             gamma1_rp3_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp3), 1e-10, 10.0))
+
+            # Plný de-embedding přes 100 Ohm větev ke svorce transformátoru a přes transformátor k flíčku
+            z1_trans_in = deembed_transmission_line(z1_rp3, z0_feed, gamma_feed, l_100_avg)
+            z1_patch = deembed_transmission_line(z1_trans_in, z0_trans, gamma_trans, l_T)
+            z0_patch_ref = float(np.mean(z0_trans ** 2 / 100.0))
+            gamma1_patch = (z1_patch - z0_patch_ref) / (z1_patch + z0_patch_ref + 1e-12)
+            gamma1_patch_db = 20.0 * np.log10(np.clip(np.abs(gamma1_patch), 1e-10, 10.0))
         else:
             z1_rp2 = None
             gamma1_rp2_db = None
             z1_rp3 = None
             gamma1_rp3_db = None
+            z1_trans_in = None
+            z1_patch = None
+            gamma1_patch_db = None
+            z0_patch_ref = 140.0
 
         return {
             'freqs': freqs_arr,
@@ -527,6 +557,13 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
                 'gamma1_db': gamma1_rp3_db,
                 'gamma2_db': None,
                 'z0_ref': 2.0 * port_z0,
+            },
+            'patch': {
+                'name': 'RP_Patch (Vstup do flíčku)',
+                'z1': z1_patch,
+                'gamma1_db': gamma1_patch_db,
+                'z0_ref': z0_patch_ref,
+                'z_trans_in': z1_trans_in,
             },
             'params_used': {
                 'antenna_model': 4,

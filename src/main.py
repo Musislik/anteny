@@ -193,7 +193,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     if clean:
         clean_previous_outputs(data_dir=data_dir)
 
-    # Model antény (1 = původní T-dělič 50 Ohm, 2 = dvouportový 100 Ohm, 3 = hybridní 2-portový, 4 = finální 50 Ohm T-článek s oblouky)
+    # Model antény (1 = původní T-dělič 50 Ohm, 2 = dvouportový 100 Ohm, 3 = hybridní 2-portový, 4 = finální 50 Ohm T-článek s oblouky, 5 = dvouportový zakřivený 100 Ohm)
     antenna_model = _resolve_param('antenna_model', 'ANTENNA_MODEL', 1, custom_params, int)
 
     # 1. Parametrizace materiálů a frekvenčního pásma
@@ -217,15 +217,15 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     farfield_nsample = _resolve_param('farfield_nsample', 'FARFIELD_NSAMPLE', 16200, custom_params, int)
     save_step = _resolve_param('save_step', 'SAVE_STEP', 1, custom_params, int)
     
-    default_port_z0 = 100.0 if antenna_model in (2, 3) else PORT_Z0
+    default_port_z0 = 100.0 if antenna_model in (2, 3, 5) else PORT_Z0
     port_impedance = _resolve_param('port_impedance', 'PORT_IMPEDANCE', default_port_z0, custom_params, float)
     linear_tol = _resolve_param('linear_tol', 'LINEAR_TOL', 1e-6, custom_params, float)
     linear_max_its = _resolve_param('linear_max_its', 'LINEAR_MAX_ITS', 100, custom_params, int)
 
     print(f"--- Model {antenna_model} | Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, Port Z0 {port_impedance:.1f} Ohm ---")
 
-    # Geometrie flíčku (výchozí 28.8 mm pro Model 2, 3 a 4; 30.3 mm pro Model 1)
-    default_patch_l = 28.8 if antenna_model in (2, 3, 4) else 30.3
+    # Geometrie flíčku (výchozí 29.95 mm pro Model 5; 28.8 mm pro Model 2, 3 a 4; 30.3 mm pro Model 1)
+    default_patch_l = 29.95 if antenna_model == 5 else (28.8 if antenna_model in (2, 3, 4) else 30.3)
     patch_l = _resolve_param('patch_L', 'PATCH_L', default_patch_l, custom_params, float)
     patch_w = _resolve_param('patch_W', 'PATCH_W', patch_l, custom_params, float)
 
@@ -258,7 +258,46 @@ def main(custom_params=None, skip_simulation=False, clean=False):
         'design_freq_ghz': design_freq_ghz,
     }
 
-    if antenna_model == 4:
+    if antenna_model == 5:
+        # MODEL 5: Dvouportový model se zakřivenými 100 Ohm větvemi (bez 50 Ohm T-článku)
+        trans_w, feed_inset_b, feed_inset_l, feed_delta_l = _resolve_hybrid_stage_params(params, custom_params)
+
+        bend_radius = _resolve_param_aliases(('feed_bend_radius', 'bend_radius'), ('FEED_BEND_RADIUS',), 3.0, custom_params, float)
+        arm_offset = _resolve_param_aliases(('feed_arm_offset', 'arm_offset'), ('FEED_ARM_OFFSET',), None, custom_params, float)
+        end_straight = _resolve_param_aliases(('feed_end_straight', 'end_straight'), ('FEED_END_STRAIGHT',), 4.6, custom_params, float)
+        port_offset = _resolve_param_aliases(('feed_port_offset', 'port_offset'), ('FEED_PORT_OFFSET', 'PORT_OFFSET'), 3.0, custom_params, float)
+
+        driven_port = _resolve_param('driven_port', 'DRIVEN_PORT', 'all', custom_params, str)
+        params['driven_port'] = driven_port
+
+        params['feed_bend_radius'] = bend_radius
+        params['feed_end_straight'] = end_straight
+        params['feed_port_offset'] = port_offset
+        if arm_offset is not None:
+            params['feed_arm_offset'] = arm_offset
+
+        optional_m5_specs = [
+            (('feed_100_w', 'w_feed', 'w_100', 'w2'), ('FEED_100_W',), 'feed_100_w'),
+            (('sub_margin',), ('SUB_MARGIN',), 'sub_margin'),
+            (('feed_x_T', 'x_T'), ('FEED_T_X',), 'feed_x_T'),
+            (('feed_y_T', 'y_T'), ('FEED_T_Y',), 'feed_y_T'),
+            (('feed_y_bot', 'y_bot'), ('FEED_Y_BOT',), 'feed_y_bot'),
+            (('sub_W', 'sub_w'), ('SUB_W',), 'sub_W'),
+            (('sub_L', 'sub_l'), ('SUB_L',), 'sub_L'),
+        ]
+        for aliases, env_keys, target_key in optional_m5_specs:
+            val = _resolve_param_aliases(aliases, env_keys, None, custom_params, float)
+            if val is not None:
+                params[target_key] = val
+
+        dl_str = f", delta_l={feed_delta_l:.2f}mm" if feed_delta_l is not None else ""
+        print(
+            f"--- Model 5 (Dvouportový zakřivený 100 Ω): w_T={trans_w:.2f} mm, "
+            f"y0b={feed_inset_b:.2f} mm, y0l={feed_inset_l:.2f} mm, R_bend={bend_radius:.2f} mm, "
+            f"Buzení = {driven_port}, Port offset={port_offset:.2f} mm{dl_str} ---"
+        )
+
+    elif antenna_model == 4:
         # MODEL 4: Finální model dokončující Model 3 (otočený levý 50 Ohm T-článek bez meandru)
         trans_w, feed_inset_b, feed_inset_l, feed_delta_l = _resolve_hybrid_stage_params(params, custom_params)
 
@@ -481,7 +520,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
 
     driven_mode = str(params.get('driven_port', os.getenv('DRIVEN_PORT', 'all'))).lower().strip()
     is_model_matrix = (
-        antenna_model in (2, 3)
+        antenna_model in (2, 3, 5)
         and driven_mode in ('all', 'both', 'matrix', 'full', 's_matrix')
     )
 
@@ -547,7 +586,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     print("--- 5. Zpracování výsledků ---")
     
     # Zpracování výsledků podle modelu antény
-    if antenna_model in (2, 3):
+    if antenna_model in (2, 3, 5):
         _process_results_model2(params, output_dir, data_dir, run_name)
     else:
         _process_results_model1(params, output_dir, data_dir, run_name)
@@ -715,8 +754,8 @@ def _process_results_model2(params, output_dir, data_dir, run_name):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="LHCP Patch Antenna Simulation & CAD Model Generation")
-    parser.add_argument("--model", type=int, choices=[1, 2, 3, 4], default=None, dest="antenna_model",
-                        help="Verze modelu antény: 1 (T-dělič 50 Ohm), 2 (dvouportový 100 Ohm), 3 (hybridní 2-portový), 4 (finální 50 Ohm T-článek s oblouky). Výchozí: 1 nebo z ANTENNA_MODEL")
+    parser.add_argument("--model", type=int, choices=[1, 2, 3, 4, 5], default=None, dest="antenna_model",
+                        help="Verze modelu antény: 1 (T-dělič 50 Ohm), 2 (dvouportový 100 Ohm), 3 (hybridní 2-portový), 4 (finální 50 Ohm T-článek s oblouky), 5 (dvouportový zakřivený 100 Ohm). Výchozí: 1 nebo z ANTENNA_MODEL")
     parser.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true",
                         help="Generovat pouze model, CAD STEP soubor a síť lokálně bez spouštění simulace v Dockeru")
     parser.add_argument("--clean", dest="clean", action="store_true",
@@ -748,19 +787,19 @@ if __name__ == "__main__":
     parser.add_argument("--linear-its", "--linear-max-its", type=int, default=None, dest="linear_max_its",
                         help="Maximální počet iterací lineárního řešiče FGMRES (výchozí: 100 nebo z LINEAR_MAX_ITS)")
     parser.add_argument("--port-impedance", type=float, default=None, dest="port_impedance",
-                        help="Impedance portů v Ohmech (výchozí: 50.0 pro Model 1 a 4, 100.0 pro Model 2 a 3, nebo z PORT_IMPEDANCE)")
+                        help="Impedance portů v Ohmech (výchozí: 50.0 pro Model 1 a 4, 100.0 pro Model 2, 3 a 5, nebo z PORT_IMPEDANCE)")
 
     # Parametrizace geometrie patche a zanoření
     parser.add_argument("--patch-l", type=float, default=None, dest="patch_L",
-                        help="Délka flíčku patche v mm (výchozí: 30.3 pro M1, 28.8 pro M2/M3/M4 nebo z PATCH_L)")
+                        help="Délka flíčku patche v mm (výchozí: 30.3 pro M1, 28.8 pro M2/M3/M4, 29.95 pro M5 nebo z PATCH_L)")
     parser.add_argument("--patch-w", type=float, default=None, dest="patch_W",
                         help="Šířka flíčku patche v mm (výchozí: z PATCH_W nebo rovno patch-l)")
     parser.add_argument("--inset", "--feed-inset", type=float, default=None, dest="feed_inset",
                         help="Hloubka zanoření napaječe do flíčku v mm (výchozí: 0.0 nebo z FEED_INSET)")
     parser.add_argument("--inset-b", type=float, default=None, dest="feed_inset_b",
-                        help="Hloubka zanoření spodního napaječe pro Model 2, 3 a 4 (výchozí: FEED_INSET_B nebo FEED_INSET)")
+                        help="Hloubka zanoření spodního napaječe pro Model 2, 3, 4 a 5 (výchozí: FEED_INSET_B nebo FEED_INSET)")
     parser.add_argument("--inset-l", type=float, default=None, dest="feed_inset_l",
-                        help="Hloubka zanoření levého napaječe pro Model 2, 3 a 4 (výchozí: FEED_INSET_L nebo FEED_INSET)")
+                        help="Hloubka zanoření levého napaječe pro Model 2, 3, 4 a 5 (výchozí: FEED_INSET_L nebo FEED_INSET)")
     parser.add_argument("--inset-gap-b", type=float, default=None, dest="feed_inset_gap_b",
                         help="Šířka mezery zářezu spodního napaječe (výchozí: FEED_INSET_GAP_B)")
     parser.add_argument("--inset-gap-l", type=float, default=None, dest="feed_inset_gap_l",
@@ -770,25 +809,27 @@ if __name__ == "__main__":
     parser.add_argument("--feed-len-l", "--feed-length-l", type=float, default=None, dest="feed_len_l",
                         help="Délka levého přívodu pro Model 2 a 3 v mm (výchozí: L_ref nebo FEED_LEN_L)")
     parser.add_argument("--feed-delta-l", "--delta-l", type=float, default=None, dest="feed_delta_l",
-                        help="Rozdíl délek přívodů Delta L = L_feed_b - L_feed_l pro Model 2, 3 a 4 v mm (výchozí: lambda_g/4 nebo FEED_DELTA_L)")
+                        help="Rozdíl délek přívodů Delta L = L_feed_b - L_feed_l pro Model 2, 3, 4 a 5 v mm (výchozí: lambda_g/4 nebo FEED_DELTA_L)")
     parser.add_argument("--trans-w", "--w-t", "--w-trans", type=float, default=None, dest="trans_w",
-                        help="Šířka čtvrtvlnného transformátoru pro Model 3 a 4 v mm (výchozí: 0.42 nebo TRANS_W)")
+                        help="Šířka čtvrtvlnného transformátoru pro Model 3, 4 a 5 v mm (výchozí: 0.42 pro M3/M4, 0.30 pro M5 nebo TRANS_W)")
     parser.add_argument("--trans-l", "--l-t", "--l-trans", type=float, default=None, dest="trans_l",
-                        help="Délka čtvrtvlnného transformátoru pro Model 3 a 4 v mm (výchozí: auto lambda_g/4 nebo TRANS_L)")
+                        help="Délka čtvrtvlnného transformátoru pro Model 3, 4 a 5 v mm (výchozí: auto lambda_g/4, 19.0 pro M5 nebo TRANS_L)")
     parser.add_argument("--driven-port", type=str, default=None, dest="driven_port",
-                        help="Volba buzeného portu pro Model 2 a 3: '1' (spodní), '2' (levý), 'all' (oba současně pro LHCP). Výchozí: all")
+                        help="Volba buzeného portu pro Model 2, 3 a 5: '1' (spodní), '2' (levý), 'all' (oba současně pro LHCP). Výchozí: all")
 
-    # Parametrizace finálního Modelu 4 (T-článek a oblouky)
+    # Parametrizace Modelu 4 a 5 (oblouky a geometrie větví)
     parser.add_argument("--bend-radius", "--feed-bend-radius", type=float, default=None, dest="feed_bend_radius",
-                        help="Poloměr střednice kruhových oblouků pro Model 4 v mm (výchozí: 3.0 nebo FEED_BEND_RADIUS)")
+                        help="Poloměr střednice kruhových oblouků pro Model 4 a 5 v mm (výchozí: 3.0 nebo FEED_BEND_RADIUS)")
     parser.add_argument("--t-fillet", "--t-fillet-r", type=float, default=None, dest="feed_t_fillet_r",
                         help="Poloměr zaoblení vnitřních rohů T-článku pro Model 4 v mm (výchozí: 0.8 nebo FEED_T_FILLET_R)")
     parser.add_argument("--feed-50-len", type=float, default=None, dest="feed_50_len",
                         help="Délka 50 Ohm vstupního vedení k T-článku pro Model 4 v mm (výchozí: 9.0 nebo FEED_50_LEN)")
     parser.add_argument("--end-straight", "--feed-end-straight", type=float, default=None, dest="feed_end_straight",
-                        help="Rovný vstupní úsek 100 Ohm větví před transformátory pro Model 4 v mm (výchozí: 4.6 nebo FEED_END_STRAIGHT)")
+                        help="Rovný vstupní úsek 100 Ohm větví před transformátory pro Model 4 a 5 v mm (výchozí: 4.6 nebo FEED_END_STRAIGHT)")
     parser.add_argument("--arm-offset", type=float, default=None, dest="feed_arm_offset",
-                        help="Boční odstup svislého 100 Ohm ramene pro Model 4 v mm (výchozí: auto end_straight + bend_radius = 7.6 nebo FEED_ARM_OFFSET)")
+                        help="Boční odstup svislého 100 Ohm ramene pro Model 4 a 5 v mm (výchozí: auto end_straight + bend_radius = 7.6 nebo FEED_ARM_OFFSET)")
+    parser.add_argument("--port-offset", "--feed-port-offset", type=float, default=None, dest="feed_port_offset",
+                        help="Odstup portů od virtuálního středu y_T pro Model 5 v mm (výchozí: 3.0 nebo FEED_PORT_OFFSET)")
     parser.add_argument("--design-freq", type=float, default=None, dest="design_freq_ghz",
                         help="Návrhová střední frekvence pro lambda_g/4 syntézu v GHz (výchozí: 2.3325 nebo DESIGN_FREQ_GHZ)")
 
@@ -799,7 +840,8 @@ if __name__ == "__main__":
                   'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its', 'port_impedance',
                   'patch_L', 'patch_W', 'feed_inset', 'feed_inset_b', 'feed_inset_l', 'feed_inset_gap_b', 'feed_inset_gap_l',
                   'feed_len_b', 'feed_len_l', 'feed_delta_l', 'trans_w', 'trans_l', 'driven_port',
-                  'feed_bend_radius', 'feed_t_fillet_r', 'feed_50_len', 'feed_end_straight', 'feed_arm_offset', 'design_freq_ghz']:
+                  'feed_bend_radius', 'feed_t_fillet_r', 'feed_50_len', 'feed_end_straight', 'feed_arm_offset',
+                  'feed_port_offset', 'design_freq_ghz']:
         val = getattr(args, param, None)
         if val is not None:
             cli_params[param] = val

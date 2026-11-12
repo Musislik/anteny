@@ -5,6 +5,7 @@ Podle parametru 'antenna_model' (nebo ANTENNA_MODEL v .env) deleguje na:
   - Model 2 (geometry_v2.py): Dvouportový model se dvěma nezávislými 100 Ohm mikropásky a LHCP fázováním.
   - Model 3 (geometry_v3.py): Hybridní dvoustupňové přizpůsobení (Cesta B: mělký zářez + lambda_g/4 transformátor + 100 Ohm napaječ s fázovačem).
   - Model 4 (geometry_v4.py): Finální model dokončující Model 3 (spojení obou 100 Ohm větví plynulými oblouky do T-článku na 50 Ohm port).
+  - Model 5 (geometry_v5.py): Dvouportový model se zakřivenými větvemi bez T-článku (dva samostatné 100 Ohm porty).
 """
 
 import os
@@ -13,7 +14,10 @@ from postpro_utils import load_env
 def build_model(params):
     load_env()
     model_version = int(params.get('antenna_model', os.getenv('ANTENNA_MODEL', '1')))
-    if model_version == 4:
+    if model_version == 5:
+        from geometry_v5 import build_model_v5
+        return build_model_v5(params)
+    elif model_version == 4:
         from geometry_v4 import build_model_v4
         return build_model_v4(params)
     elif model_version == 3:

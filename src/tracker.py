@@ -174,6 +174,40 @@ FIELDNAMES_V4 = [
 ]
 FIELDNAMES_MODEL4 = FIELDNAMES_V4
 
+# ==============================================================================
+# 5. KONFIGURACE PRO MODEL 5 (Dvouportový 100 Ohm model s oblouky bez T-článku)
+# ==============================================================================
+FIELDNAMES_V5 = [
+    'run_name',
+    'patch_L_mm',
+    'trans_w_mm',
+    'trans_l_mm',
+    'inset_b_mm',
+    'inset_l_mm',
+    'delta_l_mm',
+    'bend_radius_mm',
+    'port_offset_mm',
+    'L_100_b_mm',
+    'L_100_l_mm',
+    'f0_b_GHz',
+    'f0_l_GHz',
+    'S11_min [dB]',
+    'S22_min [dB]',
+    'S21_min [dB]',
+    'fGainMaxLhcp [GHz]',
+    'Gain_max_LHCP [dBi]',
+    'Zin1_Re [Ohm]',
+    'Zin2_Re [Ohm]',
+    'E_LHCP [V]',
+    'E_RHCP [V]',
+    'AR [dB]',
+    'Polarizace',
+    'Gain_LHCP [dBi]',
+    'Gain_RHCP [dBi]',
+    'export_zip',
+]
+FIELDNAMES_MODEL5 = FIELDNAMES_V5
+
 
 def extract_s11_metrics(s11_file, z0=50.0):
     """Extrahuje rezonanční frekvenci, minimum S11, šířku pásma a vstupní impedanci pro Model 1."""
@@ -511,8 +545,11 @@ def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
         e_lhcp_list = []
         e_rhcp_list = []
 
-        p_in_single = 1.0 - (10.0 ** (s11_min_db / 10.0)) if s11_min_db is not None else 1.0
-        p_in_single = max(p_in_single, 0.01)
+        # V Palace FEM je jmenovitý dopadající výkon P_inc = 0.5 W (V_inc = sqrt(50) V pro R = 50 Ohm,
+        # resp. P_inc = 0.5 * V_inc * I_inc = 0.5 W na jeden buzený port).
+        p_inc_per_port = 0.5
+        p_in_single = p_inc_per_port * (1.0 - (10.0 ** (s11_min_db / 10.0))) if s11_min_db is not None else p_inc_per_port
+        p_in_single = max(p_in_single, 0.005)
 
         ff_abs = os.path.abspath(farfield_file)
         ff_dir = os.path.dirname(ff_abs)
@@ -638,7 +675,9 @@ def record_run(params, output_dir="data/postpro", run_name=None, export_zip=None
 
     os.makedirs(results_dir, exist_ok=True)
 
-    if model_version == 4:
+    if model_version == 5:
+        return _record_run_model5(params, output_dir, run_name, export_zip, results_dir)
+    elif model_version == 4:
         return _record_run_model4(params, output_dir, run_name, export_zip, results_dir)
     elif model_version == 3:
         return _record_run_model3(params, output_dir, run_name, export_zip, results_dir)
@@ -1027,6 +1066,90 @@ def _record_run_model4(params, output_dir, run_name, export_zip, results_dir):
 record_run_model4 = _record_run_model4
 
 
+def _record_run_model5(params, output_dir, run_name, export_zip, results_dir):
+    csv_file = os.path.join(results_dir, "sweep_results_model5.csv")
+    md_file = os.path.join(results_dir, "sweep_results_model5.md")
+
+    port_z0 = float(params.get('port_impedance', 100.0))
+    s_metrics = extract_s_parameters_model2(output_dir, z0=port_z0)
+
+    f0_b = s_metrics.get('f0_b_GHz')
+    f0_target = f0_b or s_metrics.get('f0_l_GHz') or DESIGN_FREQ_GHZ
+    s_min = s_metrics.get('s11_min_dB') if s_metrics.get('s11_min_dB') is not None else s_metrics.get('s22_min_dB')
+
+    farfield_path = os.path.join(output_dir, "farfield-rE.csv")
+    farfield_metrics = extract_farfield_metrics(farfield_path, target_freq=f0_target, s11_min_db=s_min)
+
+    trans_w_val = params.get('trans_w', params.get('w_T', params.get('w_trans', 0.30)))
+    trans_l_val = params.get('trans_l', params.get('l_T', params.get('l_trans', 19.00)))
+    delta_l_val = params.get('feed_delta_l', params.get('delta_l', 18.66))
+
+    row = {
+        'run_name': run_name or params.get('run_name', 'run_m5'),
+        'patch_L_mm': format_value(params.get('patch_L', 29.95), '{:.2f}'),
+        'trans_w_mm': format_value(trans_w_val, '{:.2f}'),
+        'trans_l_mm': format_value(trans_l_val, '{:.2f}'),
+        'inset_b_mm': format_value(params.get('feed_inset_b', params.get('inset_b', 2.5)), '{:.2f}'),
+        'inset_l_mm': format_value(params.get('feed_inset_l', params.get('inset_l', 2.5)), '{:.2f}'),
+        'delta_l_mm': format_value(delta_l_val, '{:.2f}'),
+        'bend_radius_mm': format_value(params.get('feed_bend_radius', params.get('bend_radius', 3.0)), '{:.2f}'),
+        'port_offset_mm': format_value(params.get('feed_port_offset', params.get('port_offset', 3.0)), '{:.2f}'),
+        'L_100_b_mm': format_value(params.get('L_100_b'), '{:.2f}'),
+        'L_100_l_mm': format_value(params.get('L_100_l'), '{:.2f}'),
+        'f0_b_GHz': format_value(s_metrics.get('f0_b_GHz'), '{:.3f}'),
+        'f0_l_GHz': format_value(s_metrics.get('f0_l_GHz'), '{:.3f}'),
+        'S11_min [dB]': format_value(s_metrics.get('s11_min_dB'), '{:.2f}'),
+        'S22_min [dB]': format_value(s_metrics.get('s22_min_dB'), '{:.2f}'),
+        'S21_min [dB]': format_value(s_metrics.get('s21_min_dB'), '{:.2f}'),
+        'fGainMaxLhcp [GHz]': format_value(farfield_metrics.get('f_gain_max_lhcp_ghz'), '{:.3f}'),
+        'Gain_max_LHCP [dBi]': format_value(farfield_metrics.get('gain_max_lhcp_dbi'), '{:.2f}'),
+        'Zin1_Re [Ohm]': format_value(s_metrics.get('zin1_re_ohm'), '{:.1f}'),
+        'Zin2_Re [Ohm]': format_value(s_metrics.get('zin2_re_ohm'), '{:.1f}'),
+        'E_LHCP [V]': format_value(farfield_metrics.get('e_lhcp'), '{:.2f}'),
+        'E_RHCP [V]': format_value(farfield_metrics.get('e_rhcp'), '{:.2f}'),
+        'AR [dB]': format_value(farfield_metrics.get('axial_ratio_db'), '{:.2f}'),
+        'Polarizace': format_value(farfield_metrics.get('polarization'), '{}'),
+        'Gain_LHCP [dBi]': format_value(farfield_metrics.get('gain_lhcp_dbi'), '{:.2f}'),
+        'Gain_RHCP [dBi]': format_value(farfield_metrics.get('gain_rhcp_dbi'), '{:.2f}'),
+        'export_zip': export_zip or (f"{run_name}.zip" if run_name else "-"),
+    }
+
+    _append_csv_with_migration(csv_file, FIELDNAMES_V5, row)
+    update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků Modelu 5 (Dvouportový 100 Ohm model s oblouky)")
+
+    print("\n" + "=" * 125)
+    print("VÝSLEDKY SIMULAČNÍHO KROKU MODELU 5 (Zaznamenáno do export/sweep_results_model5.csv):")
+    print("-" * 125)
+    info_parts = [
+        f"Krok: {row['run_name']}",
+        f"L={row['patch_L_mm']} mm",
+        f"w_T={row['trans_w_mm']} mm",
+        f"l_T={row['trans_l_mm']} mm",
+        f"y0b={row['inset_b_mm']} mm",
+        f"y0l={row['inset_l_mm']} mm",
+        f"dL={row['delta_l_mm']} mm",
+        f"R={row['bend_radius_mm']} mm",
+        f"d_p={row['port_offset_mm']} mm",
+        f"f0_b={row['f0_b_GHz']} GHz",
+        f"f0_l={row['f0_l_GHz']} GHz",
+        f"S11={row['S11_min [dB]']} dB",
+        f"S22={row['S22_min [dB]']} dB",
+        f"S21={row['S21_min [dB]']} dB",
+        f"Zin1={row['Zin1_Re [Ohm]']} Ohm",
+        f"Zin2={row['Zin2_Re [Ohm]']} Ohm",
+        f"Pol={row['Polarizace']}",
+        f"AR={row['AR [dB]']} dB",
+        f"G_LHCP={row['Gain_LHCP [dBi]']} dBi",
+    ]
+    print(" | ".join([p for p in info_parts if p]))
+    print("=" * 125)
+
+    return row
+
+
+record_run_model5 = _record_run_model5
+
+
 def update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků simulací"):
     """Převede CSV soubor na přehlednou Markdown tabulku."""
     if not os.path.exists(csv_file):
@@ -1242,12 +1365,53 @@ def print_summary_table_model4(csv_file=None):
     )
 
 
+def print_summary_table_model5(csv_file=None):
+    """Vytiskne celou souhrnnou tabulku Modelu 5 (Dvouportový model 100 Ohm s oblouky) do konzole."""
+    if csv_file is None:
+        try:
+            from postpro_utils import get_export_dir
+            exp_dir = get_export_dir()
+        except ImportError:
+            exp_dir = "export"
+        csv_file = os.path.join(exp_dir, "sweep_results_model5.csv")
+
+    disp_cols = [
+        ('run_name', 'Krok', 22),
+        ('patch_L_mm', 'L [mm]', 8),
+        ('trans_w_mm', 'w_T [mm]', 9),
+        ('trans_l_mm', 'l_T [mm]', 9),
+        ('inset_b_mm', 'y0 [mm]', 8),
+        ('delta_l_mm', 'dL [mm]', 8),
+        ('bend_radius_mm', 'R [mm]', 7),
+        ('port_offset_mm', 'd_p [mm]', 8),
+        ('f0_b_GHz', 'f0_b [GHz]', 9),
+        ('f0_l_GHz', 'f0_l [GHz]', 9),
+        ('S11_min [dB]', 'S11 [dB]', 9),
+        ('S22_min [dB]', 'S22 [dB]', 9),
+        ('S21_min [dB]', 'S21 [dB]', 9),
+        ('Zin1_Re [Ohm]', 'Zin1_Re', 8),
+        ('Zin2_Re [Ohm]', 'Zin2_Re', 8),
+        ('AR [dB]', 'AR [dB]', 8),
+        ('Polarizace', 'Pol', 6),
+        ('Gain_LHCP [dBi]', 'G_LHCP', 8),
+    ]
+    _print_csv_table(
+        csv_file=csv_file,
+        title="KOMPLETNÍ SOUHRNNÁ TABULKA MODELU 5 (DVOU PORTOVÝ 100 OHM MODEL S OBLOUKY):",
+        disp_cols=disp_cols,
+        empty_msg="Tabulka výsledků Modelu 5 je prázdná.",
+        sep_width=175,
+    )
+
+
 def print_summary_table(csv_file=None, model_version=None):
     """Vytiskne celou souhrnnou tabulku přehledně do konzole."""
     if model_version is None:
         model_version = int(os.getenv("ANTENNA_MODEL", "1"))
 
-    if model_version == 4:
+    if model_version == 5:
+        return print_summary_table_model5(csv_file=csv_file)
+    elif model_version == 4:
         return print_summary_table_model4(csv_file=csv_file)
     elif model_version == 3:
         return print_summary_table_model3(csv_file=csv_file)
