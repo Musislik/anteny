@@ -1,5 +1,3 @@
-import numpy as np
-import pandas as pd
 import os
 import sys
 
@@ -18,8 +16,8 @@ if not os.path.exists(farfield_csv):
 df = pd.read_csv(farfield_csv)
 freqs = np.unique(df.iloc[:, 0])
 
-print(f"{'Freq [GHz]':<12} | {'AR [dB]':<10} | {'D_LHCP [dBi]':<14} | {'D_RHCP [dBi]':<14} | {'D_tot [dBi]':<12}")
-print("-" * 72)
+print(f"{'Freq [GHz]':<10} | {'AR [dB]':<8} | {'D_LHCP':<8} | {'D_RHCP':<8} | {'|Ey|/|Ex|':<10} | {'dPhi [deg]':<11} | {'dPhi - (-90)':<12}")
+print("-" * 85)
 for f in freqs:
     sub = df[np.isclose(df.iloc[:, 0], f, atol=1e-5)]
     m = compute_farfield_metrics(sub)
@@ -27,5 +25,15 @@ for f in freqs:
     ar = m['ar_db'][b_idx]
     d_lhcp = m['d_lhcp'][b_idx]
     d_rhcp = m['d_rhcp'][b_idx]
-    d_tot = m['d_tot'][b_idx]
-    print(f"{f:<12.4f} | {ar:<10.2f} | {d_lhcp:<14.2f} | {d_rhcp:<14.2f} | {d_tot:<12.2f}")
+    
+    # Calculate Ex and Ey phasors at boresight
+    row = sub[np.abs(sub.iloc[:, 2]) < 1e-2].iloc[0]
+    ex = row.iloc[4] + 1j * row.iloc[5]
+    ey = row.iloc[6] + 1j * row.iloc[7]
+    amp_ratio = abs(ey) / max(abs(ex), 1e-12)
+    phi_diff = np.rad2deg(np.angle(ey) - np.angle(ex))
+    # normalize to [-180, 180]
+    phi_diff = (phi_diff + 180) % 360 - 180
+    dphi_err = phi_diff - (-90.0)
+    
+    print(f"{f:<10.4f} | {ar:<8.2f} | {d_lhcp:<8.2f} | {d_rhcp:<8.2f} | {amp_ratio:<10.3f} | {phi_diff:<11.2f} | {dphi_err:<+12.2f}")

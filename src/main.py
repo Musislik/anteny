@@ -814,6 +814,10 @@ if __name__ == "__main__":
                         help="Šířka čtvrtvlnného transformátoru pro Model 3, 4 a 5 v mm (výchozí: 0.42 pro M3/M4, 0.30 pro M5 nebo TRANS_W)")
     parser.add_argument("--trans-l", "--l-t", "--l-trans", type=float, default=None, dest="trans_l",
                         help="Délka čtvrtvlnného transformátoru pro Model 3, 4 a 5 v mm (výchozí: auto lambda_g/4, 19.0 pro M5 nebo TRANS_L)")
+    parser.add_argument("--trans-l-b", "--l-t-b", type=float, default=None, dest="trans_l_b",
+                        help="Délka transformátoru spodního ramene v mm (výchozí: trans_l)")
+    parser.add_argument("--trans-l-l", "--l-t-l", type=float, default=None, dest="trans_l_l",
+                        help="Délka transformátoru levého ramene v mm (výchozí: trans_l)")
     parser.add_argument("--driven-port", type=str, default=None, dest="driven_port",
                         help="Volba buzeného portu pro Model 2, 3 a 5: '1' (spodní), '2' (levý), 'all' (oba současně pro LHCP). Výchozí: all")
 
@@ -839,7 +843,7 @@ if __name__ == "__main__":
     for param in ['antenna_model', 'freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
                   'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its', 'port_impedance',
                   'patch_L', 'patch_W', 'feed_inset', 'feed_inset_b', 'feed_inset_l', 'feed_inset_gap_b', 'feed_inset_gap_l',
-                  'feed_len_b', 'feed_len_l', 'feed_delta_l', 'trans_w', 'trans_l', 'driven_port',
+                  'feed_len_b', 'feed_len_l', 'feed_delta_l', 'trans_w', 'trans_l', 'trans_l_b', 'trans_l_l', 'driven_port',
                   'feed_bend_radius', 'feed_t_fillet_r', 'feed_50_len', 'feed_end_straight', 'feed_arm_offset',
                   'feed_port_offset', 'design_freq_ghz']:
         val = getattr(args, param, None)
