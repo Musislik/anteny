@@ -257,8 +257,8 @@ def compute_model5_routing(params):
         'L_sub': L_sub,
         'L_100_l': L_100_l,
         'L_100_b': L_100_b,
-        'arm_l_waypoints': [(float(round(p[0], 4)), float(round(p[1], 4))) for p in arm_l_waypoints],
-        'arm_b_waypoints': [(float(round(p[0], 4)), float(round(p[1], 4))) for p in arm_b_waypoints],
+        'arm_l_waypoints': arm_l_waypoints,
+        'arm_b_waypoints': arm_b_waypoints,
         'arm_l_build_waypoints': arm_l_waypoints,
         'arm_b_build_waypoints': arm_b_waypoints,
     }
@@ -346,19 +346,19 @@ def build_model_v5(params):
     params['feed_len_b'] = float(np.round(l_T_b + info['L_100_b'], 4))
     params['feed_len_l'] = float(np.round(l_T_l + info['L_100_l'], 4))
 
-    params['feed_x_T'] = float(np.round(x_T, 4))
-    params['feed_y_T'] = float(np.round(y_T, 4))
-    params['x_port'] = float(np.round(x_port, 4))
-    params['y_port_1'] = float(np.round(y_port_1, 4))
-    params['y_port_2'] = float(np.round(y_port_2, 4))
+    params['feed_x_T'] = float(x_T)
+    params['feed_y_T'] = float(y_T)
+    params['x_port'] = float(x_port)
+    params['y_port_1'] = float(y_port_1)
+    params['y_port_2'] = float(y_port_2)
     params['port_x'] = params['x_port']
     params['port_y'] = params['y_port_1']
-    params['y_bot'] = float(np.round(info['y_bot'], 4))
-    params['x_left_vert'] = float(np.round(info['x_left_vert'], 4))
+    params['y_bot'] = float(info['y_bot'])
+    params['x_left_vert'] = float(info['x_left_vert'])
 
-    params['sub_W'] = float(np.round(W_sub, 3))
+    params['sub_W'] = float(W_sub)
     params['sub_w'] = params['sub_W']
-    params['sub_L'] = float(np.round(L_sub, 3))
+    params['sub_L'] = float(L_sub)
     params['sub_l'] = params['sub_L']
     params['lambda_g_4_feed'] = float(np.round(info['lambda_g_4_feed'], 3))
     params['arm_l_waypoints'] = info['arm_l_waypoints']
