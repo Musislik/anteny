@@ -7,6 +7,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import gmsh
 
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+_SCRIPTS_DIR = os.path.abspath(os.path.join(_CURRENT_DIR, "..", "scripts"))
+if os.path.exists(_SCRIPTS_DIR) and _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
 from geometry import build_model
 from mesh import assign_physical_groups_and_mesh
 from palace_builder import build_palace_config
@@ -696,6 +701,20 @@ def _generate_advanced_plots(output_dir, data_dir):
             shutil.copy2(deemb_png_data, deemb_png_post)
     except Exception as e:
         print(f"Upozornění při automatickém generování grafu de-embeddingu impedance: {e}")
+
+    # 4. Graf závislosti zisku v ose vyzařování a osového poměru na frekvenci (graf_zisk_frekvence.png)
+    try:
+        from plot_gain_frequency import plot_gain_frequency
+        ff_file = os.path.join(output_dir, "farfield-rE.csv")
+        if os.path.exists(ff_file) and os.path.getsize(ff_file) > 0:
+            gain_png_data = os.path.join(data_dir, "graf_zisk_frekvence.png")
+            gain_png_post = os.path.join(output_dir, "graf_zisk_frekvence.png")
+
+            plot_gain_frequency(output_dir, output_png=gain_png_data, params=params_for_deembed)
+            if os.path.abspath(gain_png_data) != os.path.abspath(gain_png_post) and os.path.exists(gain_png_data):
+                shutil.copy2(gain_png_data, gain_png_post)
+    except Exception as e:
+        print(f"Upozornění při automatickém generování grafu zisku v ose: {e}")
 
     # Synchronizace podsložek grafy/ a obrazky/ mezi data_dir a output_dir
     if os.path.abspath(data_dir) != os.path.abspath(output_dir):

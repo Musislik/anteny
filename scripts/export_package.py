@@ -150,7 +150,7 @@ def export_paraview_package(output_name=None, output_zip=None, run_name=None, **
             shutil.copy2(script_path, os.path.join(temp_pack_dir, "paraview_dynamic_phase.py"))
             print("  + paraview_dynamic_phase.py")
 
-        for s_script in ["plot_s_parameters.py", "plot_radiation_pattern.py", "plot_deembedding.py"]:
+        for s_script in ["plot_s_parameters.py", "plot_radiation_pattern.py", "plot_deembedding.py", "plot_gain_frequency.py"]:
             s_path = os.path.join(root_dir, "scripts", s_script)
             if os.path.exists(s_path):
                 shutil.copy2(s_path, os.path.join(temp_pack_dir, s_script))
@@ -176,10 +176,11 @@ def export_paraview_package(output_name=None, output_zip=None, run_name=None, **
             shutil.copy2(gif_src, os.path.join(temp_pack_dir, "lhcp_rotation.gif"))
             print("  + lhcp_rotation.gif (náhledová animace)")
 
-        # Automatické generování grafu S-parametrů a vyzařovacích diagramů před zabalením
+        # Automatické generování grafu S-parametrů, zisku a vyzařovacích diagramů před zabalením
         try:
             from plot_s_parameters import plot_s_parameters
             from plot_radiation_pattern import plot_radiation_pattern_2d, plot_radiation_pattern_3d
+            from plot_gain_frequency import plot_gain_frequency
 
             s_param_png = os.path.join(data_dir, "graf_S_parametry.png")
             if not os.path.exists(s_param_png) or os.path.getsize(s_param_png) == 0:
@@ -190,10 +191,14 @@ def export_paraview_package(output_name=None, output_zip=None, run_name=None, **
             if os.path.exists(ff_file) and os.path.getsize(ff_file) > 0:
                 rd_2d_png = os.path.join(data_dir, "vyzarovaci_diagram_2d.png")
                 rd_3d_png = os.path.join(data_dir, "vyzarovaci_diagram_3d.png")
+                gain_freq_png = os.path.join(data_dir, "graf_zisk_frekvence.png")
+
                 if not os.path.exists(rd_2d_png) or os.path.getsize(rd_2d_png) == 0:
                     plot_radiation_pattern_2d(postpro_dir, output_png=rd_2d_png)
                 if not os.path.exists(rd_3d_png) or os.path.getsize(rd_3d_png) == 0:
                     plot_radiation_pattern_3d(postpro_dir, output_png=rd_3d_png)
+                if not os.path.exists(gain_freq_png) or os.path.getsize(gain_freq_png) == 0:
+                    plot_gain_frequency(postpro_dir, output_png=gain_freq_png)
         except Exception as plot_err:
             print(f"Upozornění při přípravě grafů pro export: {plot_err}")
 
@@ -221,6 +226,7 @@ def export_paraview_package(output_name=None, output_zip=None, run_name=None, **
             ("S11_graf.png", "2D graf činitele odrazu S11"),
             ("graf_S_parametry.png", "graf S-parametrů a impedance portů"),
             ("graf_impedance_skoky.png", "analytické odečtení vlivu vedení (de-embedding) napájecí sítě"),
+            ("graf_zisk_frekvence.png", "graf závislosti zisku v ose vyzařování a polarizační čistoty AR/XPD na frekvenci"),
             ("vyzarovaci_diagram_2d.png", "2D polární diagramy řezů X-Z a Y-Z"),
             ("vyzarovaci_diagram_3d.png", "3D prostorový vyzařovací lalok"),
             ("config.json", "vstupní konfigurace FEM řešiče Palace"),
@@ -269,11 +275,12 @@ OBSAH BALÍČKU:
    - config.json                ... Vstupní konfigurace řešiče pro reprodukovatelnost
    - config_resolved.json       ... Vyřešená konfigurace řešiče (pokud existuje)
    - graf_S_parametry.png        ... Graf S11, S22 a vstupní impedance portů Zin
+   - graf_zisk_frekvence.png    ... Graf zisku v ose vyzařování (+Z) a polarizační čistoty (AR, XPD) vs. frekvence
    - vyzarovaci_diagram_2d.png   ... 2D polární diagramy řezů X-Z a Y-Z (LHCP) + AR
    - vyzarovaci_diagram_3d.png   ... 3D prostorový vyzařovací diagram v dBi
    - graf_impedance_skoky.png    ... Přehledový graf odečtení vlivu vedení (de-embedding)
    - grafy/                     ... Složka se samostatnými dílčími grafy:
-                                  graf_S11_S22.png, graf_S21_izolace.png,
+                                  graf_S11_S22.png, graf_S21_izolace.png, graf_zisk_frekvence.png,
                                   vyzarovaci_diagram_rez_XZ.png, vyzarovaci_diagram_rez_YZ.png,
                                   graf_osovy_pomer_AR.png, graf_impedance_RP1.png,
                                   graf_impedance_RP2.png, graf_impedance_RP3.png
@@ -289,7 +296,9 @@ JAK ZOBRAZIT INTERAKTIVNÍ MODEL V PARAVIEW:
 JAK PŘEGENEROVAT GRAFY (pomocí skriptů ze složky scripts/):
 1. S-parametry a impedance:
    python scripts/plot_s_parameters.py export/<slozka_exportu>
-2. 2D a 3D vyzařovací diagram:
+2. Zisk v ose a polarizační čistota vs. frekvence:
+   python scripts/plot_gain_frequency.py export/<slozka_exportu>
+3. 2D a 3D vyzařovací diagram:
    python scripts/plot_radiation_pattern.py export/<slozka_exportu> --freq 2.333
 ======================================================================
 """
@@ -318,11 +327,12 @@ OBSAH BALÍČKU:
 
 3. Vygenerované grafy:
    - graf_S_parametry.png        ... Graf S11, S22 a vstupní impedance portů Zin
+   - graf_zisk_frekvence.png    ... Graf zisku v ose vyzařování (+Z) a polarizační čistoty (AR, XPD) vs. frekvence
    - vyzarovaci_diagram_2d.png   ... 2D polární diagramy řezů X-Z a Y-Z (LHCP) + AR
    - vyzarovaci_diagram_3d.png   ... 3D prostorový vyzařovací diagram v dBi
    - graf_impedance_skoky.png    ... Přehledový graf odečtení vlivu vedení (de-embedding)
    - grafy/                     ... Složka se samostatnými dílčími grafy:
-                                  graf_S11_S22.png, graf_S21_izolace.png,
+                                  graf_S11_S22.png, graf_S21_izolace.png, graf_zisk_frekvence.png,
                                   vyzarovaci_diagram_rez_XZ.png, vyzarovaci_diagram_rez_YZ.png,
                                   graf_osovy_pomer_AR.png, graf_impedance_RP1.png,
                                   graf_impedance_RP2.png, graf_impedance_RP3.png
@@ -332,7 +342,9 @@ OBSAH BALÍČKU:
 JAK PŘEGENEROVAT GRAFY:
 1. S-parametry a impedance:
    python scripts/plot_s_parameters.py export/<slozka_exportu>
-2. 2D a 3D vyzařovací diagram:
+2. Zisk v ose a polarizační čistota vs. frekvence:
+   python scripts/plot_gain_frequency.py export/<slozka_exportu>
+3. 2D a 3D vyzařovací diagram:
    python scripts/plot_radiation_pattern.py export/<slozka_exportu> --freq 2.333
 ======================================================================
 """
