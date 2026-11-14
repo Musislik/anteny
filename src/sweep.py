@@ -26,7 +26,10 @@ def run_sweep(**kwargs):
     """Univerzální rozhraní pro spuštění sweepu zvoleného modelu antény."""
     model_version = int(kwargs.get('antenna_model') or os.getenv("ANTENNA_MODEL", "1"))
     
-    if model_version == 5:
+    if model_version == 6:
+        from sweep_model6 import run_sweep_model6
+        return run_sweep_model6(**kwargs)
+    elif model_version == 5:
         from sweep_model5 import run_sweep_model5
         return run_sweep_model5(**kwargs)
     elif model_version == 4:
@@ -48,17 +51,97 @@ if __name__ == "__main__":
     env_model = int(os.getenv("ANTENNA_MODEL", "1"))
     
     parser = argparse.ArgumentParser(
-        description="Dispečer parametrického sweepu antény (Model 1..5)",
+        description="Dispečer parametrického sweepu antény (Model 1..6)",
         add_help=False,
         allow_abbrev=False
     )
-    parser.add_argument("--model", type=int, choices=[1, 2, 3, 4, 5], default=env_model, dest="antenna_model",
-                        help="Verze modelu antény (1: T-dělič, 2: dvouportový LHCP, 3: hybridní přizpůsobení, 4: finální 50 Ohm T-článek, 5: dvouportový 100 Ohm model s oblouky). Výchozí z ANTENNA_MODEL.")
+    parser.add_argument("--model", type=int, choices=[1, 2, 3, 4, 5, 6], default=env_model, dest="antenna_model",
+                        help="Verze modelu antény (1: T-dělič, 2: dvouportový LHCP, 3: hybridní přizpůsobení, 4: finální 50 Ohm T-článek, 5: dvouportový 100 Ohm model s oblouky, 6: dvouportový zakřivený s interními 100 Ohm porty). Výchozí z ANTENNA_MODEL.")
     known_args, remaining_argv = parser.parse_known_args()
 
     selected_model = known_args.antenna_model
 
-    if selected_model == 5:
+    if selected_model == 6:
+        from sweep_model6 import run_sweep_model6
+        parser_m6 = argparse.ArgumentParser(description="Parametrický sweep Modelu 6 (Dvouportový 100 Ohm model s interními porty)")
+        parser_m6.add_argument("--sweep-target", choices=["patch_l", "delta_l", "trans_w", "w_t", "trans_l", "l_t", "inset", "y0", "bend_radius", "t_fillet_r", "driven_port"], default=None)
+        parser_m6.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
+        parser_m6.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")
+        parser_m6.add_argument("--insets", type=float, nargs="+", default=None)
+        parser_m6.add_argument("--insets-b", type=float, nargs="+", default=None)
+        parser_m6.add_argument("--insets-l", type=float, nargs="+", default=None)
+        parser_m6.add_argument("--fixed-name", choices=["inset_b", "inset_l"], default=None)
+        parser_m6.add_argument("--fixed-val", type=float, default=None)
+        parser_m6.add_argument("--trans-w-list", "--w-t-list", type=float, nargs="+", default=None, dest="trans_w_list")
+        parser_m6.add_argument("--trans-l-list", "--l-t-list", type=float, nargs="+", default=None, dest="trans_l_list")
+        parser_m6.add_argument("--delta-l", "--sweep-delta-l", type=float, nargs="+", default=None, dest="delta_l")
+        parser_m6.add_argument("--patch-lengths", type=float, nargs="+", default=None, dest="patch_lengths")
+        parser_m6.add_argument("--bend-radii", type=float, nargs="+", default=None, dest="bend_radii")
+        parser_m6.add_argument("--t-fillet-list", type=float, nargs="+", default=None, dest="t_fillet_list")
+        parser_m6.add_argument("--trans-w", "--w-t", type=float, default=None, dest="trans_w")
+        parser_m6.add_argument("--trans-l", "--l-t", type=float, default=None, dest="trans_l")
+        parser_m6.add_argument("--inset-b", type=float, default=None, dest="inset_b")
+        parser_m6.add_argument("--inset-l", type=float, default=None, dest="inset_l")
+        parser_m6.add_argument("--feed-delta-l", type=float, default=None, dest="feed_delta_l")
+        parser_m6.add_argument("--patch-l", type=float, default=None, dest="patch_l")
+        parser_m6.add_argument("--patch-w", type=float, default=None, dest="patch_w")
+        parser_m6.add_argument("--bend-radius", type=float, default=None, dest="bend_radius")
+        parser_m6.add_argument("--t-fillet-r", type=float, default=None, dest="t_fillet_r")
+        parser_m6.add_argument("--feed-50-len", type=float, default=None, dest="feed_50_len")
+        parser_m6.add_argument("--arm-offset", type=float, default=None, dest="arm_offset")
+        parser_m6.add_argument("--end-straight", "--feed-end-straight", type=float, default=None, dest="end_straight")
+        parser_m6.add_argument("--driven-port", choices=["1", "2", "all", "both"], default=None, dest="driven_port")
+        parser_m6.add_argument("--freq-min", type=float, default=None, dest="freq_min")
+        parser_m6.add_argument("--freq-max", type=float, default=None, dest="freq_max")
+        parser_m6.add_argument("--freq-step", type=float, default=None, dest="freq_step")
+        parser_m6.add_argument("--amr-its", type=int, default=None, dest="amr_max_its")
+        parser_m6.add_argument("--linear-tol", type=float, default=None, dest="linear_tol")
+        parser_m6.add_argument("--linear-its", type=int, default=None, dest="linear_max_its")
+        parser_m6.add_argument("--farfield-nsample", type=int, default=None, dest="farfield_nsample")
+        parser_m6.add_argument("--no-export", dest="export_each", action="store_false", default=None)
+        parser_m6.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true", default=False)
+        m6_args = parser_m6.parse_args(remaining_argv)
+
+        run_sweep_model6(
+            mode=m6_args.mode,
+            sweep_target=m6_args.sweep_target,
+            insets=m6_args.insets,
+            insets_b=m6_args.insets_b,
+            insets_l=m6_args.insets_l,
+            fixed_name=m6_args.fixed_name,
+            fixed_val=m6_args.fixed_val,
+            manual_pairs=m6_args.manual_pairs,
+            trans_w_list=m6_args.trans_w_list,
+            trans_l_list=m6_args.trans_l_list,
+            delta_l=m6_args.delta_l,
+            patch_lengths=m6_args.patch_lengths,
+            bend_radii=m6_args.bend_radii,
+            t_fillet_list=m6_args.t_fillet_list,
+            trans_w=m6_args.trans_w,
+            trans_l=m6_args.trans_l,
+            inset_b=m6_args.inset_b,
+            inset_l=m6_args.inset_l,
+            feed_delta_l=m6_args.feed_delta_l,
+            patch_l=m6_args.patch_l,
+            patch_w=m6_args.patch_w,
+            bend_radius=m6_args.bend_radius,
+            t_fillet_r=m6_args.t_fillet_r,
+            feed_50_len=m6_args.feed_50_len,
+            arm_offset=m6_args.arm_offset,
+            end_straight=m6_args.end_straight,
+            driven_port=m6_args.driven_port,
+            freq_min=m6_args.freq_min,
+            freq_max=m6_args.freq_max,
+            freq_step=m6_args.freq_step,
+            amr_max_its=m6_args.amr_max_its,
+            linear_tol=m6_args.linear_tol,
+            linear_max_its=m6_args.linear_max_its,
+            farfield_nsample=m6_args.farfield_nsample,
+            export_each=m6_args.export_each,
+            skip_simulation=m6_args.skip_simulation,
+        )
+
+    elif selected_model == 5:
         from sweep_model5 import run_sweep_model5
         parser_m5 = argparse.ArgumentParser(description="Parametrický sweep Modelu 5 (Dvouportový 100 Ohm model s oblouky)")
         parser_m5.add_argument("--sweep-target", choices=["patch_l", "delta_l", "trans_w", "w_t", "trans_l", "l_t", "inset", "y0", "bend_radius", "port_offset", "driven_port"], default=None)

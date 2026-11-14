@@ -73,7 +73,19 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
                     pec_surfs.append(tag)
                     
         if not params.get('port_tags') and not params.get('port1_tags'):
-            if model_version == 4:
+            if model_version == 6:
+                # Model 6: Port 1 (interní svislá plocha v rovině XZ na y = y_T - d_t)
+                x_T_val = params.get('feed_x_T', params.get('x_T'))
+                y_p1 = params.get('port1_y', params.get('y_port_1'))
+                if y_p1 is None and params.get('feed_y_T') is not None and params.get('d_t') is not None:
+                    y_p1 = params['feed_y_T'] - params['d_t']
+                if y_p1 is not None and x_T_val is not None:
+                    if abs(ymin - y_p1) < GEOM_TOL and abs(ymax - y_p1) < GEOM_TOL and \
+                       abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
+                        if xmin >= x_T_val - feed_w/2 - EDGE_CLEARANCE_TOL and xmax <= x_T_val + feed_w/2 + EDGE_CLEARANCE_TOL:
+                            port1_surfs.append(tag)
+                            port_surfs.append(tag)
+            elif model_version == 4:
                 # Model 4: jediný 50 Ohm port (YZ rovina na levém kraji substrátu x = -W_sub/2 kolem port_y)
                 if abs(xmin - (-params['sub_W']/2)) < GEOM_TOL and abs(xmax - (-params['sub_W']/2)) < GEOM_TOL and \
                    abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
@@ -95,18 +107,30 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
                         port1_surfs.append(tag)
                         port_surfs.append(tag)
 
-        if not params.get('port2_tags') and model_version in (2, 3, 5):
-            # Port 2 (YZ rovina na levém kraji substrátu x = -W_sub/2)
-            port_y_2 = params.get('y_port_2', 0.0)
-            if abs(xmin - (-params['sub_W']/2)) < GEOM_TOL and abs(xmax - (-params['sub_W']/2)) < GEOM_TOL and \
-               abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
-                if ymin >= port_y_2 - feed_w/2 - EDGE_CLEARANCE_TOL and ymax <= port_y_2 + feed_w/2 + EDGE_CLEARANCE_TOL:
-                    port2_surfs.append(tag)
+        if not params.get('port2_tags') and model_version in (2, 3, 5, 6):
+            if model_version == 6:
+                # Model 6: Port 2 (interní svislá plocha v rovině XZ na y = y_T + d_t)
+                x_T_val = params.get('feed_x_T', params.get('x_T'))
+                y_p2 = params.get('port2_y', params.get('y_port_2'))
+                if y_p2 is None and params.get('feed_y_T') is not None and params.get('d_t') is not None:
+                    y_p2 = params['feed_y_T'] + params['d_t']
+                if y_p2 is not None and x_T_val is not None:
+                    if abs(ymin - y_p2) < GEOM_TOL and abs(ymax - y_p2) < GEOM_TOL and \
+                       abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
+                        if xmin >= x_T_val - feed_w/2 - EDGE_CLEARANCE_TOL and xmax <= x_T_val + feed_w/2 + EDGE_CLEARANCE_TOL:
+                            port2_surfs.append(tag)
+            else:
+                # Port 2 (YZ rovina na levém kraji substrátu x = -W_sub/2)
+                port_y_2 = params.get('y_port_2', 0.0)
+                if abs(xmin - (-params['sub_W']/2)) < GEOM_TOL and abs(xmax - (-params['sub_W']/2)) < GEOM_TOL and \
+                   abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
+                    if ymin >= port_y_2 - feed_w/2 - EDGE_CLEARANCE_TOL and ymax <= port_y_2 + feed_w/2 + EDGE_CLEARANCE_TOL:
+                        port2_surfs.append(tag)
 
-    # 2. Klasifikace ploch (3: PEC, 4: Port / Port1, 5: Absorbing, 6: Port2 pro Model 2, 3 a 5)
+    # 2. Klasifikace ploch (3: PEC, 4: Port / Port1, 5: Absorbing, 6: Port2 pro Model 2, 3, 5 a 6)
     gmsh.model.addPhysicalGroup(2, list(set(pec_surfs)), tag=3, name="PEC")
 
-    if model_version in (2, 3, 5) and port1_surfs and port2_surfs:
+    if model_version in (2, 3, 5, 6) and port1_surfs and port2_surfs:
         gmsh.model.addPhysicalGroup(2, list(set(port1_surfs)), tag=4, name="Port1")
         gmsh.model.addPhysicalGroup(2, list(set(port2_surfs)), tag=6, name="Port2")
         all_port_surfs = list(set(port1_surfs + port2_surfs))

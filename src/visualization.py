@@ -20,6 +20,10 @@ try:
     from geometry_v5 import compute_model5_routing
 except ImportError:
     compute_model5_routing = None
+try:
+    from geometry_v6 import compute_model6_routing
+except ImportError:
+    compute_model6_routing = None
 
 
 def _t_junction_polygon_pts(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, arc_samples=18):
@@ -50,6 +54,136 @@ def _t_junction_polygon_pts(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, arc_samp
         pts.append((x_fs + r_f * np.cos(ang), (y_T + d_t) + r_f * np.sin(ang)))
     pts.append((x_port, y_T + hw_50))
     return pts
+
+
+def _draw_model6_top_view(ax, params, is_detail=False):
+    """Vykreslí geometrii dvouportového Modelu 6 (100 Ohm interní porty Port 1 a Port 2 na y_T ± d_t) v rovině XY."""
+    info = compute_model6_routing(params)
+    L, W = info['L'], info['W']
+    W_sub, L_sub = info['W_sub'], info['L_sub']
+    w_feed = info['w_feed']
+    w_T_b, w_T_l = info['w_T_b'], info['w_T_l']
+    l_T_b, l_T_l = info['l_T_b'], info['l_T_l']
+    inset_b, inset_l = info['inset_b'], info['inset_l']
+    gap_b, gap_l = info['inset_gap_b'], info['inset_gap_l']
+    bend_r = info['bend_radius']
+    x_T = info['x_T']
+    y_T = info['y_T']
+    d_t = info['d_t']
+    port1_y = info['port1_y']
+    port2_y = info['port2_y']
+    y_junc_b, x_junc_l = info['y_junc_b'], info['x_junc_l']
+    y_bot = info['y_bot']
+
+    # 1. Substrát
+    ax.add_patch(patches.Rectangle(
+        (-W_sub / 2.0, -L_sub / 2.0), W_sub, L_sub,
+        linewidth=1.2, edgecolor='#2E7D32', facecolor='#E8F5E9',
+        zorder=1, label=rf'Substrát ({W_sub:.1f} $\times$ {L_sub:.1f} mm)'
+    ))
+
+    # 2. Vyzařující flíček se zářezy
+    notch_b_w = w_T_b + 2.0 * gap_b if inset_b > 0 else 0.0
+    notch_l_h = w_T_l + 2.0 * gap_l if inset_l > 0 else 0.0
+    x_l, x_r, y_b, y_t = -W / 2.0, W / 2.0, -L / 2.0, L / 2.0
+    verts_patch = [
+        (notch_b_w / 2.0, y_b), (x_r, y_b), (x_r, y_t), (x_l, y_t),
+        (x_l, notch_l_h / 2.0), (x_l + inset_l, notch_l_h / 2.0),
+        (x_l + inset_l, -notch_l_h / 2.0), (x_l, -notch_l_h / 2.0),
+        (x_l, y_b), (-notch_b_w / 2.0, y_b),
+        (-notch_b_w / 2.0, y_b + inset_b), (notch_b_w / 2.0, y_b + inset_b),
+    ]
+    ax.add_patch(Polygon(
+        verts_patch, closed=True,
+        facecolor='#E67E22', edgecolor='#935116',
+        linewidth=1.3, zorder=3, label=rf'Vyzařující flíček ({W:.1f} $\times$ {L:.1f} mm)'
+    ))
+
+    # 3. Transformátory u flíčku
+    ax.add_patch(patches.Rectangle(
+        (-w_T_b / 2.0, y_junc_b), w_T_b, l_T_b,
+        linewidth=0.8, edgecolor='#B7770D', facecolor='#F1C40F',
+        zorder=5, label=rf'Transformátor $w_T$ ({w_T_b:.2f} mm)'
+    ))
+    ax.add_patch(patches.Rectangle(
+        (x_junc_l, -w_T_l / 2.0), l_T_l, w_T_l,
+        linewidth=0.8, edgecolor='#B7770D', facecolor='#F1C40F',
+        zorder=5
+    ))
+
+    # 4. Zakřivené 100 Ohm větve z Modelu 4
+    arm_l_poly = compute_curved_ribbon_outline(info['arm_l_build_waypoints'], w_feed, bend_r)
+    arm_b_poly = compute_curved_ribbon_outline(info['arm_b_build_waypoints'], w_feed, bend_r)
+    ax.add_patch(Polygon(
+        arm_l_poly, closed=True, facecolor='#D35400', edgecolor='#78281F',
+        linewidth=0.8, zorder=4, label=rf'Zakřivené větve $100\ \Omega$ ($w={w_feed:.2f}$ mm, $R={bend_r:.1f}$ mm)'
+    ))
+    ax.add_patch(Polygon(
+        arm_b_poly, closed=True, facecolor='#D35400', edgecolor='#78281F',
+        linewidth=0.8, zorder=4
+    ))
+
+    # 5. Dva interní 100 Ohm porty (svislé XZ plochy na y = y_T ± d_t)
+    port_thickness = 0.8
+    hw_f = w_feed / 2.0
+
+    # Port 1 (spodní větev, y = y_T - d_t)
+    ax.add_patch(patches.Rectangle(
+        (x_T - hw_f, port1_y - port_thickness / 2.0), w_feed, port_thickness,
+        facecolor='#C0392B', edgecolor='#641E16', lw=1.5, zorder=6, label=r'Port 1 ($100\ \Omega$, interní $E_y$)'
+    ))
+    # Port 2 (levá větev, y = y_T + d_t)
+    ax.add_patch(patches.Rectangle(
+        (x_T - hw_f, port2_y - port_thickness / 2.0), w_feed, port_thickness,
+        facecolor='#2980B9', edgecolor='#1B4F72', lw=1.5, zorder=6, label=r'Port 2 ($100\ \Omega$, interní $E_x$)'
+    ))
+
+    if not is_detail:
+        ax.text(
+            0.0, 2.5,
+            "Vyzařující flíček\n" + rf"($W={W:.1f} \times L={L:.1f}\ \mathrm{{mm}}$)",
+            ha='center', va='center', fontsize=9.5, fontweight='bold', color='#5D2E08',
+            bbox=dict(boxstyle="round,pad=0.3", fc="#FFF8EB", ec="#E67E22", alpha=0.92),
+            zorder=7,
+        )
+        ax.annotate(
+            rf"Větev $E_x$ ($100\ \Omega$, $0^\circ$)" + "\n"
+            + rf"($L_{{100,l}}={info['L_100_l_eff']:.2f}\ \mathrm{{mm}}$)",
+            xy=(x_T, min(-4.0, 0.35 * y_T)),
+            xytext=(max(-W_sub / 2.0 + 18.0, x_T + 8.0), L / 2.0 + 9.0),
+            arrowprops=dict(arrowstyle="->", color="#78281F", lw=1.3),
+            ha='center', va='center', fontsize=8.5, fontweight='bold', color='#78281F',
+            bbox=dict(boxstyle="round,pad=0.25", fc="#FEF9E7", ec="#D35400", alpha=0.93),
+            zorder=8,
+        )
+        ax.annotate(
+            rf"Větev $E_y$ ($100\ \Omega$, $-90^\circ$)" + "\n"
+            + rf"($L_{{100,b}}={info['L_100_b_eff']:.2f}\ \mathrm{{mm}}$, $\Delta L={info['feed_delta_l']:.2f}\ \mathrm{{mm}}$)",
+            xy=(0.45 * x_T, y_bot),
+            xytext=(min(W_sub / 2.0 - 22.0, max(16.0, W / 2.0 + 10.0)), y_bot + 10.5),
+            arrowprops=dict(arrowstyle="->", color="#78281F", lw=1.3),
+            ha='center', va='center', fontsize=8.5, fontweight='bold', color='#78281F',
+            bbox=dict(boxstyle="round,pad=0.25", fc="#FEF9E7", ec="#D35400", alpha=0.93),
+            zorder=8,
+        )
+        ax.annotate(
+            rf"Port 1: $100\ \Omega$ ($E_y$)" + "\n" + rf"($y={port1_y:.2f}\ \mathrm{{mm}}$)",
+            xy=(x_T, port1_y),
+            xytext=(x_T - 16.0, port1_y - 6.0),
+            arrowprops=dict(arrowstyle="->", color="#641E16", lw=1.3),
+            ha='right', va='center', fontsize=8.5, fontweight='bold', color='#641E16',
+            bbox=dict(boxstyle="round,pad=0.22", fc="#FDEDEC", ec="#C0392B", alpha=0.93),
+            zorder=8,
+        )
+        ax.annotate(
+            rf"Port 2: $100\ \Omega$ ($E_x$)" + "\n" + rf"($y={port2_y:.2f}\ \mathrm{{mm}}$)",
+            xy=(x_T, port2_y),
+            xytext=(x_T - 16.0, port2_y + 6.0),
+            arrowprops=dict(arrowstyle="->", color="#1B4F72", lw=1.3),
+            ha='right', va='center', fontsize=8.5, fontweight='bold', color='#1B4F72',
+            bbox=dict(boxstyle="round,pad=0.22", fc="#EBF5FB", ec="#2980B9", alpha=0.93),
+            zorder=8,
+        )
 
 
 def _draw_model5_top_view(ax, params, is_detail=False):
@@ -566,7 +700,18 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
     fig, ax = plt.subplots(figsize=(11, 10))
     ax.set_aspect('equal')
 
-    if model_version == 5:
+    if model_version == 6:
+        info_m6 = compute_model6_routing(params)
+        L_sub = info_m6['L_sub']
+        W_sub = info_m6['W_sub']
+        _draw_model6_top_view(ax, params, is_detail=False)
+        plot_title = (
+            f"Model 6: Dvouportový model ($100\\ \\Omega$ interní porty na $y_T \\pm d_t$) — 2D pohled shora (rovina XY)\n"
+            f"Flíček $W={W:.1f}\\times L={L:.1f}\\ \\mathrm{{mm}}$, "
+            f"$w_T={info_m6['w_T_b']:.2f}\\ \\mathrm{{mm}}$, $y_0={info_m6['inset_b']:.2f}\\ \\mathrm{{mm}}$, "
+            f"$R_{{\\mathrm{{obl}}}}={info_m6['bend_radius']:.1f}\\ \\mathrm{{mm}}$, $\\Delta L={info_m6['feed_delta_l']:.2f}\\ \\mathrm{{mm}}$, $d_t={info_m6['d_t']:.2f}\\ \\mathrm{{mm}}$"
+        )
+    elif model_version == 5:
         info_m5 = compute_model5_routing(params)
         L_sub = info_m5['L_sub']
         W_sub = info_m5['W_sub']
@@ -638,8 +783,14 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
         fig_det, ax_det = plt.subplots(figsize=(10, 8.5))
         ax_det.set_aspect('equal')
 
-    if model_version in (3, 4, 5):
-        if model_version == 5:
+    if model_version in (3, 4, 5, 6):
+        if model_version == 6:
+            w_feed = info_m6['w_feed']
+            w_T = info_m6['w_T_b']
+            l_T = info_m6['l_T_b']
+            inset_b = info_m6['inset_b']
+            gap_b = info_m6['inset_gap_b']
+        elif model_version == 5:
             w_feed = info_m5['w_feed']
             w_T = info_m5['w_T_b']
             l_T = info_m5['l_T_b']
