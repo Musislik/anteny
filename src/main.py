@@ -772,7 +772,10 @@ def _process_results_model2(params, output_dir, data_dir, run_name):
                 plt.plot(freqs, s11_db, label='S11 (Spodní port, Ey)', color='blue', lw=2)
             if s22_db is not None:
                 plt.plot(freqs, s22_db, label='S22 (Levý port, Ex)', color='crimson', lw=2, linestyle='--')
-            if s21_db is not None:
+            if s21_db is not None and s12_db is not None and not np.allclose(s21_db, s12_db, atol=1e-3):
+                plt.plot(freqs, s21_db, label='S21 (Vazba 1->2)', color='darkgreen', lw=1.5, linestyle=':')
+                plt.plot(freqs, s12_db, label='S12 (Vazba 2->1)', color='teal', lw=1.5, linestyle='-.')
+            elif s21_db is not None:
                 plt.plot(freqs, s21_db, label='S21 (Vazba 1->2)', color='darkgreen', lw=1.5, linestyle=':')
             elif s12_db is not None:
                 plt.plot(freqs, s12_db, label='S12 (Vazba 2->1)', color='darkgreen', lw=1.5, linestyle=':')

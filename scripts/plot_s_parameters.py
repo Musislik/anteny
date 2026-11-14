@@ -57,7 +57,7 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
                 pass
 
     model = int(res_params.get("antenna_model", 3))
-    default_z0 = 100.0 if model in (2, 3) else 50.0
+    default_z0 = 100.0 if model in (2, 3, 5, 6) else 50.0
     z0 = float(res_params.get("port_impedance", default_z0))
     dp_hint = res_params.get("driven_port") or os.getenv("DRIVEN_PORT")
     if dp_hint is not None:
@@ -182,7 +182,10 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
         ax1.plot(freqs, s22_db, label=r"$S_{22}$ (Port 2 - levý, $E_x$)", color='crimson', lw=2.2, linestyle='--')
         ax1.plot(freqs[min2_idx], s22_db[min2_idx], 'ro', label=f'Min $S_{{22}}$: {s22_db[min2_idx]:.2f} dB @ {freqs[min2_idx]:.3f} GHz')
 
-    if iso_db is not None:
+    if s21_db is not None and s12_db is not None and not np.allclose(s21_db, s12_db, atol=1e-3):
+        ax1.plot(freqs, s21_db, label=r"Izolace $S_{21}$", color='purple', lw=1.8, linestyle=':')
+        ax1.plot(freqs, s12_db, label=r"Izolace $S_{12}$", color='darkviolet', lw=1.5, linestyle='-.')
+    elif iso_db is not None:
         iso_name = "S_{21}" if (s11_db is not None or s12_db is None) else "S_{12}"
         ax1.plot(freqs, iso_db, label=rf"Izolace / přeslech ${iso_name}$", color='purple', lw=1.8, linestyle=':')
 
@@ -257,8 +260,21 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
         plt.savefig(p_s11_s22, dpi=200)
         plt.close(fig_s)
 
-        # 2. Samostatný graf izolace S21
-        if iso_db is not None:
+        # 2. Samostatný graf izolace S21 a S12
+        if s21_db is not None and s12_db is not None and not np.allclose(s21_db, s12_db, atol=1e-3):
+            fig_iso, ax_iso = plt.subplots(figsize=(8.5, 5))
+            ax_iso.plot(freqs, s21_db, label=r"Izolace $S_{21}$ (Port 1 $\rightarrow$ Port 2)", color='purple', lw=2.0)
+            ax_iso.plot(freqs, s12_db, label=r"Izolace $S_{12}$ (Port 2 $\rightarrow$ Port 1)", color='darkviolet', lw=1.8, linestyle='--')
+            ax_iso.set_title(r"Izolace mezi porty ($S_{21}$ a $S_{12}$)", fontsize=12, fontweight='bold')
+            ax_iso.set_xlabel("Frekvence [GHz]", fontsize=11)
+            ax_iso.set_ylabel("Magnituda [dB]", fontsize=11)
+            ax_iso.grid(True, linestyle=':', alpha=0.7)
+            ax_iso.legend(loc='best', fontsize=9)
+            plt.tight_layout()
+            p_iso = os.path.join(g_dir, "graf_S21_izolace.png")
+            plt.savefig(p_iso, dpi=200)
+            plt.close(fig_iso)
+        elif iso_db is not None:
             fig_iso, ax_iso = plt.subplots(figsize=(8.5, 5))
             iso_name = "S_{21}" if (s11_db is not None or s12_db is None) else "S_{12}"
             ax_iso.plot(freqs, iso_db, label=rf"Izolace / přeslech ${iso_name}$", color='purple', lw=2.0)

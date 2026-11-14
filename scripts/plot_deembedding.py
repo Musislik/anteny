@@ -213,7 +213,7 @@ def _resolve_deembedding_params(export_dir, explicit_params=None):
 
     # 3. Výchozí hodnoty (Model 3, příp. 50 Ohm pro Model 1)
     model_hint = int(params.get('antenna_model', 3) or 3)
-    default_z0 = 100.0 if model_hint in (2, 3) else 50.0
+    default_z0 = 100.0 if model_hint in (2, 3, 5, 6) else 50.0
     defaults = {
         'antenna_model': 3,
         'sub_h': 1.52,
@@ -311,7 +311,11 @@ def plot_impedance_deembedding(export_dir, params=None, output_png=None, layout=
     c_limit = 'red'
 
     m_info = f"Model {model}"
-    if model == 4:
+    if model == 6:
+        m_info += f" (Dvouportový zakřivený $100\\ \\Omega$ s interními porty: $w_T={p_used.get('w_T_b', 0.42):.2f}\\ \\mathrm{{mm}}$, $l_T={p_used.get('l_T_b', 18.9):.2f}\\ \\mathrm{{mm}}$)"
+    elif model == 5:
+        m_info += f" (Dvouportový zakřivený $100\\ \\Omega$: $w_T={p_used.get('w_T_b', 0.42):.2f}\\ \\mathrm{{mm}}$, $l_T={p_used.get('l_T_b', 18.9):.2f}\\ \\mathrm{{mm}}$)"
+    elif model == 4:
         m_info += f" (Finální $50\\ \\Omega$ T-článek + oblouky: $L_{{50}}={p_used.get('feed_50_len', 9.0):.1f}\\ \\mathrm{{mm}}$, $w_T={p_used.get('w_T_b', 0.42):.2f}\\ \\mathrm{{mm}}$)"
     elif model == 3:
         m_info += f" (Hybridní dvoustupňové přizpůsobení: $w_T={p_used.get('w_T_b', 0.42):.2f}\\ \\mathrm{{mm}}$, $l_T={p_used.get('l_T_b', 18.9):.2f}\\ \\mathrm{{mm}}$)"

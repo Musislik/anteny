@@ -426,7 +426,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
     tan_delta = float(params.get('tan_delta', 0.02))
     f_design = float(params.get('design_freq_ghz', DESIGN_FREQ_GHZ))
 
-    default_z0 = 100.0 if model in (2, 3) else PORT_Z0
+    default_z0 = 100.0 if model in (2, 3, 5, 6) else PORT_Z0
     port_z0 = float(params.get('port_impedance', default_z0))
 
     freqs_arr = np.atleast_1d(np.asarray(freqs, dtype=float))
@@ -583,12 +583,12 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
     # Odvození délek vnějšího 100 Ohm úseku
     l_T_default_val = None
     w_T_def = float(params.get('trans_w', params.get('w_T', 0.42)))
-    if model == 3:
+    if model in (3, 5, 6):
         eps_eff_tdef = calc_microstrip_eps_eff(w_T_def, h, eps_r)
         l_T_default_val = calc_quarter_wave_length(f_design, eps_eff_tdef)
 
-    l_T_b = float(params.get('trans_l_b', params.get('l_T_b', params.get('trans_l', params.get('l_T', l_T_default_val if model == 3 else 0.0)))))
-    l_T_l = float(params.get('trans_l_l', params.get('l_T_l', params.get('trans_l', params.get('l_T', l_T_default_val if model == 3 else 0.0)))))
+    l_T_b = float(params.get('trans_l_b', params.get('l_T_b', params.get('trans_l', params.get('l_T', l_T_default_val if model in (3, 5, 6) else 0.0)))))
+    l_T_l = float(params.get('trans_l_l', params.get('l_T_l', params.get('trans_l', params.get('l_T', l_T_default_val if model in (3, 5, 6) else 0.0)))))
 
     if model == 2:
         l_T_b = 0.0
@@ -638,7 +638,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         gamma2_rp2_db = None
 
     # --- 3. RP3: Vstup do flíčku (po odečtení l_T) ---
-    if model == 3 and (l_T_b > 0.0 or l_T_l > 0.0):
+    if model in (3, 5, 6) and (l_T_b > 0.0 or l_T_l > 0.0):
         w_T_b = float(params.get('trans_w_b', params.get('w_T_b', params.get('trans_w', 0.42))))
         w_T_l = float(params.get('trans_w_l', params.get('w_T_l', params.get('trans_w', 0.42))))
 
