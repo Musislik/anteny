@@ -94,21 +94,25 @@ def calculate_gain_frequency(farfield_source, p_in=None, num_ports=None, design_
             # Zkusíme detekovat z params nebo sourozeneckých souborů
             res_params = params or {}
             model_num = int(res_params.get("antenna_model", 0))
-            if model_num in (2, 5, 6):
+            if model_num in (2, 3, 5, 6):
                 num_ports = 2
+            elif model_num in (1, 4):
+                num_ports = 1
             elif csv_dir:
                 p1_ff = os.path.join(csv_dir, "farfield_p1-rE.csv")
                 p2_ff = os.path.join(csv_dir, "farfield_p2-rE.csv")
                 if os.path.isfile(p1_ff) and os.path.isfile(p2_ff):
                     num_ports = 2
-            
+
             if num_ports is None:
                 # Kontrola počtu unikátních exc v datech
                 exc_col = df.iloc[:, 1]
                 if exc_col.nunique() > 1:
                     num_ports = exc_col.nunique()
+                elif model_num in (1, 4):
+                    num_ports = 1
                 else:
-                    num_ports = 2  # Standardní výchozí hodnota pro projekt (dvouportový model)
+                    num_ports = 2  # Standardní výchozí hodnota pro dvouportové modely
         p_in = float(num_ports) * 0.5
 
     p_in = max(float(p_in), 1e-4)
