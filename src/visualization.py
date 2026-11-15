@@ -24,6 +24,10 @@ try:
     from geometry_v6 import compute_model6_routing
 except ImportError:
     compute_model6_routing = None
+try:
+    from geometry_v7 import compute_model7_routing
+except ImportError:
+    compute_model7_routing = None
 
 
 def _t_junction_polygon_pts(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, arc_samples=18):
@@ -282,6 +286,142 @@ def _draw_model5_top_view(ax, params, is_detail=False):
             x_port - 1.5, y_port_2, "Port 2 (Ex, ref 0°)",
             ha='right', va='center', fontsize=8.5, fontweight='bold', color='crimson',
             bbox=dict(boxstyle="round,pad=0.2", fc="#FDEDEC", ec="crimson", alpha=0.9), zorder=7
+        )
+
+
+def _draw_model7_top_view(ax, params, is_detail=False):
+    """Vykreslí geometrii Modelu 7 (zrcadlený Model 4 pro RHCP, pravý 50 Ohm T-článek s oblouky) v rovině XY."""
+    info = compute_model7_routing(params)
+    L, W = info['L'], info['W']
+    W_sub, L_sub = info['W_sub'], info['L_sub']
+    w_50, w_feed = info['w_50'], info['w_feed']
+    w_T_b, w_T_r = info['w_T_b'], info['w_T_r']
+    l_T_b, l_T_r = info['l_T_b'], info['l_T_r']
+    inset_b, inset_r = info['inset_b'], info['inset_r']
+    gap_b, gap_r = info['inset_gap_b'], info['inset_gap_r']
+    bend_r = info['bend_radius']
+    t_fillet_r = info['t_fillet_r']
+    x_T, y_T = info['x_T'], info['y_T']
+    x_port, y_port = info['x_port'], info['y_port']
+    y_bot = info['y_bot']
+    y_junc_b, x_junc_r = info['y_junc_b'], info['x_junc_r']
+
+    # 1. Substrát
+    ax.add_patch(patches.Rectangle(
+        (-W_sub / 2.0, -L_sub / 2.0), W_sub, L_sub,
+        linewidth=1.2, edgecolor='#2E7D32', facecolor='#E8F5E9',
+        zorder=1, label=rf'Substrát ({W_sub:.1f} $\times$ {L_sub:.1f} mm)'
+    ))
+
+    # 2. Flíček se zářezy na spodní a pravé hraně
+    notch_b_w = w_T_b + 2.0 * gap_b if inset_b > 0 else 0.0
+    notch_r_h = w_T_r + 2.0 * gap_r if inset_r > 0 else 0.0
+    x_l, x_r, y_b, y_t = -W / 2.0, W / 2.0, -L / 2.0, L / 2.0
+    verts_patch = [
+        (notch_b_w / 2.0, y_b),
+        (notch_b_w / 2.0, y_b + inset_b),
+        (-notch_b_w / 2.0, y_b + inset_b),
+        (-notch_b_w / 2.0, y_b),
+        (x_l, y_b),
+        (x_l, y_t),
+        (x_r, y_t),
+        (x_r, notch_r_h / 2.0),
+        (x_r - inset_r, notch_r_h / 2.0),
+        (x_r - inset_r, -notch_r_h / 2.0),
+        (x_r, -notch_r_h / 2.0),
+        (x_r, y_b),
+    ]
+    ax.add_patch(Polygon(
+        verts_patch, closed=True,
+        facecolor='#E67E22', edgecolor='#935116',
+        linewidth=1.3, zorder=3, label=rf'Vyzařující flíček RHCP ({W:.1f} $\times$ {L:.1f} mm)'
+    ))
+
+    # 3. Transformátory u flíčku
+    ax.add_patch(patches.Rectangle(
+        (-w_T_b / 2.0, y_junc_b), w_T_b, l_T_b,
+        linewidth=0.8, edgecolor='#B7770D', facecolor='#F1C40F',
+        zorder=5, label=rf'Transformátor $w_T$ ({w_T_b:.2f} mm)'
+    ))
+    ax.add_patch(patches.Rectangle(
+        (W / 2.0 - inset_r, -w_T_r / 2.0), l_T_r, w_T_r,
+        linewidth=0.8, edgecolor='#B7770D', facecolor='#F1C40F',
+        zorder=5
+    ))
+
+    # 4. Zakřivené 100 Ohm větve (1 oblouk na pravé větvi Ex, 2 oblouky na spodní Ey)
+    arm_r_poly = compute_curved_ribbon_outline(info['arm_r_build_waypoints'], w_feed, bend_r)
+    arm_b_poly = compute_curved_ribbon_outline(info['arm_b_build_waypoints'], w_feed, bend_r)
+    ax.add_patch(Polygon(
+        arm_r_poly, closed=True, facecolor='#D35400', edgecolor='#78281F',
+        linewidth=0.8, zorder=4, label=rf'Zakřivené větve $100\ \Omega$ ($w={w_feed:.2f}$ mm, $R={bend_r:.1f}$ mm)'
+    ))
+    ax.add_patch(Polygon(
+        arm_b_poly, closed=True, facecolor='#D35400', edgecolor='#78281F',
+        linewidth=0.8, zorder=4
+    ))
+
+    # 5. Vodorovný pravý 50 Ohm přívod a otočený T-článek se zaoblením
+    trunk_pts_m4 = _t_junction_polygon_pts(-x_port, -x_T, y_T, w_50, w_feed, t_fillet_r)
+    trunk_pts = [(-float(p[0]), float(p[1])) for p in trunk_pts_m4]
+    ax.add_patch(Polygon(
+        trunk_pts, closed=True, facecolor='#C0392B', edgecolor='#641E16',
+        linewidth=0.9, zorder=5, label=rf'Přívod $50\ \Omega$ + T-článek vpravo ($w_1={w_50:.2f}$ mm)'
+    ))
+
+    # 6. Výstupní 50 Ohm port na pravé hraně substrátu
+    port_hw = max(w_50 * 0.75, 1.5)
+    ax.add_patch(patches.Rectangle(
+        (x_port, y_port - port_hw), 0.8, 2.0 * port_hw,
+        facecolor='red', edgecolor='darkred', lw=1.2, zorder=6, label=r'Port 1 ($50\ \Omega$ RHCP)'
+    ))
+
+    if not is_detail:
+        ax.text(
+            0.0, 2.5,
+            "Vyzařující flíček (RHCP)\n" + rf"($W={W:.1f} \times L={L:.1f}\ \mathrm{{mm}}$)",
+            ha='center', va='center', fontsize=9.5, fontweight='bold', color='#5D2E08',
+            bbox=dict(boxstyle="round,pad=0.3", fc="#FFF8EB", ec="#E67E22", alpha=0.92),
+            zorder=7,
+        )
+        ax.annotate(
+            rf"Větev $E_x$ ($100\ \Omega$, $0^\circ$)" + "\n"
+            + rf"($1$ oblouk, $L_{{100,r}}={info['L_100_r']:.2f}\ \mathrm{{mm}}$)",
+            xy=(x_T, min(-4.0, 0.35 * y_T)),
+            xytext=(min(W_sub / 2.0 - 18.0, x_T - 8.0), L / 2.0 + 9.0),
+            arrowprops=dict(arrowstyle="->", color="#78281F", lw=1.3),
+            ha='center', va='center', fontsize=8.5, fontweight='bold', color='#78281F',
+            bbox=dict(boxstyle="round,pad=0.25", fc="#FEF9E7", ec="#D35400", alpha=0.93),
+            zorder=8,
+        )
+        ax.annotate(
+            rf"Větev $E_y$ ($100\ \Omega$, $-90^\circ$)" + "\n"
+            + rf"($2$ oblouky, $L_{{100,b}}={info['L_100_b']:.2f}\ \mathrm{{mm}}$, $\Delta L={info['feed_delta_l']:.2f}\ \mathrm{{mm}}$)",
+            xy=(0.45 * x_T, y_bot),
+            xytext=(max(-W_sub / 2.0 + 22.0, min(-16.0, -W / 2.0 - 10.0)), y_bot + 10.5),
+            arrowprops=dict(arrowstyle="->", color="#78281F", lw=1.3),
+            ha='center', va='center', fontsize=8.5, fontweight='bold', color='#78281F',
+            bbox=dict(boxstyle="round,pad=0.25", fc="#FEF9E7", ec="#D35400", alpha=0.93),
+            zorder=8,
+        )
+        ax.annotate(
+            rf"T-článek $50\ \Omega \to 100\parallel 100\ \Omega$ (RHCP)" + "\n"
+            + rf"($R_{{\mathrm{{obl}}}}={bend_r:.1f}\ \mathrm{{mm}}$, $L_{{50}}={info['feed_50_len']:.2f}\ \mathrm{{mm}}$)",
+            xy=(x_T, y_T),
+            xytext=(max(12.0, x_T - 18.5), y_T + 2.5),
+            arrowprops=dict(arrowstyle="->", color="#641E16", lw=1.4),
+            ha='center', va='center', fontsize=8.5, fontweight='bold', color='#641E16',
+            bbox=dict(boxstyle="round,pad=0.28", fc="#FDEDEC", ec="#C0392B", alpha=0.93),
+            zorder=8,
+        )
+        ax.annotate(
+            rf"Pravý port ($50\ \Omega$)" + "\n" + rf"($x={x_port:.2f}\ \mathrm{{mm}}$)",
+            xy=(x_port + 0.2, y_port),
+            xytext=(x_port - 0.8, y_port + 11.0),
+            arrowprops=dict(arrowstyle="->", color="red", lw=1.3),
+            ha='right', va='bottom', fontsize=8.8, fontweight='bold', color='darkred',
+            bbox=dict(boxstyle="round,pad=0.22", fc="#FDEDEC", ec="red", alpha=0.93),
+            zorder=8,
         )
 
 
@@ -700,7 +840,18 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
     fig, ax = plt.subplots(figsize=(11, 10))
     ax.set_aspect('equal')
 
-    if model_version == 6:
+    if model_version == 7:
+        info_m7 = compute_model7_routing(params)
+        L_sub = info_m7['L_sub']
+        W_sub = info_m7['W_sub']
+        _draw_model7_top_view(ax, params, is_detail=False)
+        plot_title = (
+            f"Model 7: Zrcadlený model (RHCP, $50\\ \\Omega$ T-článek vpravo + oblouky) — 2D pohled shora (rovina XY)\n"
+            f"Flíček $W={W:.1f}\\times L={L:.1f}\\ \\mathrm{{mm}}$, "
+            f"$w_T={info_m7['w_T_b']:.2f}\\ \\mathrm{{mm}}$, $y_0={info_m7['inset_b']:.2f}\\ \\mathrm{{mm}}$, "
+            f"$R_{{\\mathrm{{obl}}}}={info_m7['bend_radius']:.1f}\\ \\mathrm{{mm}}$, $\\Delta L={info_m7['feed_delta_l']:.2f}\\ \\mathrm{{mm}}$"
+        )
+    elif model_version == 6:
         info_m6 = compute_model6_routing(params)
         L_sub = info_m6['L_sub']
         W_sub = info_m6['W_sub']
@@ -772,19 +923,28 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
     # =========================================================================
     # 2. DETAILNÍ VÝŘEZ: ČTVRTVLVNNÝ TRANSFORMÁTOR A ZÁŘEZ y_0 (+ T-ČLÁNEK PRO M4)
     # =========================================================================
-    if model_version == 4:
+    if model_version in (4, 7):
         fig_det, (ax_det, ax_t) = plt.subplots(
             1, 2, figsize=(16, 7.8), gridspec_kw={'width_ratios': [1.0, 1.35]}
         )
         ax_det.set_aspect('equal')
         ax_t.set_aspect('equal')
-        info_m4 = compute_model4_routing(params)
+        if model_version == 7:
+            info_m7 = compute_model7_routing(params)
+        else:
+            info_m4 = compute_model4_routing(params)
     else:
         fig_det, ax_det = plt.subplots(figsize=(10, 8.5))
         ax_det.set_aspect('equal')
 
-    if model_version in (3, 4, 5, 6):
-        if model_version == 6:
+    if model_version in (3, 4, 5, 6, 7):
+        if model_version == 7:
+            w_feed = info_m7['w_feed']
+            w_T = info_m7['w_T_b']
+            l_T = info_m7['l_T_b']
+            inset_b = info_m7['inset_b']
+            gap_b = info_m7['inset_gap_b']
+        elif model_version == 6:
             w_feed = info_m6['w_feed']
             w_T = info_m6['w_T_b']
             l_T = info_m6['l_T_b']
@@ -901,11 +1061,78 @@ def plot_geometry(params, filename="data/geometry_iso.png"):
         ax_det.set_title(
             rf"Detail transformátoru $w_T={w_T:.2f}\ \mathrm{{mm}}$ a zářezu $y_0={inset_b:.2f}\ \mathrm{{mm}}$" + "\n"
             r"$100\ \Omega$ napaječ $\to$ $\lambda_g/4$ transformátor $\to$ zářez flíčku",
-            fontsize=10.5 if model_version == 4 else 11.5, fontweight='bold', pad=10
+            fontsize=10.5 if model_version in (4, 7) else 11.5, fontweight='bold', pad=10
         )
         ax_det.grid(True, linestyle=':', alpha=0.6)
 
-        if model_version == 4:
+        if model_version == 7:
+            _draw_model7_top_view(ax_t, params, is_detail=True)
+            x_t = info_m7['x_T']
+            y_t = info_m7['y_T']
+            x_p = info_m7['x_port']
+            y_b_arm = info_m7['y_bot']
+            w50_m7 = info_m7['w_50']
+            wf_m7 = info_m7['w_feed']
+            d_t_m7 = info_m7['d_t']
+            r_b_m7 = info_m7['bend_radius']
+            x_bar_r = x_t + wf_m7 / 2.0
+
+            x_lim_min = min(info_m7['x_junc_r'] - 5.0, x_t - 14.0)
+            x_lim_max = x_p + 4.5
+            y_lim_min = min(y_b_arm - 6.0, -info_m7['L_sub'] / 2.0 - 1.5)
+            y_lim_max = y_t + 10.5
+            ax_t.set_xlim([x_lim_min, x_lim_max])
+            ax_t.set_ylim([y_lim_min, y_lim_max])
+
+            # Přehledné kóty a popisky v detailu otočeného T-článku vpravo (bez překryvů)
+            y_dim_l50 = y_t + d_t_m7 + 2.6
+            ax_t.annotate(
+                "", xy=(x_bar_r, y_dim_l50), xytext=(x_p, y_dim_l50),
+                arrowprops=dict(arrowstyle="<->", color="#B71C1C", lw=1.3), zorder=8
+            )
+            ax_t.text(
+                0.5 * (x_p + x_bar_r), y_dim_l50 + 0.7,
+                rf"$L_{{50}}={info_m7['feed_50_len']:.2f}\ \mathrm{{mm}}$",
+                fontsize=8.5, fontweight='bold', color="#B71C1C", ha='center', va='bottom',
+                bbox=dict(boxstyle="round,pad=0.18", fc="white", ec="#B71C1C", lw=0.7, alpha=0.92), zorder=9
+            )
+
+            ax_t.plot(x_t, y_t, "o", color="#111827", ms=4.0, zorder=8)
+            ax_t.annotate(
+                rf"T-uzel $({x_t:.2f}, {y_t:.2f})$" + "\n" + rf"($r_f={info_m7['t_fillet_r']:.2f}\ \mathrm{{mm}}$)",
+                xy=(x_t, y_t), xytext=(x_t - 2.5, y_t + 3.2),
+                arrowprops=dict(arrowstyle="->", color="#641E16", lw=1.1),
+                fontsize=8.3, fontweight='bold', color="#641E16", ha='right', va='bottom',
+                bbox=dict(boxstyle="round,pad=0.2", fc="#FDEDEC", ec="#C0392B", lw=0.7, alpha=0.93), zorder=9
+            )
+
+            ax_t.annotate(
+                rf"Port $50\ \Omega$ RHCP ($w_{{50}}={w50_m7:.2f}\ \mathrm{{mm}}$)" + "\n" + rf"$x_{{\mathrm{{port}}}}={x_p:.2f}\ \mathrm{{mm}}$",
+                xy=(x_p, y_t - 0.5 * w50_m7), xytext=(x_p - 0.4, y_t - 7.8),
+                arrowprops=dict(arrowstyle="->", color="darkred", lw=1.1),
+                fontsize=8.2, fontweight='bold', color="darkred", ha='right', va='top',
+                bbox=dict(boxstyle="round,pad=0.2", fc="#FDEDEC", ec="red", lw=0.7, alpha=0.93), zorder=9
+            )
+
+            ax_t.annotate(
+                rf"Větev $E_y$ ($2$ oblouky)" + "\n" + rf"$R={r_b_m7:.2f}\ \mathrm{{mm}}$, $y_{{\mathrm{{bot}}}}={y_b_arm:.2f}$",
+                xy=(x_t - r_b_m7 * 0.45, y_b_arm + r_b_m7 * 0.15),
+                xytext=(x_t - r_b_m7 - 1.8, y_t - 6.8),
+                arrowprops=dict(arrowstyle="->", color="#0F766E", lw=1.1),
+                fontsize=8.2, fontweight='bold', color="#0F766E", ha='right', va='center',
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#0F766E", lw=0.7, alpha=0.93), zorder=9
+            )
+
+            ax_t.set_xlabel('X [mm]', fontsize=11, fontweight='bold')
+            ax_t.set_ylabel('Y [mm]', fontsize=11, fontweight='bold')
+            ax_t.set_title(
+                rf"Detail zrcadleného $50\ \Omega$ T-článku a oblouků RHCP ($R={r_b_m7:.1f}\ \mathrm{{mm}}$)" + "\n"
+                rf"$w_{{50}}={w50_m7:.2f}\ \mathrm{{mm}}$, $w_{{100}}={wf_m7:.2f}\ \mathrm{{mm}}$, $\Delta L={info_m7['feed_delta_l']:.2f}\ \mathrm{{mm}}$",
+                fontsize=11, fontweight='bold', pad=12
+            )
+            ax_t.grid(True, linestyle=':', alpha=0.6)
+
+        elif model_version == 4:
             _draw_model4_top_view(ax_t, params, is_detail=True)
             x_t = info_m4['x_T']
             y_t = info_m4['y_T']

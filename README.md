@@ -28,7 +28,7 @@ The workflow automates parametric OpenCASCADE geometry construction, conformal G
 
 ## Antenna Architectures
 
-Four antenna topologies are implemented and selectable via `ANTENNA_MODEL` in `.env` or `--model` on the CLI:
+Five antenna topologies are implemented and selectable via `ANTENNA_MODEL` in `.env` or `--model` on the CLI:
 
 ### 1. Model 1 (obsolete) — 50 Ω T-Junction Power Divider ([`src/geometry_v1.py`](src/geometry_v1.py))
 - **Topology:** Single `50 Ω` input feed (`w1 ≈ 2.98 mm`) connected to a symmetric T-junction power divider splitting into two orthogonal `100 Ω` branches (`w2 ≈ 0.69 mm`, natural match `Z_in,T = 100 Ω || 100 Ω = 50 Ω`).
@@ -46,7 +46,7 @@ Four antenna topologies are implemented and selectable via `ANTENNA_MODEL` in `.
   - The shallow notch reduces patch edge resistance (`R_edge ≈ 180–220 Ω`) to `~140 Ω` without distorting the orthogonal `TM_10` / `TM_01` modal currents, yielding a manufacturable transformer width (`w_T ≈ 0.42 mm` nominal for `Z_T ≈ 118.7 Ω`, tunable down to `0.30 mm`).
   - Matching occurs *before* the outer `100 Ω` feed line, so the `λ_g / 4` phase-delay section on Port 1 operates in a matched `100 Ω` environment without acting as an impedance inverter, restoring symmetry between Port 1 and Port 2.
 
-### 4. Model 4 (Final) — Single-Port Rotated Left-Edge 50 Ω T-Junction with Smooth Curved Bends ([`src/geometry_v4.py`](src/geometry_v4.py))
+### 4. Model 4 (LHCP Final) — Single-Port Rotated Left-Edge 50 Ω T-Junction with Smooth Curved Bends ([`src/geometry_v4.py`](src/geometry_v4.py))
 - **Topology:** Completes Model 3 by combining both `100 Ω` branches (`E_y` and `E_x`) through a rotated `100 Ω || 100 Ω = 50 Ω` T-junction fed horizontally from the **left substrate edge** (`w_50 ≈ 2.98 mm`, default `FEED_50_LEN = 9.0 mm`).
 - **Meanderless Smooth Arcs & Phase Balance:** Eliminates the `180°` meander completely—only three `90°` circular arcs (`FEED_BEND_RADIUS`, default `3.0 mm`) are used in total (`1` bend upward on `E_x`, `2` bends downward and right on `E_y`), plus small inner corner fillets at the T-junction (`FEED_T_FILLET_R`, default `0.8 mm`). The T-junction vertical position `y_T` is solved analytically so `E_y` exceeds `E_x` by exact `FEED_DELTA_L` (`≈ λ_g / 4 ≈ 18.66 mm`) while respecting RF clearance rules (`FEED_END_STRAIGHT = 4.6 mm >= 3h`).
 - **Inherited Defaults & `.env` Parameterization:** Inherits Model 3 defaults (`PATCH_L`/`PATCH_W`, `FEED_INSET_B/L = 2.5 mm`, `FEED_INSET_GAP_B/L = 0.5 mm`, `TRANS_W = 0.42 mm`, auto `TRANS_L`, auto `FEED_DELTA_L`) while defaulting `PORT_IMPEDANCE` to `50.0 Ω` and exposing `FEED_BEND_RADIUS`, `FEED_T_FILLET_R`, `FEED_50_LEN`, `FEED_END_STRAIGHT`, `FEED_ARM_OFFSET`, `SUB_MARGIN`, and `DESIGN_FREQ_GHZ` in `.env`.
@@ -54,6 +54,12 @@ Four antenna topologies are implemented and selectable via `ANTENNA_MODEL` in `.
 | Current Model 4 Top-Down Layout (`L = W = 29.81 mm`, `L_50 = 9.0 mm`) | Transformer, Notch & Rotated Left-Edge `50 Ω` T-Junction Detail |
 | :---: | :---: |
 | ![Model 4 Top View](assets/model4_geometry_top_view.png) | ![Model 4 Detail](assets/model4_detail.png) |
+
+### 5. Model 7 (RHCP Inverted) — Mirrored Model 4 across Y-Axis ([`src/geometry_v7.py`](src/geometry_v7.py))
+- **Topology & Y-Axis Mirroring ($x \to -x$):** Direct spatial reflection of Model 4 across the Y-axis. The single `50 Ω` lumped port is located on the **right substrate edge** (`x = +W_sub / 2`), feeding the rotated T-junction and the right/bottom patch edges.
+- **Polarization Reversal (LHCP $\to$ RHCP):** In Model 4, the feed network excites the left edge $E_x$ with $0^\circ$ and the bottom edge $E_y$ with $-90^\circ$ (quadrature delay on $E_y$), producing counter-clockwise field rotation in $+z$ (LHCP). The spatial reflection $x \to -x$ flips $E_x \to -E_x$ ($180^\circ$ spatial flip) while leaving $E_y$ invariant, transforming the time progression to clockwise rotation looking in $+z$, which yields pure **Right-Hand Circular Polarization (RHCP)**.
+- **Impedance & Tuning Invariance:** Because spatial reflection is an exact isometric transformation, all microstrip line widths, bend radii, transformer lengths, and notch depths are identical to Model 4, ensuring identical $50\ \Omega$ matching ($S_{11}$) and resonance behavior.
+- **Post-Processing & Sweeps:** Supported in the unified CLI (`--model 7`), dedicated sweep runner ([`src/sweep_model7.py`](src/sweep_model7.py)), and metrics tracking in `export/sweep_results_model7.csv` and `export/sweep_results_model7.md` with RHCP maximum gain tracking.
 
 ---
 
@@ -111,7 +117,7 @@ docker compose run --rm pipeline python src/main.py
 python src/main.py
 ```
 
-Common CLI overrides are available on [`src/main.py`](src/main.py) (e.g., `--model 4`, `--patch-l 29.81`, `--trans-w 0.42`, `--inset-b 2.5 --inset-l 2.5`, `--bend-radius 3.0`, `--feed-50-len 9.0`, `--freq-min 2.320 --freq-max 2.345 --freq-step 0.001`, `--amr-its 2`, `--clean`). By default, port impedance automatically selects `50.0 Ω` for Models 1 & 4 and `100.0 Ω` for Models 2 & 3 unless overridden via `PORT_IMPEDANCE` in `.env` or `--port-impedance`.
+Common CLI overrides are available on [`src/main.py`](src/main.py) (e.g., `--model 4` or `--model 7`, `--patch-l 29.81`, `--trans-w 0.42`, `--inset-b 2.5 --inset-r 2.5`, `--bend-radius 3.0`, `--feed-50-len 9.0`, `--freq-min 2.320 --freq-max 2.345 --freq-step 0.001`, `--amr-its 2`, `--clean`). By default, port impedance automatically selects `50.0 Ω` for Models 1, 4 & 7 and `100.0 Ω` for Models 2 & 3 unless overridden via `PORT_IMPEDANCE` in `.env` or `--port-impedance`.
 
 To generate the CAD `.step` geometry, conformal `.msh` mesh, `config.json`, and layout previews **locally without invoking the Palace Docker solver**:
 
@@ -126,7 +132,7 @@ Execute a parametric sweep via the unified dispatcher [`src/sweep.py`](src/sweep
 docker compose run --rm pipeline python src/sweep.py
 ```
 
-The dispatcher routes to the active model (`ANTENNA_MODEL` or `--model {1,2,3,4}`) and supports `.env` profiles (`SWEEP_PROFILE=precise` with AMR enabled or `SWEEP_PROFILE=fast` for rapid exploration), sweep targets (`--sweep-target` supporting `patch_l`, `trans_w`, `trans_l`, `delta_l`, `inset`, plus `bend_radius` and `feed_50_len` for Model 4 and `feed_lens` for Model 2; `--param {inset,patch_l}` for Model 1), explicit value overrides (such as `--patch-lengths` across Models 1–4), sweep modes (`--mode {symmetric,single_fixed,grid,manual}`), and local dry-runs (`--skip-simulation`).
+The dispatcher routes to the active model (`ANTENNA_MODEL` or `--model {1,2,3,4,7}`) and supports `.env` profiles (`SWEEP_PROFILE=precise` with AMR enabled or `SWEEP_PROFILE=fast` for rapid exploration), sweep targets (`--sweep-target` supporting `patch_l`, `trans_w`, `trans_l`, `delta_l`, `inset`, plus `bend_radius` and `feed_50_len` for Models 4 & 7 and `feed_lens` for Model 2; `--param {inset,patch_l}` for Model 1), explicit value overrides (such as `--patch-lengths` across Models 1–7), sweep modes (`--mode {symmetric,single_fixed,grid,manual}`), and local dry-runs (`--skip-simulation`).
 
 ### 5. Run Tests
 Install local development dependencies from [`requirements-dev.txt`](requirements-dev.txt) and verify analytical RF calculations, de-embedding math, CAD/mesh generation, Palace config generation, plotting rules, and code linting:
@@ -147,6 +153,7 @@ Each simulation and sweep step automatically extracts RF metrics in [`src/tracke
 - **Model 2:** (obsolete) `export/sweep_results_model2.csv` and `export/sweep_results_model2.md`
 - **Model 3:** `export/sweep_results_model3.csv` and `export/sweep_results_model3.md`
 - **Model 4:** `export/sweep_results_model4.csv` and `export/sweep_results_model4.md`
+- **Model 7:** `export/sweep_results_model7.csv` and `export/sweep_results_model7.md` (RHCP metrics)
 
 Tracked metrics include resonant frequencies (`f0`, `f0_b`, `f0_l`), reflection minima (`S11_min`, `S22_min`), `-10 dB` impedance bandwidth, port input impedance (`Zin`), LHCP/RHCP gain (`Gain_LHCP`, `Gain_max_LHCP` and `fGainMaxLhcp`), Axial Ratio (`AR`), and polarization sense. When `SWEEP_EXPORT_EACH=true`, each step can also archive plots, CAD geometry, and solver configs into a self-contained ZIP package.
 

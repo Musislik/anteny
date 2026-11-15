@@ -198,7 +198,7 @@ def main(custom_params=None, skip_simulation=False, clean=False):
     if clean:
         clean_previous_outputs(data_dir=data_dir)
 
-    # Model antény (1 = původní T-dělič 50 Ohm, 2 = dvouportový 100 Ohm, 3 = hybridní 2-portový, 4 = finální 50 Ohm T-článek s oblouky, 5 = dvouportový zakřivený 100 Ohm)
+    # Model antény (1 = původní T-dělič 50 Ohm, 2 = dvouportový 100 Ohm, 3 = hybridní 2-portový, 4 = finální 50 Ohm T-článek s oblouky, 5 = dvouportový zakřivený 100 Ohm, 6 = dvouportový zakřivený interní, 7 = zrcadlený model 4 RHCP)
     antenna_model = _resolve_param('antenna_model', 'ANTENNA_MODEL', 1, custom_params, int)
 
     # 1. Parametrizace materiálů a frekvenčního pásma
@@ -229,8 +229,8 @@ def main(custom_params=None, skip_simulation=False, clean=False):
 
     print(f"--- Model {antenna_model} | Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, Port Z0 {port_impedance:.1f} Ohm ---")
 
-    # Geometrie flíčku (výchozí 29.95 mm pro Model 5 a 6; 28.8 mm pro Model 2, 3 a 4; 30.3 mm pro Model 1)
-    default_patch_l = 29.95 if antenna_model in (5, 6) else (28.8 if antenna_model in (2, 3, 4) else 30.3)
+    # Geometrie flíčku (výchozí 29.95 mm pro Model 5 a 6; 28.8 mm pro Model 2, 3, 4 a 7; 30.3 mm pro Model 1)
+    default_patch_l = 29.95 if antenna_model in (5, 6) else (28.8 if antenna_model in (2, 3, 4, 7) else 30.3)
     patch_l = _resolve_param('patch_L', 'PATCH_L', default_patch_l, custom_params, float)
     patch_w = _resolve_param('patch_W', 'PATCH_W', patch_l, custom_params, float)
 
@@ -342,6 +342,44 @@ def main(custom_params=None, skip_simulation=False, clean=False):
             f"--- Model 5 (Dvouportový zakřivený 100 Ω): w_T={trans_w:.2f} mm, "
             f"y0b={feed_inset_b:.2f} mm, y0l={feed_inset_l:.2f} mm, R_bend={bend_radius:.2f} mm, "
             f"Buzení = {driven_port}, Port offset={port_offset:.2f} mm{dl_str} ---"
+        )
+
+    elif antenna_model == 7:
+        # MODEL 7: Zrcadlený model k Modelu 4 podél osy Y pro opačnou polarizaci RHCP (pravý 50 Ohm T-článek s oblouky)
+        trans_w, feed_inset_b, feed_inset_l, feed_delta_l = _resolve_hybrid_stage_params(params, custom_params)
+
+        bend_radius = _resolve_param_aliases(('feed_bend_radius', 'bend_radius'), ('FEED_BEND_RADIUS',), 3.0, custom_params, float)
+        t_fillet_r = _resolve_param_aliases(('feed_t_fillet_r', 't_fillet_r'), ('FEED_T_FILLET_R',), 0.8, custom_params, float)
+        feed_50_len = _resolve_param_aliases(('feed_50_len', 'l1'), ('FEED_50_LEN',), 9.0, custom_params, float)
+        arm_offset = _resolve_param_aliases(('feed_arm_offset', 'arm_offset'), ('FEED_ARM_OFFSET',), None, custom_params, float)
+        end_straight = _resolve_param_aliases(('feed_end_straight', 'end_straight'), ('FEED_END_STRAIGHT',), 4.6, custom_params, float)
+
+        params['feed_bend_radius'] = bend_radius
+        params['feed_t_fillet_r'] = t_fillet_r
+        params['feed_50_len'] = feed_50_len
+        params['feed_end_straight'] = end_straight
+        if arm_offset is not None:
+            params['feed_arm_offset'] = arm_offset
+
+        optional_m7_specs = [
+            (('feed_50_w', 'w_50', 'w1'), ('FEED_50_W',), 'feed_50_w'),
+            (('feed_100_w', 'w_feed', 'w_100', 'w2'), ('FEED_100_W',), 'feed_100_w'),
+            (('sub_margin',), ('SUB_MARGIN',), 'sub_margin'),
+            (('feed_x_T', 'x_T'), ('FEED_T_X',), 'feed_x_T'),
+            (('feed_y_T', 'y_T'), ('FEED_T_Y',), 'feed_y_T'),
+            (('sub_W', 'sub_w'), ('SUB_W',), 'sub_W'),
+            (('sub_L', 'sub_l'), ('SUB_L',), 'sub_L'),
+        ]
+        for aliases, env_keys, target_key in optional_m7_specs:
+            val = _resolve_param_aliases(aliases, env_keys, None, custom_params, float)
+            if val is not None:
+                params[target_key] = val
+
+        dl_str = f", delta_l={feed_delta_l:.2f}mm" if feed_delta_l is not None else ""
+        print(
+            f"--- Model 7 (Zrcadlený T-článek 50 Ω pro RHCP + oblouky): w_T={trans_w:.2f} mm, "
+            f"y0b={feed_inset_b:.2f} mm, y0r={feed_inset_l:.2f} mm, R_bend={bend_radius:.2f} mm, "
+            f"L50={feed_50_len:.2f} mm{dl_str} ---"
         )
 
     elif antenna_model == 4:
@@ -744,9 +782,13 @@ def _process_results_model1(params, output_dir, data_dir, run_name):
             
             model_num = int(params.get("antenna_model", 1))
             title_s11 = (
-                "Činitel odrazu (S11) - Model 4 (Finální model 50 Ω T-článek s oblouky)"
-                if model_num == 4
-                else "Činitel odrazu (S11) - Model 1 (LHCP Flíčková anténa s T-děličem)"
+                "Činitel odrazu (S11) - Model 7 (Opačná polarizace RHCP, 50 Ω T-článek s oblouky)"
+                if model_num == 7
+                else (
+                    "Činitel odrazu (S11) - Model 4 (Finální model 50 Ω T-článek s oblouky)"
+                    if model_num == 4
+                    else "Činitel odrazu (S11) - Model 1 (LHCP Flíčková anténa s T-děličem)"
+                )
             )
             plt.figure(figsize=(8, 6))
             plt.plot(freqs, s11_db, label='S11', color='navy', lw=2)
@@ -759,7 +801,7 @@ def _process_results_model1(params, output_dir, data_dir, run_name):
             
             plot_path = os.path.join(data_dir, "S11_graf.png")
             plt.savefig(plot_path)
-            if model_num == 4:
+            if model_num in (4, 7):
                 grafy_dir = os.path.join(data_dir, "grafy")
                 os.makedirs(grafy_dir, exist_ok=True)
                 plt.savefig(os.path.join(grafy_dir, "graf_S11.png"))
@@ -828,8 +870,8 @@ def _process_results_model2(params, output_dir, data_dir, run_name):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="LHCP Patch Antenna Simulation & CAD Model Generation")
-    parser.add_argument("--model", type=int, choices=[1, 2, 3, 4, 5, 6], default=None, dest="antenna_model",
-                        help="Verze modelu antény: 1 (T-dělič 50 Ohm), 2 (dvouportový 100 Ohm), 3 (hybridní 2-portový), 4 (finální 50 Ohm T-článek s oblouky), 5 (dvouportový zakřivený 100 Ohm), 6 (dvouportový zakřivený s interními 100 Ohm porty). Výchozí: 1 nebo z ANTENNA_MODEL")
+    parser.add_argument("--model", type=int, choices=[1, 2, 3, 4, 5, 6, 7], default=None, dest="antenna_model",
+                        help="Verze modelu antény: 1 (T-dělič 50 Ohm), 2 (dvouportový 100 Ohm), 3 (hybridní 2-portový), 4 (finální 50 Ohm T-článek s oblouky), 5 (dvouportový zakřivený 100 Ohm), 6 (dvouportový zakřivený s interními 100 Ohm porty), 7 (zrcadlený Model 4 pro RHCP). Výchozí: 1 nebo z ANTENNA_MODEL")
     parser.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true",
                         help="Generovat pouze model, CAD STEP soubor a síť lokálně bez spouštění simulace v Dockeru")
     parser.add_argument("--clean", dest="clean", action="store_true",

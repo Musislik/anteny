@@ -85,6 +85,12 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
                         if xmin >= x_T_val - feed_w/2 - EDGE_CLEARANCE_TOL and xmax <= x_T_val + feed_w/2 + EDGE_CLEARANCE_TOL:
                             port1_surfs.append(tag)
                             port_surfs.append(tag)
+            elif model_version == 7:
+                # Model 7: jediný 50 Ohm port (YZ rovina na pravém kraji substrátu x = +W_sub/2 kolem port_y)
+                if abs(xmin - (params['sub_W']/2)) < GEOM_TOL and abs(xmax - (params['sub_W']/2)) < GEOM_TOL and \
+                   abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
+                    if ymin >= port_y - feed_w/2 - EDGE_CLEARANCE_TOL and ymax <= port_y + feed_w/2 + EDGE_CLEARANCE_TOL:
+                        port_surfs.append(tag)
             elif model_version == 4:
                 # Model 4: jediný 50 Ohm port (YZ rovina na levém kraji substrátu x = -W_sub/2 kolem port_y)
                 if abs(xmin - (-params['sub_W']/2)) < GEOM_TOL and abs(xmax - (-params['sub_W']/2)) < GEOM_TOL and \

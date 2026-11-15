@@ -7,6 +7,7 @@ Podle parametru 'antenna_model' (nebo ANTENNA_MODEL v .env) deleguje na:
   - Model 4 (geometry_v4.py): Finální model dokončující Model 3 (spojení obou 100 Ohm větví plynulými oblouky do T-článku na 50 Ohm port).
   - Model 5 (geometry_v5.py): Dvouportový model se zakřivenými větvemi bez T-článku (dva samostatné 100 Ohm porty).
   - Model 6 (geometry_v6.py): Dvouportový model se zakřivenými větvemi z Modelu 4 a interními 100 Ohm porty.
+  - Model 7 (geometry_v7.py): Zrcadlený model k Modelu 4 podél osy Y pro opačnou polarizaci (RHCP, 50 Ohm port vpravo).
 """
 
 import os
@@ -15,7 +16,10 @@ from postpro_utils import load_env
 def build_model(params):
     load_env()
     model_version = int(params.get('antenna_model', os.getenv('ANTENNA_MODEL', '1')))
-    if model_version == 6:
+    if model_version == 7:
+        from geometry_v7 import build_model_v7
+        return build_model_v7(params)
+    elif model_version == 6:
         from geometry_v6 import build_model_v6
         return build_model_v6(params)
     elif model_version == 5:
