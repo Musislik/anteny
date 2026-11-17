@@ -13,7 +13,7 @@ Generované soubory:
 import argparse
 import os
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 # Automatické nastavení sys.path pro import z src/
 try:
@@ -28,31 +28,51 @@ from postpro_utils import get_export_dir, load_env
 from kicad_generator import generate_kicad_footprint, generate_kicad_pcb
 
 
+def _env_float(env_keys: Tuple[str, ...], default: float) -> float:
+    """Načte první platnou float hodnotu z posloupnosti proměnných prostředí."""
+    for env_key in env_keys:
+        val = os.getenv(env_key)
+        if val is not None and val.strip() != "":
+            try:
+                return float(val)
+            except ValueError:
+                pass
+    return default
+
+
 def load_model4_params_from_env() -> Dict[str, Any]:
     """Načte výchozí konfiguraci Modelu 4 z proměnných prostředí / .env."""
+    patch_l = _env_float(("PATCH_L",), 28.8)
+    default_inset = _env_float(("FEED_INSET", "INSET"), 2.5)
+    default_inset_gap = _env_float(("FEED_INSET_GAP", "INSET_GAP"), 0.5)
+
     params: Dict[str, Any] = {
-        'patch_L': float(os.getenv("PATCH_L", 28.8)),
-        'patch_W': float(os.getenv("PATCH_W", os.getenv("PATCH_L", 28.8))),
-        'sub_h': float(os.getenv("SUB_H", 1.52)),
-        'eps_r': float(os.getenv("EPS_R", 4.3)),
-        'design_freq_ghz': float(os.getenv("DESIGN_FREQ_GHZ", 2.3325)),
-        'port_impedance': float(os.getenv("PORT_IMPEDANCE", 50.0)),
-        'feed_inset_b': float(os.getenv("FEED_INSET_B", 2.5)),
-        'feed_inset_l': float(os.getenv("FEED_INSET_L", 2.5)),
-        'feed_inset_gap_b': float(os.getenv("FEED_INSET_GAP_B", 0.5)),
-        'feed_inset_gap_l': float(os.getenv("FEED_INSET_GAP_L", 0.5)),
-        'trans_w': float(os.getenv("TRANS_W", 0.42)),
-        'feed_bend_radius': float(os.getenv("FEED_BEND_RADIUS", 3.0)),
-        'feed_t_fillet_r': float(os.getenv("FEED_T_FILLET_R", 0.8)),
-        'feed_50_len': float(os.getenv("FEED_50_LEN", 9.0)),
-        'feed_end_straight': float(os.getenv("FEED_END_STRAIGHT", 4.6)),
-        'sub_margin': float(os.getenv("SUB_MARGIN", 8.0)),
-        'mask_clearance': float(os.getenv("MASK_CLEARANCE", 0.30)),
+        'patch_L': patch_l,
+        'patch_W': _env_float(("PATCH_W",), patch_l),
+        'sub_h': _env_float(("SUB_H",), 1.52),
+        'eps_r': _env_float(("EPS_R",), 4.3),
+        'design_freq_ghz': _env_float(("DESIGN_FREQ_GHZ",), 2.3325),
+        'port_impedance': _env_float(("PORT_IMPEDANCE",), 50.0),
+        'feed_inset_b': _env_float(("FEED_INSET_B", "INSET_B"), default_inset),
+        'feed_inset_l': _env_float(("FEED_INSET_L", "INSET_L"), default_inset),
+        'feed_inset_gap_b': _env_float(("FEED_INSET_GAP_B", "INSET_GAP_B"), default_inset_gap),
+        'feed_inset_gap_l': _env_float(("FEED_INSET_GAP_L", "INSET_GAP_L"), default_inset_gap),
+        'trans_w': _env_float(("TRANS_W",), 0.42),
+        'feed_bend_radius': _env_float(("FEED_BEND_RADIUS",), 3.0),
+        'feed_t_fillet_r': _env_float(("FEED_T_FILLET_R",), 0.8),
+        'feed_50_len': _env_float(("FEED_50_LEN",), 9.0),
+        'feed_end_straight': _env_float(("FEED_END_STRAIGHT",), 4.6),
+        'sub_margin': _env_float(("SUB_MARGIN",), 8.0),
+        'mask_clearance': _env_float(("MASK_CLEARANCE",), 0.30),
     }
 
     # Volitelné explicitní parametry
     opt_env_map = {
+        'TRANS_W_B': 'trans_w_b',
+        'TRANS_W_L': 'trans_w_l',
         'TRANS_L': 'trans_l',
+        'TRANS_L_B': 'trans_l_b',
+        'TRANS_L_L': 'trans_l_l',
         'FEED_DELTA_L': 'feed_delta_l',
         'FEED_50_W': 'feed_50_w',
         'FEED_100_W': 'feed_100_w',
@@ -152,9 +172,17 @@ def main() -> int:
     parser.add_argument("--bend-radius", type=float, help="Poloměr oblouků vedení [mm]")
     parser.add_argument("--t-fillet-r", type=float, help="Poloměr zaoblení T-článku [mm]")
     parser.add_argument("--trans-w", type=float, help="Šířka čtvrtvlnného transformátoru w_T [mm]")
+    parser.add_argument("--trans-w-b", type=float, help="Šířka transformátoru spodní větve w_T_b [mm]")
+    parser.add_argument("--trans-w-l", type=float, help="Šířka transformátoru levé větve w_T_l [mm]")
     parser.add_argument("--trans-l", type=float, help="Délka transformátoru l_T [mm]")
+    parser.add_argument("--trans-l-b", type=float, help="Délka transformátoru spodní větve l_T_b [mm]")
+    parser.add_argument("--trans-l-l", type=float, help="Délka transformátoru levé větve l_T_l [mm]")
     parser.add_argument("--inset", type=float, help="Hloubka zanoření zářezů na obou ramenech [mm]")
-    parser.add_argument("--inset-gap", type=float, help="Šířka mezery zářezu [mm]")
+    parser.add_argument("--inset-b", type=float, help="Hloubka zanoření zářezu spodní větve [mm]")
+    parser.add_argument("--inset-l", type=float, help="Hloubka zanoření zářezu levé větve [mm]")
+    parser.add_argument("--inset-gap", type=float, help="Šířka mezery zářezu na obou ramenech [mm]")
+    parser.add_argument("--inset-gap-b", type=float, help="Šířka mezery zářezu spodní větve [mm]")
+    parser.add_argument("--inset-gap-l", type=float, help="Šířka mezery zářezu levé větve [mm]")
     parser.add_argument("--mask-clearance", type=float, help="Odsazení nepájivé masky (mask clearance) [mm]")
     parser.add_argument(
         "--sma-gap",
@@ -211,14 +239,34 @@ def main() -> int:
         params['feed_t_fillet_r'] = args.t_fillet_r
     if args.trans_w is not None:
         params['trans_w'] = args.trans_w
+        params.pop('trans_w_b', None)
+        params.pop('trans_w_l', None)
+    if args.trans_w_b is not None:
+        params['trans_w_b'] = args.trans_w_b
+    if args.trans_w_l is not None:
+        params['trans_w_l'] = args.trans_w_l
     if args.trans_l is not None:
         params['trans_l'] = args.trans_l
+        params.pop('trans_l_b', None)
+        params.pop('trans_l_l', None)
+    if args.trans_l_b is not None:
+        params['trans_l_b'] = args.trans_l_b
+    if args.trans_l_l is not None:
+        params['trans_l_l'] = args.trans_l_l
     if args.inset is not None:
         params['feed_inset_b'] = args.inset
         params['feed_inset_l'] = args.inset
+    if args.inset_b is not None:
+        params['feed_inset_b'] = args.inset_b
+    if args.inset_l is not None:
+        params['feed_inset_l'] = args.inset_l
     if args.inset_gap is not None:
         params['feed_inset_gap_b'] = args.inset_gap
         params['feed_inset_gap_l'] = args.inset_gap
+    if args.inset_gap_b is not None:
+        params['feed_inset_gap_b'] = args.inset_gap_b
+    if args.inset_gap_l is not None:
+        params['feed_inset_gap_l'] = args.inset_gap_l
     if args.mask_clearance is not None:
         params['mask_clearance'] = args.mask_clearance
     if args.sma_gap is not None:
@@ -287,7 +335,32 @@ def main() -> int:
     print(f"  Návrhová frekvence / Z0:           {info['f_design']:.4f} GHz / {info['port_z0']:.1f} Ohm")
     print(f"  50 Ohm přívodní pásek (w_50):      {info['w_50']:.3f} mm")
     print(f"  100 Ohm větve děliče (w_feed):     {info['w_feed']:.3f} mm (eps_eff = {info['eps_eff_feed']:.3f})")
-    print(f"  Čtvrtvlnný transformátor w_T / l_T:{info['w_T_b']:.3f} mm / {info['l_T_b']:.3f} mm")
+    is_asym_trans = (
+        abs(info['w_T_b'] - info['w_T_l']) > 1e-6
+        or abs(info['l_T_b'] - info['l_T_l']) > 1e-6
+    )
+    if is_asym_trans:
+        print(
+            f"  Transformátor spodní (w_T_b/l_T_b):{info['w_T_b']:.3f} mm / {info['l_T_b']:.3f} mm"
+        )
+        print(
+            f"  Transformátor levý (w_T_l/l_T_l):  {info['w_T_l']:.3f} mm / {info['l_T_l']:.3f} mm"
+        )
+    else:
+        print(
+            f"  Čtvrtvlnný transformátor w_T / l_T:{info['w_T_b']:.3f} mm / {info['l_T_b']:.3f} mm"
+        )
+    is_asym_inset = (
+        abs(info['inset_b'] - info['inset_l']) > 1e-6
+        or abs(info['inset_gap_b'] - info['inset_gap_l']) > 1e-6
+    )
+    if is_asym_inset:
+        print(
+            f"  Zářez spodní (inset_b / gap_b):    {info['inset_b']:.2f} mm / {info['inset_gap_b']:.2f} mm"
+        )
+        print(
+            f"  Zářez levý (inset_l / gap_l):      {info['inset_l']:.2f} mm / {info['inset_gap_l']:.2f} mm"
+        )
     print(f"  Poloměr oblouků (feed_bend_radius):{info['bend_radius']:.2f} mm")
     print(f"  Zaoblení T-článku (t_fillet_r):    {info['t_fillet_r']:.2f} mm")
     print(f"  Délka levé větve (L_100_l):        {info['L_100_l']:.3f} mm")

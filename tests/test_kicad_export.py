@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 # Přidání kořene projektu a složek src a scripts do sys.path
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -38,6 +39,7 @@ for p in (PROJECT_ROOT, SRC_DIR, SCRIPTS_DIR):
         sys.path.insert(0, p)
 
 from antenna_geometry import (
+    OVERLAP_DELTA,
     SMA_GAP,
     SMA_PAD_LEN,
     SMA_PAD_W,
@@ -54,6 +56,7 @@ from antenna_geometry import (
     transform_cad_to_kicad,
     transform_poly_to_kicad,
 )
+from export_kicad import load_model4_params_from_env
 from kicad_generator import (
     generate_kicad_footprint,
     generate_kicad_pcb,
@@ -762,7 +765,8 @@ class TestExportCli(unittest.TestCase):
         proc_tight = subprocess.run(cmd_tight, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertEqual(proc_tight.returncode, 0)
         self.assertIn("Kompaktní / oříznutý (tight_pcb=True)", proc_tight.stdout)
-        self.assertIn("73.40 mm", proc_tight.stdout)
+        # S načteným TRANS_L_L=18.70 z .env je kompaktní šířka 73.10 mm
+        self.assertIn("73.10 mm", proc_tight.stdout)
         self.assertIn("úspora plochy", proc_tight.stdout)
 
         # 2. Plný symetrický režim --no-tight-pcb
@@ -776,7 +780,7 @@ class TestExportCli(unittest.TestCase):
         proc_full = subprocess.run(cmd_full, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertEqual(proc_full.returncode, 0)
         self.assertIn("Plný symetrický (tight_pcb=False)", proc_full.stdout)
-        self.assertIn("96.84 mm", proc_full.stdout)
+        self.assertIn("96.24 mm", proc_full.stdout)
 
         # 3. Aliases --crop-pcb a --full-pcb
         cmd_alias = [
@@ -843,6 +847,260 @@ class TestExportCli(unittest.TestCase):
         proc_bad = subprocess.run(cmd_bad, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertNotEqual(proc_bad.returncode, 0)
         self.assertIn("ValueError", proc_bad.stderr)
+
+    @staticmethod
+    def _extract_rf_zones_from_pcb(pcb_content: str):
+        """Extrahuje seznamy bodů (x, y) pro všechny RF_IN zóny v .kicad_pcb."""
+        pattern = (
+            r'\(zone\n\s+\(net "RF_IN"\)\n\s+\(layer "F\.Cu"\).*?'
+            r'\(polygon\n\s+\(pts\n((?:\s+\(xy [^\n]+\n)+)\s+\)\n\s+\)'
+        )
+        polygons = []
+        for match in re.finditer(pattern, pcb_content, re.DOTALL):
+            pts = [
+                (float(x), float(y))
+                for x, y in re.findall(r'\(xy ([\-\d\.]+) ([\-\d\.]+)\)', match.group(1))
+            ]
+            polygons.append(pts)
+        return polygons
+
+    @staticmethod
+    def _extract_gr_polys_from_footprint(fp_content: str):
+        """Extrahuje seznamy bodů (x, y) pro všechny gr_poly primitivy padu 1 v .kicad_mod."""
+        pattern = r'\(gr_poly\n\s+\(pts\n((?:\s+\(xy [^\n]+\n)+)\s+\)'
+        polygons = []
+        for match in re.finditer(pattern, fp_content):
+            pts = [
+                (float(x), float(y))
+                for x, y in re.findall(r'\(xy ([\-\d\.]+) ([\-\d\.]+)\)', match.group(1))
+            ]
+            polygons.append(pts)
+        return polygons
+
+    def test_load_model4_params_from_env_asymmetric_transformers_and_insets(self):
+        """Ověření načtení asymetrických TRANS_* a FEED_INSET* z env a jejich propsání do geometrie i souborů."""
+        env_asym = {
+            "PATCH_L": "29.95",
+            "PATCH_W": "29.95",
+            "SUB_H": "1.52",
+            "EPS_R": "4.3",
+            "TRANS_W": "0.30",
+            "TRANS_W_B": "0.36",
+            "TRANS_W_L": "0.44",
+            "TRANS_L": "19.00",
+            "TRANS_L_B": "19.50",
+            "TRANS_L_L": "18.70",
+            "FEED_INSET": "2.80",
+            "FEED_INSET_B": "2.20",
+            "FEED_INSET_GAP": "0.60",
+            "FEED_INSET_GAP_L": "0.45",
+        }
+        with mock.patch.dict(os.environ, env_asym, clear=True):
+            params = load_model4_params_from_env()
+
+        # 1. Ověření načtených parametrů a fallbacků FEED_INSET / FEED_INSET_GAP
+        self.assertAlmostEqual(params['trans_w'], 0.30, places=6)
+        self.assertAlmostEqual(params['trans_w_b'], 0.36, places=6)
+        self.assertAlmostEqual(params['trans_w_l'], 0.44, places=6)
+        self.assertAlmostEqual(params['trans_l'], 19.00, places=6)
+        self.assertAlmostEqual(params['trans_l_b'], 19.50, places=6)
+        self.assertAlmostEqual(params['trans_l_l'], 18.70, places=6)
+        self.assertAlmostEqual(params['feed_inset_b'], 2.20, places=6)
+        self.assertAlmostEqual(params['feed_inset_l'], 2.80, places=6)
+        self.assertAlmostEqual(params['feed_inset_gap_b'], 0.60, places=6)
+        self.assertAlmostEqual(params['feed_inset_gap_l'], 0.45, places=6)
+
+        # 2. Ověření geometrie polygonů transformátorů v get_model4_kicad_geometry()
+        geom = get_model4_kicad_geometry(params, is_footprint=False)
+        info = geom.routing_info
+        self.assertAlmostEqual(info['w_T_b'], 0.36, places=6)
+        self.assertAlmostEqual(info['w_T_l'], 0.44, places=6)
+        self.assertAlmostEqual(info['l_T_b'], 19.50, places=6)
+        self.assertAlmostEqual(info['l_T_l'], 18.70, places=6)
+        self.assertAlmostEqual(info['inset_b'], 2.20, places=6)
+        self.assertAlmostEqual(info['inset_l'], 2.80, places=6)
+        self.assertAlmostEqual(info['inset_gap_b'], 0.60, places=6)
+        self.assertAlmostEqual(info['inset_gap_l'], 0.45, places=6)
+
+        # rf_polygons[1] = spodní transformátor (šířka v X, délka + 2*delta v Y)
+        trans_b_xs = [p[0] for p in geom.rf_polygons[1]]
+        trans_b_ys = [p[1] for p in geom.rf_polygons[1]]
+        self.assertAlmostEqual(max(trans_b_xs) - min(trans_b_xs), 0.36, places=4)
+        self.assertAlmostEqual(max(trans_b_ys) - min(trans_b_ys), 19.50 + 2.0 * OVERLAP_DELTA, places=4)
+
+        # rf_polygons[2] = levý transformátor (délka + 2*delta v X, šířka v Y)
+        trans_l_xs = [p[0] for p in geom.rf_polygons[2]]
+        trans_l_ys = [p[1] for p in geom.rf_polygons[2]]
+        self.assertAlmostEqual(max(trans_l_xs) - min(trans_l_xs), 18.70 + 2.0 * OVERLAP_DELTA, places=4)
+        self.assertAlmostEqual(max(trans_l_ys) - min(trans_l_ys), 0.44, places=4)
+
+        # 3. Ověření, že asymetrické rozměry jsou skutečně zapsány v .kicad_pcb i .kicad_mod
+        pcb_file = os.path.join(self.temp_dir.name, "asym_env.kicad_pcb")
+        fp_file = os.path.join(self.temp_dir.name, "asym_env.kicad_mod")
+        generate_kicad_pcb(params, pcb_file)
+        generate_kicad_footprint(params, fp_file)
+
+        with open(pcb_file, "r", encoding="utf-8") as f:
+            pcb_zones = self._extract_rf_zones_from_pcb(f.read())
+        self.assertEqual(len(pcb_zones), 6)
+        pcb_tb_xs = [p[0] for p in pcb_zones[1]]
+        pcb_tb_ys = [p[1] for p in pcb_zones[1]]
+        pcb_tl_xs = [p[0] for p in pcb_zones[2]]
+        pcb_tl_ys = [p[1] for p in pcb_zones[2]]
+        self.assertAlmostEqual(max(pcb_tb_xs) - min(pcb_tb_xs), 0.36, places=3)
+        self.assertAlmostEqual(max(pcb_tb_ys) - min(pcb_tb_ys), 19.50 + 2.0 * OVERLAP_DELTA, places=3)
+        self.assertAlmostEqual(max(pcb_tl_xs) - min(pcb_tl_xs), 18.70 + 2.0 * OVERLAP_DELTA, places=3)
+        self.assertAlmostEqual(max(pcb_tl_ys) - min(pcb_tl_ys), 0.44, places=3)
+
+        with open(fp_file, "r", encoding="utf-8") as f:
+            fp_polys = self._extract_gr_polys_from_footprint(f.read())
+        self.assertEqual(len(fp_polys), 6)
+        fp_tb_xs = [p[0] for p in fp_polys[1]]
+        fp_tb_ys = [p[1] for p in fp_polys[1]]
+        fp_tl_xs = [p[0] for p in fp_polys[2]]
+        fp_tl_ys = [p[1] for p in fp_polys[2]]
+        self.assertAlmostEqual(max(fp_tb_xs) - min(fp_tb_xs), 0.36, places=3)
+        self.assertAlmostEqual(max(fp_tb_ys) - min(fp_tb_ys), 19.50 + 2.0 * OVERLAP_DELTA, places=3)
+        self.assertAlmostEqual(max(fp_tl_xs) - min(fp_tl_xs), 18.70 + 2.0 * OVERLAP_DELTA, places=3)
+        self.assertAlmostEqual(max(fp_tl_ys) - min(fp_tl_ys), 0.44, places=3)
+
+        # 4. Priorita branch-specifického TRANS_L_B nad obecným TRANS_L, levá větev dědí TRANS_L
+        env_partial = {
+            "TRANS_L": "19.10",
+            "TRANS_L_B": "19.65",
+        }
+        with mock.patch.dict(os.environ, env_partial, clear=True):
+            params_partial = load_model4_params_from_env()
+        info_partial = compute_model4_routing(params_partial)
+        self.assertAlmostEqual(info_partial['l_T_b'], 19.65, places=6)
+        self.assertAlmostEqual(info_partial['l_T_l'], 19.10, places=6)
+
+    def test_cli_asymmetric_transformer_and_inset_options(self):
+        """Ověření asymetrických CLI přepínačů --trans-*-{b,l} a --inset*-{b,l} v export_kicad.py."""
+        out_dir = os.path.join(self.temp_dir.name, "cli_asym")
+        cmd = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", out_dir,
+            "--all",
+            "--patch-l", "29.95",
+            "--patch-w", "29.95",
+            "--trans-w-b", "0.36",
+            "--trans-w-l", "0.44",
+            "--trans-l-b", "19.60",
+            "--trans-l-l", "18.60",
+            "--inset-b", "2.20",
+            "--inset-l", "2.90",
+            "--inset-gap-b", "0.45",
+            "--inset-gap-l", "0.65",
+        ]
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(proc.returncode, 0, f"CLI selhalo:\n{proc.stderr}")
+
+        # Ověření přehledného výpisu obou větví v souhrnné tabulce
+        self.assertIn("Transformátor spodní (w_T_b/l_T_b):0.360 mm / 19.600 mm", proc.stdout)
+        self.assertIn("Transformátor levý (w_T_l/l_T_l):  0.440 mm / 18.600 mm", proc.stdout)
+        self.assertIn("Zářez spodní (inset_b / gap_b):    2.20 mm / 0.45 mm", proc.stdout)
+        self.assertIn("Zářez levý (inset_l / gap_l):      2.90 mm / 0.65 mm", proc.stdout)
+
+        # Ověření skutečné geometrie v .kicad_mod (v souřadnicích footprintu je střed flíčku v (0, 0))
+        fp_file = os.path.join(out_dir, "Antenna_Model4_LHCP.kicad_mod")
+        with open(fp_file, "r", encoding="utf-8") as f:
+            fp_polys = self._extract_gr_polys_from_footprint(f.read())
+        self.assertEqual(len(fp_polys), 6)
+
+        # Transformátory
+        tb_xs = [p[0] for p in fp_polys[1]]
+        tb_ys = [p[1] for p in fp_polys[1]]
+        tl_xs = [p[0] for p in fp_polys[2]]
+        tl_ys = [p[1] for p in fp_polys[2]]
+        self.assertAlmostEqual(max(tb_xs) - min(tb_xs), 0.36, places=3)
+        self.assertAlmostEqual(max(tb_ys) - min(tb_ys), 19.60 + 2.0 * OVERLAP_DELTA, places=3)
+        self.assertAlmostEqual(max(tl_xs) - min(tl_xs), 18.60 + 2.0 * OVERLAP_DELTA, places=3)
+        self.assertAlmostEqual(max(tl_ys) - min(tl_ys), 0.44, places=3)
+
+        # Ověření asymetrických zářezů na polygonu flíčku (fp_polys[0]):
+        # Levý zářez má hloubku 2.90 mm (-W/2 + 2.90) a výšku 0.44 + 2*0.65 = 1.74 mm
+        # Spodní zářez (v KiCad +Y dolů) má hloubku 2.20 mm (L/2 - 2.20) a šířku 0.36 + 2*0.45 = 1.26 mm
+        patch_pts = fp_polys[0]
+        half_w = 29.95 / 2.0
+        half_l = 29.95 / 2.0
+        left_notch_pts = [p for p in patch_pts if abs(p[0] - (-half_w + 2.90)) < 1e-3]
+        self.assertEqual(len(left_notch_pts), 2)
+        self.assertAlmostEqual(
+            max(p[1] for p in left_notch_pts) - min(p[1] for p in left_notch_pts),
+            0.44 + 2.0 * 0.65,
+            places=3,
+        )
+        bot_notch_pts = [p for p in patch_pts if abs(p[1] - (half_l - 2.20)) < 1e-3]
+        self.assertEqual(len(bot_notch_pts), 2)
+        self.assertAlmostEqual(
+            max(p[0] for p in bot_notch_pts) - min(p[0] for p in bot_notch_pts),
+            0.36 + 2.0 * 0.45,
+            places=3,
+        )
+
+    def test_cli_branch_priority_over_general_and_symmetric_output(self):
+        """Ověření priority branch flagů nad obecnými (--trans-l, --inset) a zobrazení symetrického výstupu."""
+        # 1. Branch flagy mají přednost před obecnými CLI flagy (a obecné CLI flagy přepíší asymetrické .env)
+        cmd_prio = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", os.path.join(self.temp_dir.name, "cli_prio"),
+            "--footprint",
+            "--trans-w", "0.35",
+            "--trans-w-b", "0.41",
+            "--trans-l", "19.00",
+            "--trans-l-b", "19.80",
+            "--inset", "2.40",
+            "--inset-l", "3.10",
+            "--inset-gap", "0.50",
+            "--inset-gap-b", "0.40",
+        ]
+        proc_prio = subprocess.run(cmd_prio, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(proc_prio.returncode, 0, f"CLI selhalo:\n{proc_prio.stderr}")
+        self.assertIn("Transformátor spodní (w_T_b/l_T_b):0.410 mm / 19.800 mm", proc_prio.stdout)
+        self.assertIn("Transformátor levý (w_T_l/l_T_l):  0.350 mm / 19.000 mm", proc_prio.stdout)
+        self.assertIn("Zářez spodní (inset_b / gap_b):    2.40 mm / 0.40 mm", proc_prio.stdout)
+        self.assertIn("Zářez levý (inset_l / gap_l):      3.10 mm / 0.50 mm", proc_prio.stdout)
+
+        # 2. Obecný --trans-l / --trans-w přepíše asymetrický .env a vypíše jednořádkový symetrický přehled
+        cmd_sym = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", os.path.join(self.temp_dir.name, "cli_sym"),
+            "--footprint",
+            "--trans-w", "0.38",
+            "--trans-l", "19.10",
+            "--inset", "2.50",
+            "--inset-gap", "0.50",
+        ]
+        proc_sym = subprocess.run(cmd_sym, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(proc_sym.returncode, 0, f"CLI selhalo:\n{proc_sym.stderr}")
+        self.assertIn("Čtvrtvlnný transformátor w_T / l_T:0.380 mm / 19.100 mm", proc_sym.stdout)
+        self.assertNotIn("Transformátor spodní", proc_sym.stdout)
+        self.assertNotIn("Transformátor levý", proc_sym.stdout)
+
+        # 3. Priorita env proměnných: TRANS_L_B přebíjí TRANS_L, levá větev dědí TRANS_L
+        env_prio = os.environ.copy()
+        env_prio.update({
+            "TRANS_W": "0.34",
+            "TRANS_W_B": "",
+            "TRANS_W_L": "",
+            "TRANS_L": "19.00",
+            "TRANS_L_B": "19.75",
+            "TRANS_L_L": "",
+        })
+        cmd_env = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", os.path.join(self.temp_dir.name, "env_prio"),
+            "--footprint",
+        ]
+        proc_env = subprocess.run(cmd_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env_prio)
+        self.assertEqual(proc_env.returncode, 0, f"CLI s env selhalo:\n{proc_env.stderr}")
+        self.assertIn("Transformátor spodní (w_T_b/l_T_b):0.340 mm / 19.750 mm", proc_env.stdout)
+        self.assertIn("Transformátor levý (w_T_l/l_T_l):  0.340 mm / 19.000 mm", proc_env.stdout)
 
 
 if __name__ == "__main__":
