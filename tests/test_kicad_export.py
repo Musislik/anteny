@@ -201,6 +201,55 @@ class TestAntennaGeometry(unittest.TestCase):
             self.assertEqual(v['net'], 1)
             self.assertEqual(v['net_name'], "GND")
 
+    def test_solder_mask_clearance_and_bottom_opening(self):
+        """Ověření přesahu nepájivé masky (solder mask clearance) a otvoru na B.Mask."""
+        params = {
+            'patch_L': 28.8,
+            'patch_W': 28.8,
+            'sub_h': 1.52,
+            'eps_r': 4.3,
+            'mask_clearance': 0.30,
+        }
+        geom = get_model4_kicad_geometry(params, is_footprint=False)
+
+        # 1. Počty polygonů otvorů masky
+        # F.Mask má 7 polygonů (SMA, patch, trans_b, trans_l, arm_l, arm_b, t_junc)
+        self.assertEqual(len(geom.mask_openings), 7)
+        # B.Mask má 1 polygon (SMA rozhraní)
+        self.assertEqual(len(geom.mask_openings_bottom), 1)
+
+        # 2. Ověření rozměrů masky vyzařovače (rozšíření o mask_clearance na každé straně)
+        patch_mask = geom.mask_openings[1]
+        xs = [p[0] for p in patch_mask]
+        ys = [p[1] for p in patch_mask]
+        patch_w_mask = max(xs) - min(xs)
+        patch_l_mask = max(ys) - min(ys)
+        self.assertAlmostEqual(patch_w_mask, 28.8 + 2 * 0.30, places=4)
+        self.assertAlmostEqual(patch_l_mask, 28.8 + 2 * 0.30, places=4)
+
+        # 3. Ověření spodního transformátoru v masce (rozšířen v šířce o 2 * mask_clearance)
+        trans_b_mask = geom.mask_openings[2]
+        tb_xs = [p[0] for p in trans_b_mask]
+        w_tb_mask = max(tb_xs) - min(tb_xs)
+        info = geom.routing_info
+        self.assertAlmostEqual(w_tb_mask, info['w_T_b'] + 2 * 0.30, places=4)
+
+        # 4. Ověření levého transformátoru v masce (rozšířen v šířce o 2 * mask_clearance v ose Y)
+        trans_l_mask = geom.mask_openings[3]
+        tl_ys = [p[1] for p in trans_l_mask]
+        w_tl_mask = max(tl_ys) - min(tl_ys)
+        self.assertAlmostEqual(w_tl_mask, info['w_T_l'] + 2 * 0.30, places=4)
+
+        # 5. Ověření otvoru na B.Mask (SMA rozhraní 4.0 mm x 8.0 mm na hraně desky)
+        b_mask_poly = geom.mask_openings_bottom[0]
+        bm_xs = [p[0] for p in b_mask_poly]
+        bm_ys = [p[1] for p in b_mask_poly]
+        self.assertAlmostEqual(max(bm_xs) - min(bm_xs), 4.0, places=4)
+        self.assertAlmostEqual(max(bm_ys) - min(bm_ys), 8.0, places=4)
+        # Začíná přesně na levé hraně desky (x_min Edge.Cuts)
+        x_min, _, _, _ = geom.edge_cuts_rect
+        self.assertAlmostEqual(min(bm_xs), x_min, places=4)
+
 
 class TestKiCadGenerator(unittest.TestCase):
     """Testy generování KiCad 8 S-výrazů v kicad_generator.py."""
@@ -228,6 +277,8 @@ class TestKiCadGenerator(unittest.TestCase):
         self.assertGreater(res['file_size_bytes'], 5000)
         self.assertEqual(res['vias_count'], 6)
         self.assertEqual(res['rf_polygons_count'], 6)
+        self.assertEqual(res['mask_openings_count'], 7)
+        self.assertEqual(res['mask_openings_bottom_count'], 1)
 
         with open(pcb_file, "r", encoding="utf-8") as f:
             content = f.read()
@@ -268,8 +319,10 @@ class TestKiCadGenerator(unittest.TestCase):
         # Edge.Cuts obdélník
         self.assertIn('(layer "Edge.Cuts")', content)
 
-        # F.Mask otevření
+        # F.Mask a B.Mask otevření
         self.assertIn('(layer "F.Mask")', content)
+        self.assertIn('(layer "B.Mask")', content)
+        self.assertIn('(fill solid) (layer "B.Mask")', content)
 
     def test_generate_kicad_footprint(self):
         """Ověření vygenerování validního knihovního pouzdra (.kicad_mod)."""
@@ -299,8 +352,10 @@ class TestKiCadGenerator(unittest.TestCase):
         self.assertIn('(pad "3" smd rect (at ', content)
         self.assertIn('(size 3.5000 1.5000) (layers "F.Cu" "F.Mask")', content)
 
-        # Otevření masky F.Mask nad SMA
+        # Otevření masky F.Mask a B.Mask nad SMA
         self.assertIn('(layer "F.Mask")', content)
+        self.assertIn('(layer "B.Mask")', content)
+        self.assertIn('(solder_mask_margin 0.3000)', content)
 
         # Obrys na F.Fab a F.CrtYd
         self.assertIn('(layer "F.Fab")', content)
@@ -352,6 +407,25 @@ class TestExportCli(unittest.TestCase):
 
         self.assertTrue(os.path.exists(pcb_file))
         self.assertFalse(os.path.exists(fp_file))
+
+    def test_cli_export_with_mask_clearance(self):
+        """Spuštění CLI skriptu s volitelným odsazením masky --mask-clearance."""
+        cmd = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", self.temp_dir.name,
+            "--all",
+            "--mask-clearance", "0.40",
+        ]
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("Odsazení nepájivé masky (clearance):0.40 mm", proc.stdout)
+
+        fp_file = os.path.join(self.temp_dir.name, "Antenna_Model4_LHCP.kicad_mod")
+        with open(fp_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn('(solder_mask_margin 0.4000)', content)
+        self.assertIn('(layer "B.Mask")', content)
 
 
 if __name__ == "__main__":

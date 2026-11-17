@@ -47,6 +47,7 @@ def load_model4_params_from_env() -> Dict[str, Any]:
         'feed_50_len': float(os.getenv("FEED_50_LEN", 9.0)),
         'feed_end_straight': float(os.getenv("FEED_END_STRAIGHT", 4.6)),
         'sub_margin': float(os.getenv("SUB_MARGIN", 8.0)),
+        'mask_clearance': float(os.getenv("MASK_CLEARANCE", 0.30)),
     }
 
     # Volitelné explicitní parametry
@@ -60,6 +61,7 @@ def load_model4_params_from_env() -> Dict[str, Any]:
         'FEED_T_Y': 'feed_y_T',
         'SUB_W': 'sub_W',
         'SUB_L': 'sub_L',
+        'FEED_MASK_CLEARANCE': 'mask_clearance',
     }
     for env_var, param_key in opt_env_map.items():
         val = os.getenv(env_var)
@@ -118,6 +120,7 @@ def main() -> int:
     parser.add_argument("--trans-l", type=float, help="Délka transformátoru l_T [mm]")
     parser.add_argument("--inset", type=float, help="Hloubka zanoření zářezů na obou ramenech [mm]")
     parser.add_argument("--inset-gap", type=float, help="Šířka mezery zářezu [mm]")
+    parser.add_argument("--mask-clearance", type=float, help="Odsazení nepájivé masky (mask clearance) [mm]")
 
     args = parser.parse_args()
 
@@ -152,6 +155,8 @@ def main() -> int:
     if args.inset_gap is not None:
         params['feed_inset_gap_b'] = args.inset_gap
         params['feed_inset_gap_l'] = args.inset_gap
+    if args.mask_clearance is not None:
+        params['mask_clearance'] = args.mask_clearance
 
     out_dir = os.path.abspath(args.output_dir)
     os.makedirs(out_dir, exist_ok=True)
@@ -174,7 +179,8 @@ def main() -> int:
         print(f"Generuji KiCad 8 desku (.kicad_pcb): {os.path.basename(pcb_file)} ...")
         res_pcb = generate_kicad_pcb(params, pcb_file)
         print(f"  -> Uloženo ({res_pcb['file_size_bytes']} B, {res_pcb['vias_count']} prokovů, "
-              f"{res_pcb['rf_polygons_count']} RF polygonů)")
+              f"{res_pcb['rf_polygons_count']} RF polygonů, "
+              f"{res_pcb['mask_openings_count']} F.Mask + {res_pcb['mask_openings_bottom_count']} B.Mask)")
 
     if do_footprint:
         print(f"Generuji KiCad 8 pouzdro (.kicad_mod): {os.path.basename(fp_file)} ...")
@@ -197,6 +203,7 @@ def main() -> int:
     print(f"  Délka levé větve (L_100_l):        {info['L_100_l']:.3f} mm")
     print(f"  Délka spodní větve (L_100_b):      {info['L_100_b']:.3f} mm")
     print(f"  Fázovací rozdíl drah (Delta L):    {info['L_100_b'] - info['L_100_l']:.3f} mm (požadavek: {info['feed_delta_l']:.3f} mm)")
+    print(f"  Odsazení nepájivé masky (clearance):{info['mask_clearance']:.2f} mm (F.Mask RF + B.Mask SMA)")
     print(f"  SMA rozhraní:                      Cinch Johnson 142-0701-801 (G-S-G, 6 prokovů D=0.3/0.6mm)")
     print("=" * 80)
     print(" Export úspěšně dokončen.")

@@ -15,6 +15,7 @@ DESIGN_FREQ_GHZ = 2.3325      # Střední návrhová frekvence SDARS [GHz]
 PORT_Z0 = 50.0                # Jmenovitá impedance portu [Ohm]
 COORD_TOL = 1e-9
 OVERLAP_DELTA = 0.05          # Záměrný přesah 50 µm pro eliminaci DRC mikro-mezer v KiCadu
+MASK_CLEARANCE = 0.30         # Výchozí přesah nepájivé masky (solder mask clearance) [mm]
 
 
 # ==============================================================================
@@ -419,6 +420,9 @@ def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
     raw_sub_margin = params.get('sub_margin')
     sub_margin = float(raw_sub_margin) if raw_sub_margin is not None else max(8.0, 5.0 * h)
 
+    raw_mask_clearance = params.get('mask_clearance', params.get('feed_mask_clearance'))
+    mask_clearance = float(raw_mask_clearance) if raw_mask_clearance is not None else MASK_CLEARANCE
+
     # 6. Pozice vstupů transformátorů a vnějších referenčních os
     y_junc_b = -L / 2.0 + inset_b - l_T_b
     x_junc_l = -W / 2.0 + inset_l - l_T_l
@@ -549,6 +553,7 @@ def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
         'arm_offset': arm_offset,
         'end_straight': end_straight,
         'sub_margin': sub_margin,
+        'mask_clearance': mask_clearance,
         's_end_l': s_end_l,
         's_end_b': s_end_b,
         's_T_up': s_T_up,
@@ -610,6 +615,7 @@ class KiCadGeometryData:
     gnd_polygon_bottom: List[Tuple[float, float]]       # B.Cu Net 1 (GND)
     vias: List[Dict[str, Any]]                          # GND prokovy
     mask_openings: List[List[Tuple[float, float]]]      # F.Mask otvory
+    mask_openings_bottom: List[List[Tuple[float, float]]] # B.Mask otvory
     sma_top_pad_center: Tuple[float, float]
     sma_bot_pad_center: Tuple[float, float]
     sma_pad_size: Tuple[float, float]                   # (dx, dy) = (3.5, 1.5)
@@ -622,10 +628,11 @@ def get_model4_kicad_geometry(
     origin_y: Optional[float] = None,
     is_footprint: bool = False,
     overlap_delta: float = OVERLAP_DELTA,
+    mask_clearance: Optional[float] = None,
 ) -> KiCadGeometryData:
     """
-    Vytvoří kompletní sadu KiCad 8 geometrických prvků (F.Cu, B.Cu, F.Mask, Edge.Cuts, Vias)
-    včetně 50 µm přesahů pro eliminaci DRC mikro-mezer a SMA G-S-G rozhraní.
+    Vytvoří kompletní sadu KiCad 8 geometrických prvků (F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts, Vias)
+    včetně 50 µm přesahů pro eliminaci DRC mikro-mezer, odsazení nepájivé masky a SMA G-S-G rozhraní.
     """
     info = compute_model4_routing(params)
 
@@ -652,6 +659,12 @@ def get_model4_kicad_geometry(
     y_bot = info['y_bot']
     x_junc_l = info['x_junc_l']
     y_junc_b = info['y_junc_b']
+
+    if mask_clearance is None:
+        raw_mc = params.get('mask_clearance', info.get('mask_clearance', MASK_CLEARANCE))
+        mask_clearance = float(raw_mc) if raw_mc is not None else MASK_CLEARANCE
+    else:
+        mask_clearance = float(mask_clearance)
 
     # Nastavení počátku souřadnic:
     # Pro footprint: (0, 0) je střed vyzařovacího flíčku
@@ -804,30 +817,86 @@ def get_model4_kicad_geometry(
             'net_name': "GND",
         })
 
-    # 6. Otevření nepájivé masky na F.Mask
-    # A) Jednolité otevření masky nad SMA rozhraním: 4.0 mm x 8.0 mm
+    # 6. Otevření nepájivé masky s definovaným přesahem (solder mask clearance)
+    # A) Jednolité otevření masky nad horním SMA rozhraním: 4.0 mm x 8.0 mm
     sma_mask_cad = [
         (x_port, y_T - 4.0),
         (x_port + 4.0, y_T - 4.0),
         (x_port + 4.0, y_T + 4.0),
         (x_port, y_T + 4.0),
     ]
-    # B) Otevření masky nad vyzařovacím flíčkem pro ENIG zlacení
+    sma_mask_kicad = transform_poly_to_kicad(sma_mask_cad, ox, oy)
+
+    # B) Otevření masky nad vyzařovacím flíčkem pro ENIG zlacení s přesahem mask_clearance na každé straně
     patch_mask_cad = [
-        (-W / 2.0 - 0.1, -L / 2.0 - 0.1),
-        (W / 2.0 + 0.1, -L / 2.0 - 0.1),
-        (W / 2.0 + 0.1, L / 2.0 + 0.1),
-        (-W / 2.0 - 0.1, L / 2.0 + 0.1),
+        (-W / 2.0 - mask_clearance, -L / 2.0 - mask_clearance),
+        (W / 2.0 + mask_clearance, -L / 2.0 - mask_clearance),
+        (W / 2.0 + mask_clearance, L / 2.0 + mask_clearance),
+        (-W / 2.0 - mask_clearance, L / 2.0 + mask_clearance),
     ]
-    # C) Otevření masky nad transformátory a vedením (použije polygony RF větví)
+    patch_mask_kicad = transform_poly_to_kicad(patch_mask_cad, ox, oy)
+
+    # C) Spodní čtvrtvlnný transformátor rozšířený o mask_clearance v šířce i délce
+    trans_b_mask_cad = [
+        (-w_T_b / 2.0 - mask_clearance, y_trans_b_start - mask_clearance),
+        (w_T_b / 2.0 + mask_clearance, y_trans_b_start - mask_clearance),
+        (w_T_b / 2.0 + mask_clearance, y_trans_b_end + mask_clearance),
+        (-w_T_b / 2.0 - mask_clearance, y_trans_b_end + mask_clearance),
+    ]
+    trans_b_mask_kicad = transform_poly_to_kicad(trans_b_mask_cad, ox, oy)
+
+    # D) Levý čtvrtvlnný transformátor rozšířený o mask_clearance v šířce i délce
+    trans_l_mask_cad = [
+        (x_trans_l_start - mask_clearance, -w_T_l / 2.0 - mask_clearance),
+        (x_trans_l_end + mask_clearance, -w_T_l / 2.0 - mask_clearance),
+        (x_trans_l_end + mask_clearance, w_T_l / 2.0 + mask_clearance),
+        (x_trans_l_start - mask_clearance, w_T_l / 2.0 + mask_clearance),
+    ]
+    trans_l_mask_kicad = transform_poly_to_kicad(trans_l_mask_cad, ox, oy)
+
+    # E) Levá zakřivená 100 Ohm větev (arm_l) s šířkou w_feed + 2 * mask_clearance
+    arm_l_mask_cad = compute_curved_ribbon_outline(
+        arm_l_wps, w_feed + 2.0 * mask_clearance, bend_radius
+    )
+    arm_l_mask_kicad = transform_poly_to_kicad(arm_l_mask_cad, ox, oy)
+
+    # F) Spodní zakřivená 100 Ohm větev (arm_b) s šířkou w_feed + 2 * mask_clearance
+    arm_b_mask_cad = compute_curved_ribbon_outline(
+        arm_b_wps, w_feed + 2.0 * mask_clearance, bend_radius
+    )
+    arm_b_mask_kicad = transform_poly_to_kicad(arm_b_mask_cad, ox, oy)
+
+    # G) T-článek s rozšířenými šířkami w_50 + 2 * mask_clearance a w_feed + 2 * mask_clearance
+    t_junc_mask_cad = compute_t_junction_polygon(
+        x_port,
+        x_T,
+        y_T,
+        w_50 + 2.0 * mask_clearance,
+        w_feed + 2.0 * mask_clearance,
+        t_fillet_r,
+    )
+    t_junc_mask_kicad = transform_poly_to_kicad(t_junc_mask_cad, ox, oy)
+
+    # Celá sada otvorů horní masky na F.Mask
     mask_openings = [
-        transform_poly_to_kicad(sma_mask_cad, ox, oy),
-        transform_poly_to_kicad(patch_mask_cad, ox, oy),
-        trans_b_kicad,
-        trans_l_kicad,
-        arm_l_kicad,
-        arm_b_kicad,
-        t_junc_kicad,
+        sma_mask_kicad,
+        patch_mask_kicad,
+        trans_b_mask_kicad,
+        trans_l_mask_kicad,
+        arm_l_mask_kicad,
+        arm_b_mask_kicad,
+        t_junc_mask_kicad,
+    ]
+
+    # H) Otevření spodní nepájivé masky na B.Mask pro SMA konektor (4.0 mm x 8.0 mm)
+    sma_mask_bot_cad = [
+        (x_port, y_T - 4.0),
+        (x_port + 4.0, y_T - 4.0),
+        (x_port + 4.0, y_T + 4.0),
+        (x_port, y_T + 4.0),
+    ]
+    mask_openings_bottom = [
+        transform_poly_to_kicad(sma_mask_bot_cad, ox, oy),
     ]
 
     return KiCadGeometryData(
@@ -841,6 +910,7 @@ def get_model4_kicad_geometry(
         gnd_polygon_bottom=gnd_polygon_bottom,
         vias=vias,
         mask_openings=mask_openings,
+        mask_openings_bottom=mask_openings_bottom,
         sma_top_pad_center=sma_top_pad_center,
         sma_bot_pad_center=sma_bot_pad_center,
         sma_pad_size=sma_pad_size,

@@ -82,7 +82,8 @@ def generate_kicad_pcb(
       - Spodní souvislou zem na B.Cu se sítí Net 1.
       - SMA rozhraní na F.Cu se zemními ploškami a 6 prokovy se sítí Net 1.
       - Obrys desky W_sub x L_sub na Edge.Cuts.
-      - Otevření nepájivé masky na F.Mask (SMA rozhraní + vyzařovač pro ENIG zlacení).
+      - Otevření nepájivé masky na F.Mask s clearance (SMA rozhraní + vyzařovač + RF vedení).
+      - Otevření nepájivé masky na B.Mask pro SMA rozhraní (pájení spodních zemních pinů).
     """
     geom: KiCadGeometryData = get_model4_kicad_geometry(
         params, origin_x=origin_x, origin_y=origin_y, is_footprint=False
@@ -230,6 +231,15 @@ def generate_kicad_pcb(
         lines.append(f'    (stroke (width 0) (type solid)) (fill solid) (layer "F.Mask") (uuid "{u_mask}")')
         lines.append('  )')
 
+    # Otevření nepájivé masky na B.Mask (SMA konektor)
+    for mask_poly in geom.mask_openings_bottom:
+        u_mask = _gen_uuid()
+        pts_str = _format_pts(mask_poly, indent=6)
+        lines.append('  (gr_poly')
+        lines.append(pts_str)
+        lines.append(f'    (stroke (width 0) (type solid)) (fill solid) (layer "B.Mask") (uuid "{u_mask}")')
+        lines.append('  )')
+
     # Ukončení PCB souboru
     lines.append(')')
     content = "\n".join(lines) + "\n"
@@ -246,6 +256,7 @@ def generate_kicad_pcb(
         'vias_count': len(geom.vias),
         'rf_polygons_count': len(geom.rf_polygons),
         'mask_openings_count': len(geom.mask_openings),
+        'mask_openings_bottom_count': len(geom.mask_openings_bottom),
         'routing_info': info,
     }
 
@@ -303,7 +314,9 @@ def generate_kicad_footprint(
     lines.append('  )')
 
     # Zákaznický pad 1 ("RF_IN") s celou RF geometrií
+    mask_clearance = float(params.get('mask_clearance', info.get('mask_clearance', 0.30)))
     lines.append('  (pad "1" smd custom (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask")')
+    lines.append(f'    (solder_mask_margin {mask_clearance:.4f})')
     lines.append('    (zone_connect 2)')
     lines.append('    (options (clearance outline) (anchor rect))')
     lines.append('    (primitives')
@@ -334,7 +347,7 @@ def generate_kicad_footprint(
         f'(stroke (width 0.05) (type default)) (fill none) (layer "F.CrtYd"))'
     )
 
-    # Jednolité obdélníkové otevření masky SMA rozhraní na F.Mask (4.0 x 8.0 mm)
+    # Jednolité obdélníkové otevření masky SMA rozhraní na F.Mask a B.Mask (4.0 x 8.0 mm)
     x_port = float(info['x_port'])
     y_T = float(info['y_T'])
     # CAD: x in [x_port, x_port + 4.0], y in [y_T - 4.0, y_T + 4.0]
@@ -347,6 +360,11 @@ def generate_kicad_footprint(
         f'  (fp_rect (start {min(m_x1, m_x2):.4f} {min(m_y1, m_y2):.4f}) '
         f'(end {max(m_x1, m_x2):.4f} {max(m_y1, m_y2):.4f}) '
         f'(stroke (width 0) (type solid)) (fill solid) (layer "F.Mask"))'
+    )
+    lines.append(
+        f'  (fp_rect (start {min(m_x1, m_x2):.4f} {min(m_y1, m_y2):.4f}) '
+        f'(end {max(m_x1, m_x2):.4f} {max(m_y1, m_y2):.4f}) '
+        f'(stroke (width 0) (type solid)) (fill solid) (layer "B.Mask"))'
     )
 
     # Popis portu
