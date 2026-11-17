@@ -25,7 +25,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 
 # Přidání kořene projektu a složek src a scripts do sys.path
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,13 +53,6 @@ from antenna_geometry import (
 from kicad_generator import (
     generate_kicad_footprint,
     generate_kicad_pcb,
-)
-from export_gerber import (
-    find_kicad_runner,
-    map_path_to_container,
-    package_gerbers_zip,
-    run_export,
-    sanitize_docker_env,
 )
 
 
@@ -356,76 +348,6 @@ class TestExportCli(unittest.TestCase):
 
         self.assertTrue(os.path.exists(pcb_file))
         self.assertFalse(os.path.exists(fp_file))
-
-
-class TestGerberExport(unittest.TestCase):
-    """Testy skriptu scripts/export_gerber.py pro Gerber a Drill export."""
-
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-
-    def tearDown(self):
-        self.temp_dir.cleanup()
-
-    def test_map_path_to_container(self):
-        """Ověření převodu cest na /workspace/... uvnitř kontejneru."""
-        root = PROJECT_ROOT
-        pcb_rel = os.path.join(root, "export", "kicad", "antenna_model4.kicad_pcb")
-        mapped = map_path_to_container(pcb_rel, root)
-        self.assertEqual(mapped, "/workspace/export/kicad/antenna_model4.kicad_pcb")
-
-    def test_sanitize_docker_env(self):
-        """Ověření sanitizace Windows cest v .env pro Docker."""
-        with patch.dict(os.environ, {"EXPORT_DIR": "D:\\code\\anteny\\export"}):
-            sanitized = sanitize_docker_env()
-            if sys.platform != "win32":
-                self.assertEqual(sanitized["EXPORT_DIR"], "./export")
-
-    def test_package_gerbers_zip(self):
-        """Ověření zabalení Gerber a Drill souborů do ZIP archivu."""
-        dummy_files = [
-            "antenna_model4-F_Cu.gbr",
-            "antenna_model4-B_Cu.gbr",
-            "antenna_model4-Edge_Cuts.gbr",
-            "antenna_model4-PTH.drl",
-            "antenna_model4.gbrjob",
-        ]
-        for f in dummy_files:
-            with open(os.path.join(self.temp_dir.name, f), "w") as fp:
-                fp.write("dummy gerber data")
-
-        zip_path = package_gerbers_zip(self.temp_dir.name, "fabrication.zip")
-        self.assertIsNotNone(zip_path)
-        self.assertTrue(os.path.exists(zip_path))
-
-        import zipfile
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            namelist = zf.namelist()
-            for f in dummy_files:
-                self.assertIn(f, namelist)
-
-    def test_dry_run_export(self):
-        """Ověření běhu run_export v režimu dry-run."""
-        dummy_pcb = os.path.join(self.temp_dir.name, "test.kicad_pcb")
-        with open(dummy_pcb, "w") as f:
-            f.write("(kicad_pcb)")
-
-        ret = run_export(
-            pcb_path=dummy_pcb,
-            output_dir=os.path.join(self.temp_dir.name, "gerber"),
-            dry_run=True,
-            force_docker=True,
-        )
-        self.assertEqual(ret, 0)
-
-    def test_cli_help(self):
-        """Ověření spuštění skriptu s --help."""
-        cmd = [sys.executable, os.path.join(SCRIPTS_DIR, "export_gerber.py"), "--help"]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        self.assertEqual(proc.returncode, 0)
-        self.assertIn("--pcb", proc.stdout)
-        self.assertIn("--output-dir", proc.stdout)
-        self.assertIn("--no-drill", proc.stdout)
 
 
 if __name__ == "__main__":

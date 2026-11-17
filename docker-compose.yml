@@ -47,10 +47,6 @@ services:
     working_dir: /workspace
     profiles: ["kicad-export"]
     command:
-      - kicad-cli
-      - pcb
-      - export
-      - gerbers
-      - --output
-      - /workspace/export/kicad/gerber/
-      - /workspace/export/kicad/antenna_model4.kicad_pcb
+      - sh
+      - -c
+      - "kicad-cli pcb export gerbers -o /workspace/export/kicad/gerber/ /workspace/export/kicad/antenna_model4.kicad_pcb && kicad-cli pcb export drill -o /workspace/export/kicad/gerber/ /workspace/export/kicad/antenna_model4.kicad_pcb"
