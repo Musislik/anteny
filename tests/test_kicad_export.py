@@ -241,6 +241,10 @@ class TestKiCadGenerator(unittest.TestCase):
         self.assertIn('(0 "F.Cu" signal)', content)
         self.assertIn('(31 "B.Cu" power)', content)
         self.assertIn('(39 "F.Mask" user)', content)
+        self.assertIn('(40 "Dwgs.User" user "User.Drawings")', content)
+        self.assertIn('(41 "Cmts.User" user "User.Comments")', content)
+        self.assertIn('(42 "Eco1.User" user "User.Eco1")', content)
+        self.assertIn('(43 "Eco2.User" user "User.Eco2")', content)
         self.assertIn('(44 "Edge.Cuts" user)', content)
 
         # Sítě
