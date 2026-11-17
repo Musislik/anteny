@@ -24,6 +24,9 @@ load_env()
 
 def run_sweep(**kwargs):
     """Univerzální rozhraní pro spuštění sweepu zvoleného modelu antény."""
+    profile = kwargs.pop('profile', None)
+    if profile:
+        load_env(profile=profile)
     model_version = int(kwargs.get('antenna_model') or os.getenv("ANTENNA_MODEL", "1"))
     
     if model_version == 7:
@@ -50,19 +53,23 @@ def run_sweep(**kwargs):
 
 
 if __name__ == "__main__":
-    # Rychlá předběžná detekce --model pro směrování
-    env_model = int(os.getenv("ANTENNA_MODEL", "1"))
-    
+    # Rychlá předběžná detekce --profile a --model pro směrování
     parser = argparse.ArgumentParser(
         description="Dispečer parametrického sweepu antény (Model 1..7)",
         add_help=False,
         allow_abbrev=False
     )
-    parser.add_argument("--model", type=int, choices=[1, 2, 3, 4, 5, 6, 7], default=env_model, dest="antenna_model",
+    parser.add_argument("--profile", type=str, default=None, dest="profile",
+                        help="Název výrobního profilu varianty v results/<profile>/<profile>.env (přepíše kořenový .env; výchozí: ANTENNA_PROFILE)")
+    parser.add_argument("--model", type=int, choices=[1, 2, 3, 4, 5, 6, 7], default=None, dest="antenna_model",
                         help="Verze modelu antény (1: T-dělič, 2: dvouportový LHCP, 3: hybridní přizpůsobení, 4: finální 50 Ohm T-článek, 5: dvouportový 100 Ohm model s oblouky, 6: dvouportový zakřivený s interními 100 Ohm porty, 7: zrcadlený Model 4 pro RHCP). Výchozí z ANTENNA_MODEL.")
     known_args, remaining_argv = parser.parse_known_args()
 
-    selected_model = known_args.antenna_model
+    if known_args.profile:
+        load_env(profile=known_args.profile)
+
+    env_model = int(os.getenv("ANTENNA_MODEL", "1"))
+    selected_model = known_args.antenna_model if known_args.antenna_model is not None else env_model
 
     if selected_model == 7:
         from sweep_model7 import run_sweep_model7

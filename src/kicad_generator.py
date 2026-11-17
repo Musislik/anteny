@@ -19,6 +19,11 @@ def _gen_uuid() -> str:
     return str(uuid.uuid4())
 
 
+def _escape_kicad_str(text: str) -> str:
+    """Escapuje zpětná lomítka a uvozovky pro S-výrazy KiCad."""
+    return str(text).replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _format_pts(points: List[Tuple[float, float]], indent: int = 8) -> str:
     """Naformátuje seznam bodů (x, y) do bloku (pts (xy x y)...)."""
     sp = " " * indent
@@ -160,12 +165,28 @@ def generate_kicad_pcb(
         )
 
     # Popisy na vrstvě F.SilkS
+    raw_subtitle = params.get('silkscreen_subtitle')
+    raw_profile = params.get('profile_name')
+    subtitle_text: Optional[str] = None
+    if raw_subtitle is not None and str(raw_subtitle).strip() != "":
+        subtitle_text = str(raw_subtitle).strip()
+    elif raw_profile is not None and str(raw_profile).strip() != "":
+        subtitle_text = f"{str(raw_profile).strip()} | h={sub_h:.2f} mm, er={float(info['eps_r']):.2f}"
+
     u_title = _gen_uuid()
+    title_y = y_min - 4.0 if subtitle_text is not None else y_min - 3.0
     lines.append(
         f'  (gr_text "Model 4 LHCP SDARS Patch Antenna (2.3325 GHz)" '
-        f'(at {(x_min + x_max) / 2.0:.4f} {y_min - 3.0:.4f}) (layer "F.SilkS") (uuid "{u_title}") '
+        f'(at {(x_min + x_max) / 2.0:.4f} {title_y:.4f}) (layer "F.SilkS") (uuid "{u_title}") '
         f'(effects (font (size 1.2 1.2) (thickness 0.15))))'
     )
+    if subtitle_text is not None:
+        u_subtitle = _gen_uuid()
+        lines.append(
+            f'  (gr_text "{_escape_kicad_str(subtitle_text)}" '
+            f'(at {(x_min + x_max) / 2.0:.4f} {y_min - 1.8:.4f}) (layer "F.SilkS") (uuid "{u_subtitle}") '
+            f'(effects (font (size 0.9 0.9) (thickness 0.12))))'
+        )
     u_rf = _gen_uuid()
     y_rf_label = geom.origin_y - float(info['y_T'])
     lines.append(
@@ -281,8 +302,18 @@ def generate_kicad_footprint(
 
     lines: List[str] = []
 
+    raw_fp_name = params.get('footprint_name')
+    raw_profile = params.get('profile_name')
+    if raw_fp_name is not None and str(raw_fp_name).strip() != "":
+        fp_name = str(raw_fp_name).strip()
+    elif raw_profile is not None and str(raw_profile).strip() != "":
+        fp_name = f"Antenna_Model4_LHCP_{str(raw_profile).strip()}"
+    else:
+        fp_name = "Antenna_Model4_LHCP"
+    fp_name_esc = _escape_kicad_str(fp_name)
+
     # Hlavička Footprintu KiCad 10
-    lines.append('(footprint "Antenna_Model4_LHCP"')
+    lines.append(f'(footprint "{fp_name_esc}"')
     lines.append('  (version 20260206)')
     lines.append('  (generator "antena_kicad_generator")')
     lines.append('  (generator_version "10.0")')
@@ -294,7 +325,7 @@ def generate_kicad_footprint(
     lines.append(f'  (property "Reference" "ANT**" (at 0.0000 {y_min - 4.0:.4f} 0) (layer "F.SilkS") (uuid "{_gen_uuid()}")')
     lines.append('    (effects (font (size 1 1) (thickness 0.15)))')
     lines.append('  )')
-    lines.append(f'  (property "Value" "Antenna_Model4_LHCP" (at 0.0000 {y_max + 4.0:.4f} 0) (layer "F.Fab") (uuid "{_gen_uuid()}")')
+    lines.append(f'  (property "Value" "{fp_name_esc}" (at 0.0000 {y_max + 4.0:.4f} 0) (layer "F.Fab") (uuid "{_gen_uuid()}")')
     lines.append('    (effects (font (size 1 1) (thickness 0.15)))')
     lines.append('  )')
     lines.append(f'  (property "Datasheet" "" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "{_gen_uuid()}")')

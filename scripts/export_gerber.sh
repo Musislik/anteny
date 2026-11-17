@@ -1,3 +1,7 @@
 #!/usr/bin/env bash
 set -e
-docker compose --profile kicad-export run --rm kicad
+if [ -n "${1:-}" ]; then
+  ANTENNA_PROFILE="$1" docker compose --profile kicad-export run --rm kicad
+else
+  docker compose --profile kicad-export run --rm kicad
+fi

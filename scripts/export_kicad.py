@@ -24,7 +24,7 @@ except ImportError:
     except ImportError:
         pass
 
-from postpro_utils import get_export_dir, load_env
+from postpro_utils import get_export_dir, get_profile_kicad_dir, load_env
 from kicad_generator import generate_kicad_footprint, generate_kicad_pcb
 
 
@@ -100,22 +100,34 @@ def load_model4_params_from_env() -> Dict[str, Any]:
     raw_tight = os.getenv("TIGHT_PCB", os.getenv("CROP_PCB", "true"))
     params['tight_pcb'] = raw_tight.strip().lower() not in ('0', 'false', 'no', 'off')
 
+    profile_name = os.getenv("PROFILE_NAME")
+    if profile_name is not None and profile_name.strip() != "":
+        params['profile_name'] = profile_name.strip()
+
+    silkscreen_subtitle = os.getenv("SILKSCREEN_SUBTITLE")
+    if silkscreen_subtitle is not None and silkscreen_subtitle.strip() != "":
+        params['silkscreen_subtitle'] = silkscreen_subtitle.strip()
+
     return params
 
 
 def main() -> int:
-    # 1. Načtení .env souboru
-    root_dir, _ = load_env()
-    default_export_dir = os.path.join(get_export_dir(root_dir), "kicad")
-
-    # 2. Argumenty příkazové řádky
+    # 1. Argumenty příkazové řádky (parsujeme před load_env kvůli --profile)
     parser = argparse.ArgumentParser(
         description="Generátor výrobních a knihovních podkladů KiCad 10 pro Model 4 (LHCP SDARS anténa)."
     )
     parser.add_argument(
+        "--profile",
+        type=str,
+        default=None,
+        help="Název výrobního profilu varianty v results/<profile>/<profile>.env "
+             "(přepíše kořenový .env; výchozí: ANTENNA_PROFILE nebo žádný)",
+    )
+    parser.add_argument(
         "--output-dir",
-        default=default_export_dir,
-        help=f"Cílová složka pro uložení exportovaných souborů (výchozí: {default_export_dir})",
+        default=None,
+        help="Cílová složka pro uložení exportovaných souborů "
+             "(výchozí: results/<profile>/kicad/ při aktivním profilu, jinak export/kicad/)",
     )
     group_mode = parser.add_mutually_exclusive_group()
     group_mode.add_argument(
@@ -202,7 +214,19 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    # 3. Sestavení parametrů z .env s případným přepsáním z CLI
+    # 2. Načtení kořenového .env a případného profilu varianty
+    profile_arg = args.profile.strip() if args.profile else None
+    root_dir, _ = load_env(profile=profile_arg)
+    active_profile_env = os.getenv("ANTENNA_PROFILE", "").strip() or None
+    if active_profile_env:
+        if active_profile_env.endswith(".env"):
+            profile_slug = os.path.splitext(os.path.basename(active_profile_env))[0]
+        else:
+            profile_slug = active_profile_env
+    else:
+        profile_slug = None
+
+    # 3. Sestavení parametrů z .env (a profilu) s případným přepsáním z CLI
     params = load_model4_params_from_env()
 
     if args.tight_pcb is not None:
@@ -276,7 +300,12 @@ def main() -> int:
     if args.sma_pad_w is not None:
         params['sma_pad_w'] = args.sma_pad_w
 
-    out_dir = os.path.abspath(args.output_dir)
+    if args.output_dir is not None:
+        out_dir = os.path.abspath(args.output_dir)
+    elif active_profile_env:
+        out_dir = get_profile_kicad_dir(profile_arg or active_profile_env, root_dir=root_dir)
+    else:
+        out_dir = os.path.abspath(os.path.join(get_export_dir(root_dir), "kicad"))
     os.makedirs(out_dir, exist_ok=True)
 
     do_pcb = args.pcb or (not args.footprint)
@@ -285,13 +314,19 @@ def main() -> int:
     print("=" * 80)
     print(" UNIVERZÁLNÍ KICAD 10 EXPORT PRO MIKROPÁSKOVOU ANTÉNU (MODEL 4 LHCP)")
     print("=" * 80)
+    if profile_slug:
+        print(f"Aktivní profil: {profile_slug}")
     print(f"Cílový adresář: {out_dir}")
     print("-" * 80)
 
     res_pcb = None
     res_fp = None
-    pcb_file = os.path.join(out_dir, "antenna_model4.kicad_pcb")
-    fp_file = os.path.join(out_dir, "Antenna_Model4_LHCP.kicad_mod")
+    if profile_slug:
+        pcb_file = os.path.join(out_dir, f"antenna_model4_{profile_slug}.kicad_pcb")
+        fp_file = os.path.join(out_dir, f"Antenna_Model4_LHCP_{profile_slug}.kicad_mod")
+    else:
+        pcb_file = os.path.join(out_dir, "antenna_model4.kicad_pcb")
+        fp_file = os.path.join(out_dir, "Antenna_Model4_LHCP.kicad_mod")
 
     if do_pcb:
         print(f"Generuji KiCad 10 desku (.kicad_pcb): {os.path.basename(pcb_file)} ...")
@@ -305,15 +340,16 @@ def main() -> int:
         res_fp = generate_kicad_footprint(params, fp_file)
         print(f"  -> Uloženo ({res_fp['file_size_bytes']} B, zákaznický pad 1 RF_IN + SMD pady 2,3 GND)")
 
-    # Volitelná synchronizace do projektu kicad/antena1/
-    alt_kicad_dir = os.path.join(root_dir, "kicad", "antena1")
-    if os.path.isdir(alt_kicad_dir) and os.path.abspath(out_dir) != os.path.abspath(alt_kicad_dir):
-        import shutil
-        if do_pcb and os.path.exists(pcb_file):
-            shutil.copy2(pcb_file, os.path.join(alt_kicad_dir, "antenna_model4.kicad_pcb"))
-        if do_footprint and os.path.exists(fp_file):
-            shutil.copy2(fp_file, os.path.join(alt_kicad_dir, "Antenna_Model4_LHCP.kicad_mod"))
-        print(f"  -> Synchronizováno do projektu KiCad: {alt_kicad_dir}")
+    # Volitelná synchronizace do projektu kicad/antena1/ (pouze bez aktivního profilu)
+    if not profile_slug:
+        alt_kicad_dir = os.path.join(root_dir, "kicad", "antena1")
+        if os.path.isdir(alt_kicad_dir) and os.path.abspath(out_dir) != os.path.abspath(alt_kicad_dir):
+            import shutil
+            if do_pcb and os.path.exists(pcb_file):
+                shutil.copy2(pcb_file, os.path.join(alt_kicad_dir, "antenna_model4.kicad_pcb"))
+            if do_footprint and os.path.exists(fp_file):
+                shutil.copy2(fp_file, os.path.join(alt_kicad_dir, "Antenna_Model4_LHCP.kicad_mod"))
+            print(f"  -> Synchronizováno do projektu KiCad: {alt_kicad_dir}")
 
     # 4. Zobrazení souhrnné tabulky parametrů
     info = (res_pcb['routing_info'] if res_pcb else res_fp['routing_info'])
@@ -324,6 +360,12 @@ def main() -> int:
     print("-" * 80)
     print(" PŘEHLED VYGENEROVANÉ GEOMETRIE:")
     print("-" * 80)
+    if profile_slug:
+        profile_label = params.get('profile_name') or profile_slug
+        profile_summary = (
+            f"{profile_slug} ({profile_label})" if profile_label != profile_slug else profile_slug
+        )
+        print(f"  Aktivní profil varianty:           {profile_summary}")
     print(f"  Režim desky (PCB crop):            {mode_desc}")
     print(f"  Vyzařující flíček (L x W):         {info['L']:.2f} mm x {info['W']:.2f} mm")
     print(f"  Rozměry DPS (W_sub x L_sub x h):   {w_pcb:.2f} mm x {l_pcb:.2f} mm x {info['h']:.2f} mm (eps_r = {info['eps_r']:.2f})")

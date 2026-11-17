@@ -134,7 +134,24 @@ docker compose run --rm pipeline python src/sweep.py
 
 The dispatcher routes to the active model (`ANTENNA_MODEL` or `--model {1,2,3,4,7}`) and supports `.env` profiles (`SWEEP_PROFILE=precise` with AMR enabled or `SWEEP_PROFILE=fast` for rapid exploration), sweep targets (`--sweep-target` supporting `patch_l`, `trans_w`, `trans_l`, `delta_l`, `inset`, plus `bend_radius` and `feed_50_len` for Models 4 & 7 and `feed_lens` for Model 2; `--param {inset,patch_l}` for Model 1), explicit value overrides (such as `--patch-lengths` across Models 1–7), sweep modes (`--mode {symmetric,single_fixed,grid,manual}`), and local dry-runs (`--skip-simulation`).
 
-### 5. Run Tests
+### 5. Board Variant Profiles (`results/<variant>/`)
+To manage multiple board manufacturers or substrate stackups without editing the root `.env`, place variant overrides in `results/<variant>/<variant>.env` (local host paths remain in root `.env`, while substrate and geometry parameters from the profile take precedence):
+
+```bash
+# Single simulation or sweep using a board variant profile:
+python src/main.py --profile <variant>
+python src/sweep.py --profile <variant>
+
+# KiCad 10 PCB/footprint export into results/<variant>/kicad/:
+python scripts/export_kicad.py --profile <variant>
+
+# Gerber + drill export into results/<variant>/kicad/gerber/:
+./scripts/export_gerber.sh <variant>
+```
+
+You can also activate a profile via the `ANTENNA_PROFILE=<variant>` environment variable. When a profile is active, KiCad outputs are written to `results/<variant>/kicad/antenna_model4_<variant>.kicad_pcb`, `results/<variant>/kicad/Antenna_Model4_LHCP_<variant>.kicad_mod`, and `results/<variant>/kicad/gerber/`. Without a profile, exports default to `export/kicad/`.
+
+### 6. Run Tests
 Install local development dependencies from [`requirements-dev.txt`](requirements-dev.txt) and verify analytical RF calculations, de-embedding math, CAD/mesh generation, Palace config generation, plotting rules, and code linting:
 
 ```bash
@@ -275,6 +292,12 @@ When `SAVE_STEP=1` is enabled, Palace writes `.pvd` / `.pvtu` surface and volume
 ├── requirements-dev.txt        # Local test & lint dependencies (pytest, ruff)
 └── requirements.txt
 ```
+
+---
+
+## Future Features
+
+- Support `--from-params data/params.json` in [`scripts/export_kicad.py`](scripts/export_kicad.py) to export KiCad PCB and footprint files directly from a simulation run's saved `params.json`.
 
 ---
 

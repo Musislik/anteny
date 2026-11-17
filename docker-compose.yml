@@ -39,14 +39,28 @@ services:
 
   # 3. Nástroj pro export výrobních podkladů Gerber a DRC kontrolu v KiCad 10 CLI
   # Spuštění: docker compose --profile kicad-export run --rm kicad
+  # S profilem varianty: ANTENNA_PROFILE=<profile> docker compose --profile kicad-export run --rm kicad
   kicad:
     image: kicad/kicad:10.0
     volumes:
       - ${CONF_DIR:-.}:/workspace
       - ${EXPORT_DIR:-./export}:/workspace/export
+    environment:
+      - ANTENNA_PROFILE=${ANTENNA_PROFILE:-}
     working_dir: /workspace
     profiles: ["kicad-export"]
     command:
       - sh
       - -c
-      - "kicad-cli pcb export gerbers -o /workspace/export/kicad/gerber/ /workspace/export/kicad/antenna_model4.kicad_pcb && kicad-cli pcb export drill -o /workspace/export/kicad/gerber/ /workspace/export/kicad/antenna_model4.kicad_pcb"
+      - |
+        set -e
+        if [ -n "$$ANTENNA_PROFILE" ]; then
+          PCB="/workspace/results/$$ANTENNA_PROFILE/kicad/antenna_model4_$$ANTENNA_PROFILE.kicad_pcb"
+          OUT="/workspace/results/$$ANTENNA_PROFILE/kicad/gerber/"
+        else
+          PCB="/workspace/export/kicad/antenna_model4.kicad_pcb"
+          OUT="/workspace/export/kicad/gerber/"
+        fi
+        mkdir -p "$$OUT"
+        kicad-cli pcb export gerbers -o "$$OUT" "$$PCB"
+        kicad-cli pcb export drill -o "$$OUT" "$$PCB"

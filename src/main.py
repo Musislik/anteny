@@ -190,9 +190,9 @@ def clean_previous_outputs(data_dir=None):
         _clean_dir(d)
     print(f"Výstupní složky simulace ({os.path.join(data_dir, 'postpro*')}) byly vyčištěny.")
 
-def main(custom_params=None, skip_simulation=False, clean=False):
-    # Načtení případného .env souboru a zajištění cílového datového adresáře
-    root_dir, data_dir = load_env()
+def main(custom_params=None, skip_simulation=False, clean=False, profile=None):
+    # Načtení případného .env souboru (a volitelného profilu varianty) a zajištění cílového datového adresáře
+    root_dir, data_dir = load_env(profile=profile)
     os.makedirs(data_dir, exist_ok=True)
 
     if clean:
@@ -870,6 +870,8 @@ def _process_results_model2(params, output_dir, data_dir, run_name):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="LHCP Patch Antenna Simulation & CAD Model Generation")
+    parser.add_argument("--profile", type=str, default=None, dest="profile",
+                        help="Název výrobního profilu varianty v results/<profile>/<profile>.env (přepíše kořenový .env; výchozí: ANTENNA_PROFILE)")
     parser.add_argument("--model", type=int, choices=[1, 2, 3, 4, 5, 6, 7], default=None, dest="antenna_model",
                         help="Verze modelu antény: 1 (T-dělič 50 Ohm), 2 (dvouportový 100 Ohm), 3 (hybridní 2-portový), 4 (finální 50 Ohm T-článek s oblouky), 5 (dvouportový zakřivený 100 Ohm), 6 (dvouportový zakřivený s interními 100 Ohm porty), 7 (zrcadlený Model 4 pro RHCP). Výchozí: 1 nebo z ANTENNA_MODEL")
     parser.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true",
@@ -970,4 +972,9 @@ if __name__ == "__main__":
         if val is not None:
             cli_params[param] = val
 
-    main(custom_params=cli_params if cli_params else None, skip_simulation=args.skip_simulation, clean=args.clean)
+    main(
+        custom_params=cli_params if cli_params else None,
+        skip_simulation=args.skip_simulation,
+        clean=args.clean,
+        profile=args.profile,
+    )

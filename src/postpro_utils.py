@@ -4,6 +4,7 @@ a automatické propojování výstupů adaptivního zjemnění (AMR) pro ParaVie
 """
 
 import os
+import re
 import sys
 import glob
 import subprocess
@@ -60,27 +61,186 @@ def _resolve_env_dir(env_dir, root_dir, default_subdir):
     return os.path.abspath(os.path.join(root_dir, env_dir))
 
 
-def load_env(env_path=None):
+_SAFE_PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_ENV_FILE_APPLIED = {}
+
+
+def _validate_safe_profile_name(profile_name):
+    """Validuje bezpečný název profilu (bez path traversal a oddělovačů cest)."""
+    if not isinstance(profile_name, str):
+        raise ValueError(f"Neplatný název profilu: {profile_name!r}")
+    name = profile_name.strip()
+    if not name:
+        raise ValueError("Název profilu nesmí být prázdný.")
+    if ".." in name or "/" in name or "\\" in name or "\x00" in name:
+        raise ValueError(
+            f"Neplatný název profilu (path traversal / oddělovače cest nejsou povoleny): {profile_name!r}"
+        )
+    if not _SAFE_PROFILE_RE.match(name):
+        raise ValueError(
+            f"Neplatný název profilu {profile_name!r}: povoleny jsou pouze znaky [A-Za-z0-9._-] "
+            f"a název musí začínat alfanumerickým znakem."
+        )
+    return name
+
+
+def _parse_env_file(path):
+    """Načte dvojice klíč=hodnota ze souboru ve formátu .env."""
+    parsed = {}
+    if not path or not os.path.exists(path):
+        return parsed
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip().strip("'\"")
+                if k:
+                    parsed[k] = v
+    return parsed
+
+
+def get_profile_env_path(profile_name, root_dir=None):
     """
-    Načte proměnné prostředí ze souboru .env v kořeni projektu.
+    Vrátí absolutní cestu ke konfiguračnímu souboru profilu:
+      <root_dir>/results/<profile_name>/<profile_name>.env
+    Podporuje také přímou cestu na existující .env soubor (bez path traversal '..').
+    Pokud soubor neexistuje, vyhodí FileNotFoundError.
+    """
+    if root_dir is None:
+        root_dir = get_project_root()
+    else:
+        root_dir = os.path.abspath(root_dir)
+
+    if not isinstance(profile_name, str) or not profile_name.strip():
+        raise ValueError(f"Neplatný název profilu: {profile_name!r}")
+
+    raw = profile_name.strip()
+    if "\x00" in raw or ".." in raw:
+        raise ValueError(f"Neplatný název profilu (path traversal není povolen): {profile_name!r}")
+
+    if raw.endswith(".env"):
+        candidate = os.path.abspath(raw) if os.path.isabs(raw) else os.path.abspath(os.path.join(root_dir, raw))
+        if os.path.isfile(candidate):
+            return candidate
+        raise FileNotFoundError(f"Konfigurační soubor profilu nebyl nalezen: {candidate}")
+
+    safe_name = _validate_safe_profile_name(raw)
+    results_dir = os.path.abspath(os.path.join(root_dir, "results"))
+    env_file = os.path.abspath(os.path.join(results_dir, safe_name, f"{safe_name}.env"))
+    if os.path.commonpath([results_dir, env_file]) != results_dir:
+        raise ValueError(f"Neplatný název profilu (cesta mimo results/): {profile_name!r}")
+
+    if not os.path.isfile(env_file):
+        raise FileNotFoundError(
+            f"Profil varianty '{safe_name}' nebyl nalezen: očekávaný soubor {env_file} neexistuje."
+        )
+    return env_file
+
+
+def get_profile_kicad_dir(profile_name, root_dir=None):
+    """
+    Vrátí absolutní cestu k výstupní složce KiCad pro zadaný profil:
+      <root_dir>/results/<profile_name>/kicad
+    """
+    if root_dir is None:
+        root_dir = get_project_root()
+    else:
+        root_dir = os.path.abspath(root_dir)
+
+    if not isinstance(profile_name, str) or not profile_name.strip():
+        raise ValueError(f"Neplatný název profilu: {profile_name!r}")
+
+    raw = profile_name.strip()
+    if "\x00" in raw or ".." in raw:
+        raise ValueError(f"Neplatný název profilu (path traversal není povolen): {profile_name!r}")
+
+    if raw.endswith(".env"):
+        candidate = os.path.abspath(raw) if os.path.isabs(raw) else os.path.abspath(os.path.join(root_dir, raw))
+        return os.path.abspath(os.path.join(os.path.dirname(candidate), "kicad"))
+
+    safe_name = _validate_safe_profile_name(raw)
+    results_dir = os.path.abspath(os.path.join(root_dir, "results"))
+    kicad_dir = os.path.abspath(os.path.join(results_dir, safe_name, "kicad"))
+    if os.path.commonpath([results_dir, kicad_dir]) != results_dir:
+        raise ValueError(f"Neplatný název profilu (cesta mimo results/): {profile_name!r}")
+    return kicad_dir
+
+
+def load_env(env_path=None, profile=None):
+    """
+    Načte proměnné prostředí ze souboru .env v kořeni projektu a volitelně
+    aplikuje výrobní profil varianty z results/<profile>/<profile>.env.
+
+    Priorita výběru profilu: explicitní argument `profile` > `os.getenv("ANTENNA_PROFILE")`.
+    Hodnoty z profilu přepisují hodnoty načtené z kořenového .env (i při opakovaném volání).
     Vrací tuple (root_dir, data_dir).
     """
-    root_dir = get_project_root()
     if env_path is None:
+        root_dir = get_project_root()
         env_path = os.path.join(root_dir, ".env")
+    else:
+        env_path = os.path.abspath(env_path)
+        root_dir = os.path.dirname(env_path)
 
+    root_vars = {}
     if os.path.exists(env_path):
         try:
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        k, v = k.strip(), v.strip().strip("'\"")
-                        if k and k not in os.environ:
-                            os.environ[k] = v
+            root_vars = _parse_env_file(env_path)
+            for k, v in root_vars.items():
+                if k not in os.environ:
+                    os.environ[k] = v
+                    _ENV_FILE_APPLIED[k] = v
         except Exception as e:
             print(f"Upozornění při čtení .env: {e}")
+
+    explicit_profile = profile is not None and str(profile).strip() != ""
+    if explicit_profile:
+        active_profile = str(profile).strip()
+    else:
+        env_profile = os.getenv("ANTENNA_PROFILE", "").strip()
+        active_profile = env_profile if env_profile else None
+
+    if active_profile:
+        profile_env_path = get_profile_env_path(active_profile, root_dir=root_dir)
+        if active_profile.endswith(".env"):
+            profile_slug = os.path.splitext(os.path.basename(profile_env_path))[0]
+            canonical_env_path = os.path.abspath(
+                os.path.join(root_dir, "results", profile_slug, f"{profile_slug}.env")
+            )
+            env_profile_value = profile_slug if profile_env_path == canonical_env_path else profile_env_path
+        else:
+            profile_slug = active_profile
+            env_profile_value = active_profile
+
+        profile_vars = _parse_env_file(profile_env_path)
+        for k, v in profile_vars.items():
+            can_override = (
+                k not in os.environ
+                or _ENV_FILE_APPLIED.get(k) == os.environ.get(k)
+                or (k in root_vars and os.environ.get(k) == root_vars[k])
+            )
+            if can_override:
+                os.environ[k] = v
+                _ENV_FILE_APPLIED[k] = v
+
+        if (
+            explicit_profile
+            or "ANTENNA_PROFILE" not in os.environ
+            or _ENV_FILE_APPLIED.get("ANTENNA_PROFILE") == os.environ.get("ANTENNA_PROFILE")
+        ):
+            os.environ["ANTENNA_PROFILE"] = env_profile_value
+            _ENV_FILE_APPLIED["ANTENNA_PROFILE"] = env_profile_value
+
+        desired_profile_name = profile_vars.get("PROFILE_NAME", "").strip() or profile_slug
+        if (
+            explicit_profile
+            or "PROFILE_NAME" not in os.environ
+            or _ENV_FILE_APPLIED.get("PROFILE_NAME") == os.environ.get("PROFILE_NAME")
+            or ("PROFILE_NAME" in root_vars and os.environ.get("PROFILE_NAME") == root_vars["PROFILE_NAME"])
+        ):
+            os.environ["PROFILE_NAME"] = desired_profile_name
+            _ENV_FILE_APPLIED["PROFILE_NAME"] = desired_profile_name
 
     # Pokud zadaná cesta existuje v aktuálním souborovém systému, použijeme ji.
     # Pokud neexistuje (např. hostitelská cesta jako /host/cesta/k/datum spuštěná uvnitř Docker kontejneru
@@ -105,11 +265,11 @@ def get_export_dir(root_dir=None):
     return os.path.abspath(export_dir)
 
 
-def load_env_paths(env_path=None):
+def load_env_paths(env_path=None, profile=None):
     """
-    Načte .env a vrátí tuple (root_dir, data_dir, export_dir).
+    Načte .env (a případně profil) a vrátí tuple (root_dir, data_dir, export_dir).
     """
-    root_dir, data_dir = load_env(env_path)
+    root_dir, data_dir = load_env(env_path, profile=profile)
     export_dir = get_export_dir(root_dir)
     return root_dir, data_dir, export_dir
 
