@@ -42,11 +42,15 @@ def _resolve_env_dir(env_dir, root_dir, default_subdir):
 
     is_container = os.path.exists("/.dockerenv") or os.path.exists("/workspace")
     is_win_unix_path = sys.platform == "win32" and env_dir.startswith("/")
+    is_win_drive_on_linux = sys.platform != "win32" and len(env_dir) >= 2 and env_dir[1] == ":" and env_dir[0].isalpha()
 
     if is_win_unix_path:
         if not os.path.exists(env_dir):
             return default_dir
         return os.path.abspath(env_dir)
+
+    if is_win_drive_on_linux:
+        return default_dir
 
     if os.path.isabs(env_dir):
         if not os.path.exists(env_dir) and (is_container or os.path.exists(default_dir)):
