@@ -1,7 +1,7 @@
 """
 antenna_geometry.py - Pure-Python modul pro analytické výpočty, trasování a geometrii Modelu 4.
 Nezávislý na Gmsh i systémovém NumPy (využívá pouze standardní knihovnu Pythonu: math, dataclasses).
-Sdílený mezi Gmsh 3D CAD modelem (geometry_v4.py) a KiCad 8 generátorem (kicad_generator.py).
+Sdílený mezi Gmsh 3D CAD modelem (geometry_v4.py) a KiCad 10 generátorem (kicad_generator.py).
 """
 
 import math
@@ -604,7 +604,7 @@ def transform_poly_to_kicad(
 
 @dataclass
 class KiCadGeometryData:
-    """Kompletní reprezentace geometrie pro export do KiCad 8."""
+    """Kompletní reprezentace geometrie pro export do KiCad 10."""
     origin_x: float
     origin_y: float
     W_sub: float
@@ -633,7 +633,7 @@ def get_model4_kicad_geometry(
     tight_pcb: Optional[bool] = None,
 ) -> KiCadGeometryData:
     """
-    Vytvoří kompletní sadu KiCad 8 geometrických prvků (F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts, Vias)
+    Vytvoří kompletní sadu KiCad 10 geometrických prvků (F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts, Vias)
     včetně 50 µm přesahů pro eliminaci DRC mikro-mezer, odsazení nepájivé masky a SMA G-S-G rozhraní.
     Podporuje kompaktní ořez desky (tight_pcb=True, výchozí) šetřící ~40 % plochy substrátu.
     """

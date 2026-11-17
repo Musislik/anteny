@@ -37,10 +37,10 @@ services:
     profiles: ["worker"]
     command: python src/sweep.py
 
-  # 3. Nástroj pro export výrobních podkladů Gerber a DRC kontrolu v KiCad 8 CLI
+  # 3. Nástroj pro export výrobních podkladů Gerber a DRC kontrolu v KiCad 10 CLI
   # Spuštění: docker compose --profile kicad-export run --rm kicad
   kicad:
-    image: kicad/kicad:8.0
+    image: kicad/kicad:10.0
     volumes:
       - ${CONF_DIR:-.}:/workspace
       - ${EXPORT_DIR:-./export}:/workspace/export

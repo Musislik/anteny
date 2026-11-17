@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-export_kicad.py - Uživatelský CLI nástroj pro export výrobních a knihovních podkladů KiCad 8.
+export_kicad.py - Uživatelský CLI nástroj pro export výrobních a knihovních podkladů KiCad 10.
 Načítá konfiguraci z .env souboru (pomocí postpro_utils.load_env()) a umožňuje
 jednoduché přepsání parametrů přes argumenty příkazové řádky.
 
@@ -87,7 +87,7 @@ def main() -> int:
 
     # 2. Argumenty příkazové řádky
     parser = argparse.ArgumentParser(
-        description="Generátor výrobních a knihovních podkladů KiCad 8 pro Model 4 (LHCP SDARS anténa)."
+        description="Generátor výrobních a knihovních podkladů KiCad 10 pro Model 4 (LHCP SDARS anténa)."
     )
     parser.add_argument(
         "--output-dir",
@@ -211,7 +211,7 @@ def main() -> int:
     do_footprint = args.footprint or (not args.pcb)
 
     print("=" * 80)
-    print(" UNIVERZÁLNÍ KICAD 8 EXPORT PRO MIKROPÁSKOVOU ANTÉNU (MODEL 4 LHCP)")
+    print(" UNIVERZÁLNÍ KICAD 10 EXPORT PRO MIKROPÁSKOVOU ANTÉNU (MODEL 4 LHCP)")
     print("=" * 80)
     print(f"Cílový adresář: {out_dir}")
     print("-" * 80)
@@ -222,14 +222,14 @@ def main() -> int:
     fp_file = os.path.join(out_dir, "Antenna_Model4_LHCP.kicad_mod")
 
     if do_pcb:
-        print(f"Generuji KiCad 8 desku (.kicad_pcb): {os.path.basename(pcb_file)} ...")
+        print(f"Generuji KiCad 10 desku (.kicad_pcb): {os.path.basename(pcb_file)} ...")
         res_pcb = generate_kicad_pcb(params, pcb_file)
         print(f"  -> Uloženo ({res_pcb['file_size_bytes']} B, {res_pcb['vias_count']} prokovů, "
               f"{res_pcb['rf_polygons_count']} RF polygonů, "
               f"{res_pcb['mask_openings_count']} F.Mask + {res_pcb['mask_openings_bottom_count']} B.Mask)")
 
     if do_footprint:
-        print(f"Generuji KiCad 8 pouzdro (.kicad_mod): {os.path.basename(fp_file)} ...")
+        print(f"Generuji KiCad 10 pouzdro (.kicad_mod): {os.path.basename(fp_file)} ...")
         res_fp = generate_kicad_footprint(params, fp_file)
         print(f"  -> Uloženo ({res_fp['file_size_bytes']} B, zákaznický pad 1 RF_IN + SMD pady 2,3 GND)")
 

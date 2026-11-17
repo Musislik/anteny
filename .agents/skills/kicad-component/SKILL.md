@@ -1,11 +1,11 @@
 ---
 name: kicad-component
 description: >-
-  Postup tvorby schématických symbolů (.kicad_sym) a pouzder (.kicad_mod) pro KiCad 8
+  Postup tvorby schématických symbolů (.kicad_sym) a pouzder (.kicad_mod) pro KiCad 10
   pomocí kružnic a úseček a jejich validace přes Docker KiCad CLI.
 ---
 
-# Tvorba KiCad 8 součástek (Symboly a Pouzdra)
+# Tvorba KiCad 10 součástek (Symboly a Pouzdra)
 
 Použij tento postup při vytváření grafických prvků, log nebo součástek pro KiCad v tomto projektu.
 
@@ -19,19 +19,28 @@ Použij tento postup při vytváření grafických prvků, log nebo součástek 
 - **Centrování**: Umísti střed tvaru na `(0, 0)` pro snadné vkládání a rotaci.
 - **Barva pro schéma**: Pro černou barvu nastav explicitně `(stroke (width ...) (type default) (color 0 0 0 1))`.
 
-## 2. Syntaxe S-výrazů (KiCad 8)
+## 2. Syntaxe S-výrazů (KiCad 10)
 
 ### Symbol v `.kicad_sym`
 ```lisp
-(kicad_symbol_lib (version 20231120) (generator "kicad_symbol_editor")
-  (symbol "Nazev_Soucastky" (in_bom no) (on_board yes)
-    (property "Reference" "#G" (at 0 6 0) (effects (font (size 1.27 1.27)) (hide yes)))
-    (property "Value" "Nazev_Soucastky" (at 0 -6 0) (effects (font (size 1.27 1.27)) (hide yes)))
-    (property "Footprint" "Knihovna:Nazev_Soucastky" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+(kicad_symbol_lib
+  (version 20251024)
+  (generator "kicad_symbol_editor")
+  (generator_version "10.0")
+  (symbol "Nazev_Soucastky"
+    (exclude_from_sim no)
+    (in_bom no)
+    (on_board yes)
+    (in_pos_files yes)
+    (duplicate_pin_numbers_are_jumpers no)
+    (property "Reference" "#G" (at 0 6 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27))))
+    (property "Value" "Nazev_Soucastky" (at 0 -6 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Knihovna:Nazev_Soucastky" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27))))
     (symbol "Nazev_Soucastky_0_1"
       (arc (start X1 Y1) (mid Xm Ym) (end X2 Y2) (stroke (width 0.254) (type default) (color 0 0 0 1)) (fill (type none)))
       (polyline (pts (xy X1 Y1) (xy X2 Y2)) (stroke (width 0.254) (type default) (color 0 0 0 1)) (fill (type none)))
     )
+    (embedded_fonts no)
   )
 )
 ```
@@ -39,18 +48,20 @@ Použij tento postup při vytváření grafických prvků, log nebo součástek 
 ### Pouzdro v `.kicad_mod` (v knihovně `.pretty`)
 ```lisp
 (footprint "Nazev_Soucastky"
-  (version 20240108)
+  (version 20260206)
   (generator "kicad_footprint_editor")
-  (generator_version "8.0")
+  (generator_version "10.0")
   (layer "F.Cu")
-  (property "Reference" "REF**" (at 0 -6) (layer "F.SilkS") (hide yes)
+  (property "Reference" "REF**" (at 0 -6 0) (layer "F.SilkS") (hide yes) (uuid "00000000-0000-0000-0000-000000000001")
     (effects (font (size 1 1) (thickness 0.15)))
   )
-  (property "Value" "Nazev_Soucastky" (at 0 6) (layer "F.Fab") (hide yes)
+  (property "Value" "Nazev_Soucastky" (at 0 6 0) (layer "F.Fab") (hide yes) (uuid "00000000-0000-0000-0000-000000000002")
     (effects (font (size 1 1) (thickness 0.15)))
   )
-  (fp_arc (start X1 Y1) (mid Xm Ym) (end X2 Y2) (stroke (width 0.15) (type default)) (layer "F.SilkS"))
-  (fp_line (start X1 Y1) (end X2 Y2) (stroke (width 0.15) (type default)) (layer "F.SilkS"))
+  (duplicate_pad_numbers_are_jumpers no)
+  (fp_arc (start X1 Y1) (mid Xm Ym) (end X2 Y2) (stroke (width 0.15) (type default)) (layer "F.SilkS") (uuid "00000000-0000-0000-0000-000000000003"))
+  (fp_line (start X1 Y1) (end X2 Y2) (stroke (width 0.15) (type default)) (layer "F.SilkS") (uuid "00000000-0000-0000-0000-000000000004"))
+  (embedded_fonts no)
 )
 ```
 

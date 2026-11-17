@@ -10,8 +10,8 @@ Testuje:
      - Přesahy 50 µm pro eliminaci DRC mikro-mezer.
      - SMA G-S-G rozhraní (Cinch Johnson 142-0701-801, 6 prokovů).
   2. kicad_generator.py:
-     - Generování výrobní DPS (.kicad_pcb) KiCad 8 (verze 20240108).
-     - Ověření explicitních sítí (Net 0, Net 1 GND, Net 2 RF_IN).
+     - Generování výrobní DPS (.kicad_pcb) KiCad 10 (verze 20260206).
+     - Ověření pojmenovaných sítí ("GND", "RF_IN") a kanonických vrstev KiCad 10.
      - Zóny F.Cu, celistvá zem B.Cu, Edge.Cuts obrys, F.Mask otvory, 6 GND prokovů.
      - Generování knihovního pouzdra (.kicad_mod) s kotevním bodem (0, 0) uprostřed flíčku.
      - Zákaznický SMD pad 1 s celou RF geometrií a SMD pady 2, 3 pro SMA GND.
@@ -329,7 +329,7 @@ class TestAntennaGeometry(unittest.TestCase):
 
 
 class TestKiCadGenerator(unittest.TestCase):
-    """Testy generování KiCad 8 S-výrazů v kicad_generator.py."""
+    """Testy generování KiCad 10 S-výrazů v kicad_generator.py."""
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -346,7 +346,7 @@ class TestKiCadGenerator(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_generate_kicad_pcb(self):
-        """Ověření vygenerování validní KiCad 8 desky plošných spojů."""
+        """Ověření vygenerování validní KiCad 10 desky plošných spojů."""
         pcb_file = os.path.join(self.temp_dir.name, "test_antenna.kicad_pcb")
         res = generate_kicad_pcb(self.params, pcb_file)
 
@@ -360,37 +360,35 @@ class TestKiCadGenerator(unittest.TestCase):
         with open(pcb_file, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Kontrola klíčových KiCad 8 prvků
+        # Kontrola klíčových KiCad 10 prvků
         self.assertIn('(kicad_pcb', content)
-        self.assertIn('(version 20240108)', content)
+        self.assertIn('(version 20260206)', content)
+        self.assertIn('(generator_version "10.0")', content)
         self.assertIn('(thickness 1.520)', content)
+        self.assertIn('(embedded_fonts no)', content)
 
-        # Vrstvy
+        # Vrstvy (kanonické číslování KiCad 10)
         self.assertIn('(0 "F.Cu" signal)', content)
-        self.assertIn('(31 "B.Cu" power)', content)
-        self.assertIn('(39 "F.Mask" user)', content)
-        self.assertIn('(40 "Dwgs.User" user "User.Drawings")', content)
-        self.assertIn('(41 "Cmts.User" user "User.Comments")', content)
-        self.assertIn('(42 "Eco1.User" user "User.Eco1")', content)
-        self.assertIn('(43 "Eco2.User" user "User.Eco2")', content)
-        self.assertIn('(44 "Edge.Cuts" user)', content)
+        self.assertIn('(2 "B.Cu" power)', content)
+        self.assertIn('(1 "F.Mask" user)', content)
+        self.assertIn('(3 "B.Mask" user)', content)
+        self.assertIn('(17 "Dwgs.User" user "User.Drawings")', content)
+        self.assertIn('(19 "Cmts.User" user "User.Comments")', content)
+        self.assertIn('(21 "Eco1.User" user "User.Eco1")', content)
+        self.assertIn('(23 "Eco2.User" user "User.Eco2")', content)
+        self.assertIn('(25 "Edge.Cuts" user)', content)
 
-        # Sítě
-        self.assertIn('(net 0 "")', content)
-        self.assertIn('(net 1 "GND")', content)
-        self.assertIn('(net 2 "RF_IN")', content)
-
-        # Zóny
-        self.assertIn('(net 2)', content)
-        self.assertIn('(net_name "RF_IN")', content)
-        self.assertIn('(layers "F.Cu")', content)
-        self.assertIn('(net 1)', content)
-        self.assertIn('(net_name "GND")', content)
-        self.assertIn('(layers "B.Cu")', content)
+        # Zóny (KiCad 10 používá jmenné sítě a (layer "...") i ve filled_polygon)
+        self.assertIn('(net "RF_IN")', content)
+        self.assertIn('(layer "F.Cu")', content)
+        self.assertIn('(net "GND")', content)
+        self.assertIn('(layer "B.Cu")', content)
+        self.assertIn('(filled_polygon\n      (layer "F.Cu")', content)
+        self.assertIn('(filled_polygon\n      (layer "B.Cu")', content)
 
         # Prokovy
         self.assertIn('(via (at ', content)
-        self.assertIn('(size 0.6000) (drill 0.3000) (layers "F.Cu" "B.Cu") (net 1)', content)
+        self.assertIn('(size 0.6000) (drill 0.3000) (layers "F.Cu" "B.Cu") (net "GND")', content)
         self.assertEqual(content.count('(size 0.6000) (drill 0.3000)'), 6)
 
         # Edge.Cuts obdélník
@@ -399,7 +397,7 @@ class TestKiCadGenerator(unittest.TestCase):
         # F.Mask a B.Mask otevření
         self.assertIn('(layer "F.Mask")', content)
         self.assertIn('(layer "B.Mask")', content)
-        self.assertIn('(fill solid) (layer "B.Mask")', content)
+        self.assertIn('(fill yes) (layer "B.Mask")', content)
 
     def test_generate_kicad_footprint(self):
         """Ověření vygenerování validního knihovního pouzdra (.kicad_mod)."""
@@ -412,9 +410,12 @@ class TestKiCadGenerator(unittest.TestCase):
         with open(fp_file, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Hlavička footprintu
+        # Hlavička footprintu KiCad 10
         self.assertIn('(footprint "Antenna_Model4_LHCP"', content)
-        self.assertIn('(version 20240108)', content)
+        self.assertIn('(version 20260206)', content)
+        self.assertIn('(generator_version "10.0")', content)
+        self.assertIn('(duplicate_pad_numbers_are_jumpers no)', content)
+        self.assertIn('(embedded_fonts no)', content)
 
         # Kotevní bod (0, 0) uprostřed vyzařovače v custom padu 1
         self.assertIn('(pad "1" smd custom (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask")', content)
@@ -430,13 +431,13 @@ class TestKiCadGenerator(unittest.TestCase):
         self.assertIn('(size 3.5000 1.5000) (layers "F.Cu" "F.Mask")', content)
 
         # Otevření masky F.Mask a B.Mask nad SMA
-        self.assertIn('(layer "F.Mask")', content)
-        self.assertIn('(layer "B.Mask")', content)
+        self.assertIn('(fill yes) (layer "F.Mask")', content)
+        self.assertIn('(fill yes) (layer "B.Mask")', content)
         self.assertIn('(solder_mask_margin 0.3000)', content)
 
         # Obrys na F.Fab a F.CrtYd
-        self.assertIn('(layer "F.Fab")', content)
-        self.assertIn('(layer "F.CrtYd")', content)
+        self.assertIn('(fill no) (layer "F.Fab")', content)
+        self.assertIn('(fill no) (layer "F.CrtYd")', content)
 
     def test_generate_kicad_pcb_tight_and_full(self):
         """Ověření vygenerování PCB v kompaktním i plném symetrickém režimu."""
