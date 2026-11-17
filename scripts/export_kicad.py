@@ -103,6 +103,11 @@ def main() -> int:
         default=True,
         help="Vygenerovat desku i footprint (výchozí chování)",
     )
+    parser.add_argument(
+        "--gerber",
+        action="store_true",
+        help="Automaticky vyexportovat Gerber a vrtací (drill) soubory po vygenerování DPS",
+    )
 
     # Parametrické přepisy
     parser.add_argument("--patch-l", type=float, help="Délka vyzařujícího flíčku L [mm]")
@@ -200,6 +205,17 @@ def main() -> int:
     print(f"  SMA rozhraní:                      Cinch Johnson 142-0701-801 (G-S-G, 6 prokovů D=0.3/0.6mm)")
     print("=" * 80)
     print(" Export úspěšně dokončen.")
+
+    # 5. Volitelný export Gerberů
+    if args.gerber and do_pcb:
+        try:
+            import export_gerber
+        except ImportError:
+            import scripts.export_gerber as export_gerber
+
+        gerber_out = os.path.join(out_dir, "gerber")
+        export_gerber.run_export(pcb_path=pcb_file, output_dir=gerber_out)
+
     return 0
 
 
