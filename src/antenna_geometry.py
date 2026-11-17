@@ -620,6 +620,7 @@ class KiCadGeometryData:
     sma_bot_pad_center: Tuple[float, float]
     sma_pad_size: Tuple[float, float]                   # (dx, dy) = (3.5, 1.5)
     routing_info: Dict[str, Any]
+    tight_pcb: bool = True
 
 
 def get_model4_kicad_geometry(
@@ -629,10 +630,12 @@ def get_model4_kicad_geometry(
     is_footprint: bool = False,
     overlap_delta: float = OVERLAP_DELTA,
     mask_clearance: Optional[float] = None,
+    tight_pcb: Optional[bool] = None,
 ) -> KiCadGeometryData:
     """
     Vytvoří kompletní sadu KiCad 8 geometrických prvků (F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts, Vias)
     včetně 50 µm přesahů pro eliminaci DRC mikro-mezer, odsazení nepájivé masky a SMA G-S-G rozhraní.
+    Podporuje kompaktní ořez desky (tight_pcb=True, výchozí) šetřící ~40 % plochy substrátu.
     """
     info = compute_model4_routing(params)
 
@@ -660,6 +663,42 @@ def get_model4_kicad_geometry(
     x_junc_l = info['x_junc_l']
     y_junc_b = info['y_junc_b']
 
+    if tight_pcb is None:
+        raw_tp = params.get('tight_pcb', params.get('crop_pcb', True))
+        if isinstance(raw_tp, str):
+            tight_pcb = raw_tp.strip().lower() not in ('0', 'false', 'no', 'off')
+        else:
+            tight_pcb = bool(raw_tp)
+    else:
+        tight_pcb = bool(tight_pcb)
+
+    margin_right = float(params.get('tight_margin_right', params.get('margin_right', params.get('crop_margin_right', 10.0))))
+    margin_top = float(params.get('tight_margin_top', params.get('margin_top', params.get('crop_margin_top', 10.0))))
+    margin_bottom = float(params.get('tight_margin_bottom', params.get('margin_bottom', params.get('crop_margin_bottom', 5.0))))
+
+    if tight_pcb:
+        cad_x_min = x_port
+        cad_x_max = W / 2.0 + margin_right
+        cad_y_min = y_bot - margin_bottom
+        cad_y_max = L / 2.0 + margin_top
+        effective_W_sub = cad_x_max - cad_x_min
+        effective_L_sub = cad_y_max - cad_y_min
+    else:
+        cad_x_min = -W_sub / 2.0
+        cad_x_max = W_sub / 2.0
+        cad_y_min = -L_sub / 2.0
+        cad_y_max = L_sub / 2.0
+        effective_W_sub = W_sub
+        effective_L_sub = L_sub
+
+    info['tight_pcb'] = tight_pcb
+    info['effective_W_sub'] = effective_W_sub
+    info['effective_L_sub'] = effective_L_sub
+    info['cad_x_min'] = cad_x_min
+    info['cad_x_max'] = cad_x_max
+    info['cad_y_min'] = cad_y_min
+    info['cad_y_max'] = cad_y_max
+
     if mask_clearance is None:
         raw_mc = params.get('mask_clearance', info.get('mask_clearance', MASK_CLEARANCE))
         mask_clearance = float(raw_mc) if raw_mc is not None else MASK_CLEARANCE
@@ -673,14 +712,14 @@ def get_model4_kicad_geometry(
         ox = float(origin_x) if origin_x is not None else 0.0
         oy = float(origin_y) if origin_y is not None else 0.0
     else:
-        ox = float(origin_x) if origin_x is not None else (W_sub / 2.0 + 25.0)
-        oy = float(origin_y) if origin_y is not None else (L_sub / 2.0 + 25.0)
+        ox = float(origin_x) if origin_x is not None else (25.0 - cad_x_min)
+        oy = float(origin_y) if origin_y is not None else (25.0 + cad_y_max)
 
     # 1. Edge.Cuts obdélník
-    edge_x_min = ox - W_sub / 2.0
-    edge_x_max = ox + W_sub / 2.0
-    edge_y_min = oy - L_sub / 2.0
-    edge_y_max = oy + L_sub / 2.0
+    edge_x_min = ox + cad_x_min
+    edge_x_max = ox + cad_x_max
+    edge_y_min = oy - cad_y_max
+    edge_y_max = oy - cad_y_min
     edge_cuts_rect = (edge_x_min, edge_y_min, edge_x_max, edge_y_max)
 
     # 2. RF Segmenty (všechny se sítí Net 2 "RF_IN") s přesahem overlap_delta = 50 µm
@@ -785,10 +824,10 @@ def get_model4_kicad_geometry(
 
     # 4. Spodní celistvá zem na B.Cu (Net 1 "GND")
     b_cu_gnd_cad = [
-        (-W_sub / 2.0, -L_sub / 2.0),
-        (W_sub / 2.0, -L_sub / 2.0),
-        (W_sub / 2.0, L_sub / 2.0),
-        (-W_sub / 2.0, L_sub / 2.0),
+        (cad_x_min, cad_y_min),
+        (cad_x_max, cad_y_min),
+        (cad_x_max, cad_y_max),
+        (cad_x_min, cad_y_max),
     ]
     gnd_polygon_bottom = transform_poly_to_kicad(b_cu_gnd_cad, ox, oy)
 
@@ -902,8 +941,8 @@ def get_model4_kicad_geometry(
     return KiCadGeometryData(
         origin_x=ox,
         origin_y=oy,
-        W_sub=W_sub,
-        L_sub=L_sub,
+        W_sub=effective_W_sub,
+        L_sub=effective_L_sub,
         edge_cuts_rect=edge_cuts_rect,
         rf_polygons=rf_polygons,
         gnd_polygons_top=gnd_polygons_top,
@@ -915,4 +954,5 @@ def get_model4_kicad_geometry(
         sma_bot_pad_center=sma_bot_pad_center,
         sma_pad_size=sma_pad_size,
         routing_info=info,
+        tight_pcb=tight_pcb,
     )

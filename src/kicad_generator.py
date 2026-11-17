@@ -71,6 +71,7 @@ def generate_kicad_pcb(
     output_path: str,
     origin_x: Optional[float] = None,
     origin_y: Optional[float] = None,
+    tight_pcb: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Vygeneruje kompletní desku plošných spojů (.kicad_pcb) pro KiCad 8.
@@ -81,12 +82,12 @@ def generate_kicad_pcb(
       - Horní RF strukturu na F.Cu (flíček, transformátory, oblouky, T-článek) se sítí Net 2.
       - Spodní souvislou zem na B.Cu se sítí Net 1.
       - SMA rozhraní na F.Cu se zemními ploškami a 6 prokovy se sítí Net 1.
-      - Obrys desky W_sub x L_sub na Edge.Cuts.
+      - Obrys desky W_sub x L_sub na Edge.Cuts (volitelně kompaktní tight_pcb).
       - Otevření nepájivé masky na F.Mask s clearance (SMA rozhraní + vyzařovač + RF vedení).
       - Otevření nepájivé masky na B.Mask pro SMA rozhraní (pájení spodních zemních pinů).
     """
     geom: KiCadGeometryData = get_model4_kicad_geometry(
-        params, origin_x=origin_x, origin_y=origin_y, is_footprint=False
+        params, origin_x=origin_x, origin_y=origin_y, is_footprint=False, tight_pcb=tight_pcb
     )
 
     info = geom.routing_info
@@ -253,6 +254,7 @@ def generate_kicad_pcb(
         'file_size_bytes': len(content.encode('utf-8')),
         'W_sub': geom.W_sub,
         'L_sub': geom.L_sub,
+        'tight_pcb': geom.tight_pcb,
         'vias_count': len(geom.vias),
         'rf_polygons_count': len(geom.rf_polygons),
         'mask_openings_count': len(geom.mask_openings),
@@ -264,6 +266,7 @@ def generate_kicad_pcb(
 def generate_kicad_footprint(
     params: Dict[str, Any],
     output_path: str,
+    tight_pcb: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Vygeneruje knihovní pouzdro součástky (.kicad_mod) pro KiCad 8.
@@ -276,7 +279,7 @@ def generate_kicad_footprint(
       - Obrys substrátu a ohraničení na vrstvách F.Fab a F.CrtYd.
     """
     geom: KiCadGeometryData = get_model4_kicad_geometry(
-        params, origin_x=0.0, origin_y=0.0, is_footprint=True
+        params, origin_x=0.0, origin_y=0.0, is_footprint=True, tight_pcb=tight_pcb
     )
     info = geom.routing_info
 
@@ -386,5 +389,6 @@ def generate_kicad_footprint(
         'file_size_bytes': len(content.encode('utf-8')),
         'W_sub': geom.W_sub,
         'L_sub': geom.L_sub,
+        'tight_pcb': geom.tight_pcb,
         'routing_info': info,
     }

@@ -62,6 +62,9 @@ def load_model4_params_from_env() -> Dict[str, Any]:
         'SUB_W': 'sub_W',
         'SUB_L': 'sub_L',
         'FEED_MASK_CLEARANCE': 'mask_clearance',
+        'MARGIN_RIGHT': 'margin_right',
+        'MARGIN_TOP': 'margin_top',
+        'MARGIN_BOTTOM': 'margin_bottom',
     }
     for env_var, param_key in opt_env_map.items():
         val = os.getenv(env_var)
@@ -70,6 +73,9 @@ def load_model4_params_from_env() -> Dict[str, Any]:
                 params[param_key] = float(val)
             except ValueError:
                 pass
+
+    raw_tight = os.getenv("TIGHT_PCB", os.getenv("CROP_PCB", "true"))
+    params['tight_pcb'] = raw_tight.strip().lower() not in ('0', 'false', 'no', 'off')
 
     return params
 
@@ -106,6 +112,32 @@ def main() -> int:
         help="Vygenerovat desku i footprint (výchozí chování)",
     )
 
+    # Řízení ořezu desky (PCB crop)
+    parser.add_argument(
+        "--tight-pcb",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Exportovat kompaktní/oříznutý obrys DPS dle VF struktury (výchozí: zapnuto). "
+             "Použijte --no-tight-pcb pro plný symetrický rozměr substrátu.",
+    )
+    parser.add_argument(
+        "--crop-pcb",
+        dest="crop_pcb_alias",
+        action="store_true",
+        default=None,
+        help="Alias pro --tight-pcb.",
+    )
+    parser.add_argument(
+        "--full-pcb",
+        dest="full_pcb_alias",
+        action="store_true",
+        default=None,
+        help="Alias pro --no-tight-pcb.",
+    )
+    parser.add_argument("--margin-right", type=float, help="Pravý okraj od flíčku [mm] (výchozí: 10.0)")
+    parser.add_argument("--margin-top", type=float, help="Horní okraj od flíčku [mm] (výchozí: 10.0)")
+    parser.add_argument("--margin-bottom", type=float, help="Spodní okraj pod spodním ramenem [mm] (výchozí: 5.0)")
+
     # Parametrické přepisy
     parser.add_argument("--patch-l", type=float, help="Délka vyzařujícího flíčku L [mm]")
     parser.add_argument("--patch-w", type=float, help="Šířka vyzařujícího flíčku W [mm]")
@@ -126,6 +158,20 @@ def main() -> int:
 
     # 3. Sestavení parametrů z .env s případným přepsáním z CLI
     params = load_model4_params_from_env()
+
+    if args.tight_pcb is not None:
+        params['tight_pcb'] = args.tight_pcb
+    elif args.full_pcb_alias:
+        params['tight_pcb'] = False
+    elif args.crop_pcb_alias:
+        params['tight_pcb'] = True
+
+    if args.margin_right is not None:
+        params['tight_margin_right'] = args.margin_right
+    if args.margin_top is not None:
+        params['tight_margin_top'] = args.margin_top
+    if args.margin_bottom is not None:
+        params['tight_margin_bottom'] = args.margin_bottom
 
     if args.patch_l is not None:
         params['patch_L'] = args.patch_l
@@ -187,13 +233,33 @@ def main() -> int:
         res_fp = generate_kicad_footprint(params, fp_file)
         print(f"  -> Uloženo ({res_fp['file_size_bytes']} B, zákaznický pad 1 RF_IN + SMD pady 2,3 GND)")
 
+    # Volitelná synchronizace do projektu kicad/antena1/
+    alt_kicad_dir = os.path.join(root_dir, "kicad", "antena1")
+    if os.path.isdir(alt_kicad_dir) and os.path.abspath(out_dir) != os.path.abspath(alt_kicad_dir):
+        import shutil
+        if do_pcb and os.path.exists(pcb_file):
+            shutil.copy2(pcb_file, os.path.join(alt_kicad_dir, "antenna_model4.kicad_pcb"))
+        if do_footprint and os.path.exists(fp_file):
+            shutil.copy2(fp_file, os.path.join(alt_kicad_dir, "Antenna_Model4_LHCP.kicad_mod"))
+        print(f"  -> Synchronizováno do projektu KiCad: {alt_kicad_dir}")
+
     # 4. Zobrazení souhrnné tabulky parametrů
     info = (res_pcb['routing_info'] if res_pcb else res_fp['routing_info'])
+    w_pcb = res_pcb['W_sub'] if res_pcb else res_fp['W_sub']
+    l_pcb = res_pcb['L_sub'] if res_pcb else res_fp['L_sub']
+    tight_mode = bool(params.get('tight_pcb', True))
+    mode_desc = "Kompaktní / oříznutý (tight_pcb=True)" if tight_mode else "Plný symetrický (tight_pcb=False)"
     print("-" * 80)
     print(" PŘEHLED VYGENEROVANÉ GEOMETRIE:")
     print("-" * 80)
+    print(f"  Režim desky (PCB crop):            {mode_desc}")
     print(f"  Vyzařující flíček (L x W):         {info['L']:.2f} mm x {info['W']:.2f} mm")
-    print(f"  Substrát (W_sub x L_sub x h):      {info['W_sub']:.2f} mm x {info['L_sub']:.2f} mm x {info['h']:.2f} mm (eps_r = {info['eps_r']:.2f})")
+    print(f"  Rozměry DPS (W_sub x L_sub x h):   {w_pcb:.2f} mm x {l_pcb:.2f} mm x {info['h']:.2f} mm (eps_r = {info['eps_r']:.2f})")
+    if tight_mode:
+        area_full = info['W_sub'] * info['L_sub']
+        area_tight = w_pcb * l_pcb
+        saving_pct = (1.0 - area_tight / area_full) * 100.0
+        print(f"  Původní symetrický substrát:       {info['W_sub']:.2f} mm x {info['L_sub']:.2f} mm (úspora plochy: {saving_pct:.1f} %)")
     print(f"  Návrhová frekvence / Z0:           {info['f_design']:.4f} GHz / {info['port_z0']:.1f} Ohm")
     print(f"  50 Ohm přívodní pásek (w_50):      {info['w_50']:.3f} mm")
     print(f"  100 Ohm větve děliče (w_feed):     {info['w_feed']:.3f} mm (eps_eff = {info['eps_eff_feed']:.3f})")

@@ -250,6 +250,83 @@ class TestAntennaGeometry(unittest.TestCase):
         x_min, _, _, _ = geom.edge_cuts_rect
         self.assertAlmostEqual(min(bm_xs), x_min, places=4)
 
+    def test_tight_pcb_bounds_and_cropping(self):
+        """Ověření kompaktního ořezu desky (tight_pcb=True) a plného symetrického režimu (tight_pcb=False)."""
+        params_sdars = {
+            'patch_L': 29.95,
+            'patch_W': 29.95,
+            'sub_h': 1.52,
+            'eps_r': 4.3,
+            'design_freq_ghz': 2.3325,
+            'port_impedance': 50.0,
+        }
+
+        # 1. Kompaktní ořez (tight_pcb=True, výchozí)
+        geom_tight = get_model4_kicad_geometry(params_sdars, tight_pcb=True)
+        info = geom_tight.routing_info
+
+        self.assertTrue(geom_tight.tight_pcb)
+        # Efektivní rozměry jsou výrazně menší než plný symetrický substrát (~40 % úspora plochy)
+        self.assertLess(geom_tight.W_sub, info['W_sub'])
+        self.assertLess(geom_tight.L_sub, info['L_sub'])
+
+        # Kontrola kompaktních rozměrů pro ~30 mm patch: W_sub ~ 73.4 mm
+        self.assertAlmostEqual(geom_tight.W_sub, 73.40, delta=0.5)
+        self.assertTrue(67.0 <= geom_tight.L_sub <= 77.0)
+
+        # Kontrola přesných vztahů dle analytických vzorců
+        expected_w = info['cad_x_max'] - info['cad_x_min']
+        expected_l = info['cad_y_max'] - info['cad_y_min']
+        self.assertAlmostEqual(geom_tight.W_sub, expected_w, places=4)
+        self.assertAlmostEqual(geom_tight.L_sub, expected_l, places=4)
+
+        self.assertAlmostEqual(info['cad_x_min'], info['x_port'], places=4)
+        self.assertAlmostEqual(info['cad_x_max'], 29.95 / 2.0 + 10.0, places=4)
+        self.assertAlmostEqual(info['cad_y_min'], info['y_bot'] - 5.0, places=4)
+        self.assertAlmostEqual(info['cad_y_max'], 29.95 / 2.0 + 10.0, places=4)
+
+        # Edge.Cuts obdélník v KiCad souřadnicích
+        x_min, y_min, x_max, y_max = geom_tight.edge_cuts_rect
+        self.assertAlmostEqual(x_max - x_min, geom_tight.W_sub, places=4)
+        self.assertAlmostEqual(y_max - y_min, geom_tight.L_sub, places=4)
+        self.assertAlmostEqual(x_min, 25.0, places=4)
+        self.assertAlmostEqual(y_min, 25.0, places=4)
+
+        # Kontrola spodního GND polygonu na B.Cu: přesně pokrývá Edge.Cuts
+        b_cu_poly = geom_tight.gnd_polygon_bottom
+        b_xs = [p[0] for p in b_cu_poly]
+        b_ys = [p[1] for p in b_cu_poly]
+        self.assertAlmostEqual(min(b_xs), x_min, places=4)
+        self.assertAlmostEqual(max(b_xs), x_max, places=4)
+        self.assertAlmostEqual(min(b_ys), y_min, places=4)
+        self.assertAlmostEqual(max(b_ys), y_max, places=4)
+
+        # 2. Plný symetrický režim (tight_pcb=False) pro zpětnou kompatibilitu
+        geom_full = get_model4_kicad_geometry(params_sdars, tight_pcb=False)
+        self.assertFalse(geom_full.tight_pcb)
+        self.assertAlmostEqual(geom_full.W_sub, info['W_sub'], places=4)
+        self.assertAlmostEqual(geom_full.L_sub, info['L_sub'], places=4)
+        self.assertGreaterEqual(geom_full.W_sub, 95.0)
+        self.assertGreaterEqual(geom_full.L_sub, 93.0)
+
+        fx_min, fy_min, fx_max, fy_max = geom_full.edge_cuts_rect
+        self.assertAlmostEqual(fx_max - fx_min, info['W_sub'], places=4)
+        self.assertAlmostEqual(fy_max - fy_min, info['L_sub'], places=4)
+
+        # 3. Volitelná konfigurace okrajů (margin_right, margin_top, margin_bottom)
+        custom_params = dict(params_sdars)
+        custom_params.update({
+            'tight_pcb': True,
+            'margin_right': 15.0,
+            'margin_top': 12.0,
+            'margin_bottom': 4.0,
+        })
+        geom_custom = get_model4_kicad_geometry(custom_params)
+        c_info = geom_custom.routing_info
+        self.assertAlmostEqual(c_info['cad_x_max'], 29.95 / 2.0 + 15.0, places=4)
+        self.assertAlmostEqual(c_info['cad_y_max'], 29.95 / 2.0 + 12.0, places=4)
+        self.assertAlmostEqual(c_info['cad_y_min'], c_info['y_bot'] - 4.0, places=4)
+
 
 class TestKiCadGenerator(unittest.TestCase):
     """Testy generování KiCad 8 S-výrazů v kicad_generator.py."""
@@ -361,6 +438,30 @@ class TestKiCadGenerator(unittest.TestCase):
         self.assertIn('(layer "F.Fab")', content)
         self.assertIn('(layer "F.CrtYd")', content)
 
+    def test_generate_kicad_pcb_tight_and_full(self):
+        """Ověření vygenerování PCB v kompaktním i plném symetrickém režimu."""
+        # 1. Kompaktní režim
+        pcb_tight = os.path.join(self.temp_dir.name, "tight.kicad_pcb")
+        res_tight = generate_kicad_pcb(self.params, pcb_tight, tight_pcb=True)
+        self.assertTrue(res_tight['tight_pcb'])
+        self.assertLess(res_tight['W_sub'], res_tight['routing_info']['W_sub'])
+        self.assertLess(res_tight['L_sub'], res_tight['routing_info']['L_sub'])
+
+        with open(pcb_tight, "r", encoding="utf-8") as f:
+            content_tight = f.read()
+        self.assertIn('(gr_line (start 25.0000 25.0000)', content_tight)
+
+        # 2. Plný symetrický režim
+        pcb_full = os.path.join(self.temp_dir.name, "full.kicad_pcb")
+        res_full = generate_kicad_pcb(self.params, pcb_full, tight_pcb=False)
+        self.assertFalse(res_full['tight_pcb'])
+        self.assertAlmostEqual(res_full['W_sub'], res_full['routing_info']['W_sub'], places=4)
+        self.assertAlmostEqual(res_full['L_sub'], res_full['routing_info']['L_sub'], places=4)
+
+        with open(pcb_full, "r", encoding="utf-8") as f:
+            content_full = f.read()
+        self.assertIn(f'(end {25.0 + res_full["W_sub"]:.4f}', content_full)
+
 
 class TestExportCli(unittest.TestCase):
     """Testy CLI skriptu scripts/export_kicad.py."""
@@ -426,6 +527,47 @@ class TestExportCli(unittest.TestCase):
             content = f.read()
         self.assertIn('(solder_mask_margin 0.4000)', content)
         self.assertIn('(layer "B.Mask")', content)
+
+    def test_cli_tight_pcb_options(self):
+        """Ověření CLI přepínačů pro ořez desky: --tight-pcb, --no-tight-pcb, --crop-pcb, --full-pcb."""
+        # 1. Výchozí / explicitní --tight-pcb
+        cmd_tight = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", os.path.join(self.temp_dir.name, "tight"),
+            "--tight-pcb",
+            "--patch-l", "29.95",
+        ]
+        proc_tight = subprocess.run(cmd_tight, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(proc_tight.returncode, 0)
+        self.assertIn("Kompaktní / oříznutý (tight_pcb=True)", proc_tight.stdout)
+        self.assertIn("73.40 mm", proc_tight.stdout)
+        self.assertIn("úspora plochy", proc_tight.stdout)
+
+        # 2. Plný symetrický režim --no-tight-pcb
+        cmd_full = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", os.path.join(self.temp_dir.name, "full"),
+            "--no-tight-pcb",
+            "--patch-l", "29.95",
+        ]
+        proc_full = subprocess.run(cmd_full, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(proc_full.returncode, 0)
+        self.assertIn("Plný symetrický (tight_pcb=False)", proc_full.stdout)
+        self.assertIn("96.84 mm", proc_full.stdout)
+
+        # 3. Aliases --crop-pcb a --full-pcb
+        cmd_alias = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", os.path.join(self.temp_dir.name, "alias"),
+            "--crop-pcb",
+            "--margin-right", "12.0",
+        ]
+        proc_alias = subprocess.run(cmd_alias, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(proc_alias.returncode, 0)
+        self.assertIn("Kompaktní / oříznutý", proc_alias.stdout)
 
 
 if __name__ == "__main__":
