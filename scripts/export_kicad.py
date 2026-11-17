@@ -347,6 +347,8 @@ def main() -> int:
             import shutil
             if do_pcb and os.path.exists(pcb_file):
                 shutil.copy2(pcb_file, os.path.join(alt_kicad_dir, "antenna_model4.kicad_pcb"))
+                if res_pcb and res_pcb.get('dru_path') and os.path.exists(res_pcb['dru_path']):
+                    shutil.copy2(res_pcb['dru_path'], os.path.join(alt_kicad_dir, "antenna_model4.kicad_dru"))
             if do_footprint and os.path.exists(fp_file):
                 shutil.copy2(fp_file, os.path.join(alt_kicad_dir, "Antenna_Model4_LHCP.kicad_mod"))
             print(f"  -> Synchronizováno do projektu KiCad: {alt_kicad_dir}")

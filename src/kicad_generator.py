@@ -56,7 +56,7 @@ def _format_zone(
 {sp}  (uuid "{u}")
 {sp}  (hatch edge 0.5)
 {sp}  (priority {priority})
-{sp}  (connect_pads (clearance {connect_pads_clearance:.2f}))
+{sp}  (connect_pads yes (clearance {connect_pads_clearance:.2f}))
 {sp}  (min_thickness {min_thickness:.4f})
 {sp}  (fill yes (thermal_gap {thermal_gap:.2f}) (thermal_bridge_width {thermal_bridge:.2f}))
 {sp}  (polygon
@@ -204,14 +204,14 @@ def generate_kicad_pcb(
         )
     )
 
-    # Horní SMA zemní plošky F.Cu ("GND")
-    for gnd_poly in geom.gnd_polygons_top:
+    # Horní SMA zemní plošky F.Cu ("GND") – odlišné priority pro čistý DRC
+    for idx, gnd_poly in enumerate(geom.gnd_polygons_top, start=1):
         lines.append(
             _format_zone(
                 net_name="GND",
                 layer="F.Cu",
                 polygon_pts=gnd_poly,
-                priority=2,
+                priority=idx,
             )
         )
 
@@ -223,16 +223,60 @@ def generate_kicad_pcb(
             f'(layers "F.Cu" "B.Cu") (net "GND") (uuid "{u_via}"))'
         )
 
-    # Horní RF struktura F.Cu ("RF_IN")
-    for rf_poly in geom.rf_polygons:
+    # Horní RF struktura F.Cu ("RF_IN") – unikátní priority eliminují DRC zones_intersect při 50 µm přesazích
+    for idx, rf_poly in enumerate(geom.rf_polygons, start=10):
         lines.append(
             _format_zone(
                 net_name="RF_IN",
                 layer="F.Cu",
                 polygon_pts=rf_poly,
-                priority=1,
+                priority=idx,
             )
         )
+
+    # Integrované SMD rozhraní konektoru SMA (J1, Cinch Johnson 142-0701-801)
+    # Elektricky kotví sítě RF_IN a GND v KiCadu (eliminuje isolated_copper i při --refill-zones).
+    # Masky zůstávají řízeny přesnými gr_poly otvory na F.Mask/B.Mask (s hrází proti solder_mask_bridge).
+    pad_len, pad_w = geom.sma_pad_size
+    w_50 = float(info['w_50'])
+    sma_gnd_center_y = float(info['sma_gnd_center_y'])
+    sma_mask_len = float(info['sma_mask_len'])
+    sma_mask_half_h = float(info['sma_mask_half_h'])
+    lines.append('  (footprint "SMA_Edge_Launch_142-0701-801"')
+    lines.append('    (layer "F.Cu")')
+    lines.append(f'    (uuid "{_gen_uuid()}")')
+    lines.append(f'    (at {x_min:.4f} {y_rf_label:.4f})')
+    lines.append('    (attr smd)')
+    lines.append(
+        f'    (property "Reference" "J1" (at {pad_len / 2.0:.4f} {-(sma_mask_half_h + 1.5):.4f} 0) '
+        f'(layer "F.SilkS") (hide yes) (uuid "{_gen_uuid()}")'
+    )
+    lines.append('      (effects (font (size 1 1) (thickness 0.15)))')
+    lines.append('    )')
+    lines.append(
+        f'    (property "Value" "SMA_142-0701-801" (at {pad_len / 2.0:.4f} {sma_mask_half_h + 1.5:.4f} 0) '
+        f'(layer "F.Fab") (hide yes) (uuid "{_gen_uuid()}")'
+    )
+    lines.append('      (effects (font (size 1 1) (thickness 0.15)))')
+    lines.append('    )')
+    lines.append(
+        f'    (pad "1" smd rect (at {pad_len / 2.0:.4f} 0.0000) (size {pad_len:.4f} {w_50:.4f}) '
+        f'(layers "F.Cu") (net "RF_IN") (uuid "{_gen_uuid()}"))'
+    )
+    lines.append(
+        f'    (pad "2" smd rect (at {pad_len / 2.0:.4f} {-sma_gnd_center_y:.4f}) (size {pad_len:.4f} {pad_w:.4f}) '
+        f'(layers "F.Cu") (net "GND") (uuid "{_gen_uuid()}"))'
+    )
+    lines.append(
+        f'    (pad "2" smd rect (at {pad_len / 2.0:.4f} {sma_gnd_center_y:.4f}) (size {pad_len:.4f} {pad_w:.4f}) '
+        f'(layers "F.Cu") (net "GND") (uuid "{_gen_uuid()}"))'
+    )
+    lines.append(
+        f'    (pad "2" smd rect (at {sma_mask_len / 2.0:.4f} 0.0000) '
+        f'(size {sma_mask_len:.4f} {2.0 * sma_mask_half_h:.4f}) '
+        f'(layers "B.Cu") (net "GND") (uuid "{_gen_uuid()}"))'
+    )
+    lines.append('  )')
 
     # Otevření nepájivé masky na F.Mask
     for mask_poly in geom.mask_openings:
@@ -257,12 +301,27 @@ def generate_kicad_pcb(
     lines.append(')')
     content = "\n".join(lines) + "\n"
 
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
+    abs_output_path = os.path.abspath(output_path)
+    os.makedirs(os.path.dirname(abs_output_path), exist_ok=True)
+    with open(abs_output_path, "w", encoding="utf-8") as f:
         f.write(content)
 
+    # Vlastní DRC pravidla (.kicad_dru) pro edge-launch SMA konektor a celoplošnou zem B.Cu až k hraně desky
+    stem, _ = os.path.splitext(abs_output_path)
+    dru_path = f"{stem}.kicad_dru"
+    dru_content = (
+        '(version 1)\n'
+        '(rule "RF edge-launch SMA and full-board ground plane"\n'
+        '  (constraint edge_clearance (min -0.1mm))\n'
+        '  (condition "A.NetName == \'RF_IN\' || A.NetName == \'GND\'")\n'
+        ')\n'
+    )
+    with open(dru_path, "w", encoding="utf-8") as f:
+        f.write(dru_content)
+
     return {
-        'output_path': os.path.abspath(output_path),
+        'output_path': abs_output_path,
+        'dru_path': dru_path,
         'file_size_bytes': len(content.encode('utf-8')),
         'W_sub': geom.W_sub,
         'L_sub': geom.L_sub,
@@ -373,22 +432,32 @@ def generate_kicad_footprint(
         f'(stroke (width 0.05) (type default)) (fill no) (layer "F.CrtYd") (uuid "{_gen_uuid()}"))'
     )
 
-    # Jednolité obdélníkové otevření masky SMA rozhraní na F.Mask a B.Mask (dynamicky dle šířky G-S-G)
+    # Oddělená otevření F.Mask nad SMA GND ploškami (s hrází masky od RF_IN) a jednolité B.Mask pod SMA
     x_port = float(info['x_port'])
     y_T = float(info['y_T'])
     sma_mask_len = float(info['sma_mask_len'])
     sma_mask_half_h = float(info['sma_mask_half_h'])
+    sma_gnd_mask_inner = float(info['sma_gnd_mask_inner'])
     # CAD: x in [x_port, x_port + sma_mask_len], y in [y_T - sma_mask_half_h, y_T + sma_mask_half_h]
     # KiCad (origin=0): x_k = x, y_k = -y
     m_x1 = x_port
     m_x2 = x_port + sma_mask_len
-    m_y1 = -y_T - sma_mask_half_h
-    m_y2 = -y_T + sma_mask_half_h
+    m_y_top_1 = -y_T - sma_mask_half_h
+    m_y_top_2 = -y_T - sma_gnd_mask_inner
+    m_y_bot_1 = -y_T + sma_gnd_mask_inner
+    m_y_bot_2 = -y_T + sma_mask_half_h
     lines.append(
-        f'  (fp_rect (start {min(m_x1, m_x2):.4f} {min(m_y1, m_y2):.4f}) '
-        f'(end {max(m_x1, m_x2):.4f} {max(m_y1, m_y2):.4f}) '
+        f'  (fp_rect (start {min(m_x1, m_x2):.4f} {min(m_y_top_1, m_y_top_2):.4f}) '
+        f'(end {max(m_x1, m_x2):.4f} {max(m_y_top_1, m_y_top_2):.4f}) '
         f'(stroke (width 0) (type solid)) (fill yes) (layer "F.Mask") (uuid "{_gen_uuid()}"))'
     )
+    lines.append(
+        f'  (fp_rect (start {min(m_x1, m_x2):.4f} {min(m_y_bot_1, m_y_bot_2):.4f}) '
+        f'(end {max(m_x1, m_x2):.4f} {max(m_y_bot_1, m_y_bot_2):.4f}) '
+        f'(stroke (width 0) (type solid)) (fill yes) (layer "F.Mask") (uuid "{_gen_uuid()}"))'
+    )
+    m_y1 = -y_T - sma_mask_half_h
+    m_y2 = -y_T + sma_mask_half_h
     lines.append(
         f'  (fp_rect (start {min(m_x1, m_x2):.4f} {min(m_y1, m_y2):.4f}) '
         f'(end {max(m_x1, m_x2):.4f} {max(m_y1, m_y2):.4f}) '

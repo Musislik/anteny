@@ -220,13 +220,13 @@ class TestAntennaGeometry(unittest.TestCase):
         geom = get_model4_kicad_geometry(params, is_footprint=False)
 
         # 1. Počty polygonů otvorů masky
-        # F.Mask má 7 polygonů (SMA, patch, trans_b, trans_l, arm_l, arm_b, t_junc)
-        self.assertEqual(len(geom.mask_openings), 7)
+        # F.Mask má 8 polygonů (SMA GND top, SMA GND bot, patch, trans_b, trans_l, arm_l, arm_b, t_junc)
+        self.assertEqual(len(geom.mask_openings), 8)
         # B.Mask má 1 polygon (SMA rozhraní)
         self.assertEqual(len(geom.mask_openings_bottom), 1)
 
         # 2. Ověření rozměrů masky vyzařovače (rozšíření o mask_clearance na každé straně)
-        patch_mask = geom.mask_openings[1]
+        patch_mask = geom.mask_openings[2]
         xs = [p[0] for p in patch_mask]
         ys = [p[1] for p in patch_mask]
         patch_w_mask = max(xs) - min(xs)
@@ -235,17 +235,27 @@ class TestAntennaGeometry(unittest.TestCase):
         self.assertAlmostEqual(patch_l_mask, 28.8 + 2 * 0.30, places=4)
 
         # 3. Ověření spodního transformátoru v masce (rozšířen v šířce o 2 * mask_clearance)
-        trans_b_mask = geom.mask_openings[2]
+        trans_b_mask = geom.mask_openings[3]
         tb_xs = [p[0] for p in trans_b_mask]
         w_tb_mask = max(tb_xs) - min(tb_xs)
         info = geom.routing_info
         self.assertAlmostEqual(w_tb_mask, info['w_T_b'] + 2 * 0.30, places=4)
 
         # 4. Ověření levého transformátoru v masce (rozšířen v šířce o 2 * mask_clearance v ose Y)
-        trans_l_mask = geom.mask_openings[3]
+        trans_l_mask = geom.mask_openings[4]
         tl_ys = [p[1] for p in trans_l_mask]
         w_tl_mask = max(tl_ys) - min(tl_ys)
         self.assertAlmostEqual(w_tl_mask, info['w_T_l'] + 2 * 0.30, places=4)
+
+        # 4b. Ověření hráze nepájivé masky (solder mask dam) mezi RF_IN a SMA GND na F.Mask
+        sma_top_mask_ys = [p[1] for p in geom.mask_openings[0]]
+        sma_bot_mask_ys = [p[1] for p in geom.mask_openings[1]]
+        y_T_kicad = geom.origin_y - info['y_T']
+        rf_mask_half = info['w_50'] / 2.0 + 0.30
+        dam_top = (y_T_kicad - rf_mask_half) - max(sma_top_mask_ys)
+        dam_bot = min(sma_bot_mask_ys) - (y_T_kicad + rf_mask_half)
+        self.assertGreaterEqual(dam_top, 0.15 - 1e-4)
+        self.assertGreaterEqual(dam_bot, 0.15 - 1e-4)
 
         # 5. Ověření otvoru na B.Mask (SMA rozhraní 4.0 mm x 8.0 mm na hraně desky)
         b_mask_poly = geom.mask_openings_bottom[0]
@@ -410,20 +420,38 @@ class TestAntennaGeometry(unittest.TestCase):
             dist_to_nearest_center = min(abs(v['y'] - top_center_y), abs(v['y'] - bot_center_y))
             self.assertAlmostEqual(dist_to_nearest_center, 0.0, places=4)
 
-        # Maska F.Mask i B.Mask se zvětšila (> 8.0 mm) a bezpečně pokrývá vnější hrany GND plošek
+        # Maska F.Mask (oddělené horní/spodní SMA GND s hrází od RF_IN) i jednolitá B.Mask se zvětšily (> 8.0 mm)
         self.assertGreater(info['sma_mask_half_h'], 4.0)
         expected_half_h = info['sma_gnd_outer'] + 0.31
         self.assertAlmostEqual(info['sma_mask_half_h'], expected_half_h, places=4)
 
-        for mask_poly in (geom.mask_openings[0], geom.mask_openings_bottom[0]):
-            m_xs = [p[0] for p in mask_poly]
-            m_ys = [p[1] for p in mask_poly]
-            self.assertAlmostEqual(min(m_xs), x_min, places=4)
-            self.assertAlmostEqual(max(m_xs) - min(m_xs), info['sma_mask_len'], places=4)
-            self.assertAlmostEqual(max(m_ys) - min(m_ys), 2.0 * info['sma_mask_half_h'], places=4)
-            self.assertLessEqual(min(m_ys), min(gnd_top_ys) - 0.30 + 1e-4)
-            self.assertGreaterEqual(max(m_ys), max(gnd_bot_ys) + 0.30 - 1e-4)
-            self.assertAlmostEqual(0.5 * (min(m_ys) + max(m_ys)), y_T_kicad, places=4)
+        # B.Mask: jednolitý obdélník přes celou šířku SMA
+        bm_xs = [p[0] for p in geom.mask_openings_bottom[0]]
+        bm_ys = [p[1] for p in geom.mask_openings_bottom[0]]
+        self.assertAlmostEqual(min(bm_xs), x_min, places=4)
+        self.assertAlmostEqual(max(bm_xs) - min(bm_xs), info['sma_mask_len'], places=4)
+        self.assertAlmostEqual(max(bm_ys) - min(bm_ys), 2.0 * info['sma_mask_half_h'], places=4)
+        self.assertLessEqual(min(bm_ys), min(gnd_top_ys) - 0.30 + 1e-4)
+        self.assertGreaterEqual(max(bm_ys), max(gnd_bot_ys) + 0.30 - 1e-4)
+        self.assertAlmostEqual(0.5 * (min(bm_ys) + max(bm_ys)), y_T_kicad, places=4)
+
+        # F.Mask: 2 oddělené SMA GND otvory s hrází nepájivé masky (solder mask dam) od RF_IN
+        fm_top_xs = [p[0] for p in geom.mask_openings[0]]
+        fm_top_ys = [p[1] for p in geom.mask_openings[0]]
+        fm_bot_xs = [p[0] for p in geom.mask_openings[1]]
+        fm_bot_ys = [p[1] for p in geom.mask_openings[1]]
+        self.assertAlmostEqual(min(fm_top_xs), x_min, places=4)
+        self.assertAlmostEqual(max(fm_top_xs) - min(fm_top_xs), info['sma_mask_len'], places=4)
+        self.assertAlmostEqual(min(fm_bot_xs), x_min, places=4)
+        self.assertAlmostEqual(max(fm_bot_xs) - min(fm_bot_xs), info['sma_mask_len'], places=4)
+        self.assertLessEqual(min(fm_top_ys), min(gnd_top_ys) - 0.30 + 1e-4)
+        self.assertGreaterEqual(max(fm_top_ys), max(gnd_top_ys) - 1e-4)
+        self.assertLessEqual(min(fm_bot_ys), min(gnd_bot_ys) + 1e-4)
+        self.assertGreaterEqual(max(fm_bot_ys), max(gnd_bot_ys) + 0.30 - 1e-4)
+        # Hráz nepájivé masky odděluje SMA GND masku od RF_IN masky (t_junc_mask)
+        rf_mask_half = info['w_50'] / 2.0 + 0.30
+        self.assertLessEqual(max(fm_top_ys), (y_T_kicad - rf_mask_half) - 0.15 + 1e-4)
+        self.assertGreaterEqual(min(fm_bot_ys), (y_T_kicad + rf_mask_half) + 0.15 - 1e-4)
 
     def test_sma_gsg_thin_substrate(self):
         """Ověření SMA G-S-G pro tenčí desku (h=0.8 mm, eps_r=4.4 -> úzké w_50)."""
@@ -512,10 +540,11 @@ class TestKiCadGenerator(unittest.TestCase):
         res = generate_kicad_pcb(self.params, pcb_file)
 
         self.assertTrue(os.path.exists(pcb_file))
+        self.assertTrue(os.path.exists(res['dru_path']))
         self.assertGreater(res['file_size_bytes'], 5000)
         self.assertEqual(res['vias_count'], 6)
         self.assertEqual(res['rf_polygons_count'], 6)
-        self.assertEqual(res['mask_openings_count'], 7)
+        self.assertEqual(res['mask_openings_count'], 8)
         self.assertEqual(res['mask_openings_bottom_count'], 1)
 
         with open(pcb_file, "r", encoding="utf-8") as f:
@@ -539,13 +568,32 @@ class TestKiCadGenerator(unittest.TestCase):
         self.assertIn('(23 "Eco2.User" user "User.Eco2")', content)
         self.assertIn('(25 "Edge.Cuts" user)', content)
 
-        # Zóny (KiCad 10 používá jmenné sítě a (layer "...") i ve filled_polygon)
+        # Zóny (KiCad 10 používá jmenné sítě, plné napojení a unikátní priority pro čistý DRC)
         self.assertIn('(net "RF_IN")', content)
         self.assertIn('(layer "F.Cu")', content)
         self.assertIn('(net "GND")', content)
         self.assertIn('(layer "B.Cu")', content)
+        self.assertIn('(connect_pads yes (clearance 0.20))', content)
         self.assertIn('(filled_polygon\n      (layer "F.Cu")', content)
         self.assertIn('(filled_polygon\n      (layer "B.Cu")', content)
+        # Unikátní priority všech 6 RF_IN zón (eliminace DRC zones_intersect)
+        rf_prios = re.findall(
+            r'\(zone\n\s+\(net "RF_IN"\)\n\s+\(layer "F\.Cu"\)\n\s+\(uuid "[^"]+"\)\n\s+\(hatch [^\n]+\)\n\s+\(priority (\d+)\)',
+            content,
+        )
+        self.assertEqual(len(rf_prios), 6)
+        self.assertEqual(len(set(rf_prios)), 6)
+
+        # Integrované SMD rozhraní konektoru SMA (kotví sítě RF_IN a GND proti isolated_copper)
+        self.assertIn('(footprint "SMA_Edge_Launch_142-0701-801"', content)
+        self.assertIn('(layers "F.Cu") (net "RF_IN")', content)
+        self.assertIn('(layers "B.Cu") (net "GND")', content)
+
+        # Vlastní DRC pravidlo pro edge-launch SMA a celoplošnou zem B.Cu
+        with open(res['dru_path'], "r", encoding="utf-8") as f:
+            dru_content = f.read()
+        self.assertIn('(version 1)', dru_content)
+        self.assertIn('(constraint edge_clearance (min -0.1mm))', dru_content)
 
         # Prokovy
         self.assertIn('(via (at ', content)
@@ -655,16 +703,29 @@ class TestKiCadGenerator(unittest.TestCase):
             fp_content = f.read()
         self.assertIn('(size 4.2000 1.6000) (layers "F.Cu" "F.Mask")', fp_content)
 
-        for layer in ("F.Mask", "B.Mask"):
-            pattern = (
-                r'\(fp_rect \(start ([\-\d\.]+) ([\-\d\.]+)\) \(end ([\-\d\.]+) ([\-\d\.]+)\) '
-                r'\(stroke \(width 0\) \(type solid\)\) \(fill yes\) \(layer "' + re.escape(layer) + r'"\)'
-            )
-            m = re.search(pattern, fp_content)
-            self.assertIsNotNone(m, f"Chybí SMA fp_rect na vrstvě {layer}")
+        # F.Mask ve footprintu: 2 oddělené SMA GND obdélníky (s hrází masky od RF_IN)
+        f_mask_pattern = (
+            r'\(fp_rect \(start ([\-\d\.]+) ([\-\d\.]+)\) \(end ([\-\d\.]+) ([\-\d\.]+)\) '
+            r'\(stroke \(width 0\) \(type solid\)\) \(fill yes\) \(layer "F\.Mask"\)'
+        )
+        f_mask_matches = list(re.finditer(f_mask_pattern, fp_content))
+        self.assertEqual(len(f_mask_matches), 2, "Očekávány 2 oddělené SMA GND fp_rect na F.Mask")
+        expected_gnd_h = expected_half_h - info['sma_gnd_mask_inner']
+        for m in f_mask_matches:
             sx, sy, ex, ey = (float(m.group(i)) for i in range(1, 5))
             self.assertAlmostEqual(ex - sx, expected_mask_len, places=3)
-            self.assertAlmostEqual(ey - sy, 2.0 * expected_half_h, places=3)
+            self.assertAlmostEqual(ey - sy, expected_gnd_h, places=3)
+
+        # B.Mask ve footprintu: jednolitý obdélník přes celou šířku SMA
+        b_mask_pattern = (
+            r'\(fp_rect \(start ([\-\d\.]+) ([\-\d\.]+)\) \(end ([\-\d\.]+) ([\-\d\.]+)\) '
+            r'\(stroke \(width 0\) \(type solid\)\) \(fill yes\) \(layer "B\.Mask"\)'
+        )
+        m_b = re.search(b_mask_pattern, fp_content)
+        self.assertIsNotNone(m_b, "Chybí SMA fp_rect na vrstvě B.Mask")
+        sx, sy, ex, ey = (float(m_b.group(i)) for i in range(1, 5))
+        self.assertAlmostEqual(ex - sx, expected_mask_len, places=3)
+        self.assertAlmostEqual(ey - sy, 2.0 * expected_half_h, places=3)
 
         # Kontrola PCB (.kicad_pcb): B.Mask polygon má přesně dynamický rozměr
         with open(pcb_file, "r", encoding="utf-8") as f:
@@ -696,6 +757,17 @@ class TestExportCli(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    @staticmethod
+    def _no_profile_env(extra=None):
+        """Vrátí prostředí izolované od případného ANTENNA_PROFILE v kořenovém .env."""
+        env = os.environ.copy()
+        env["ANTENNA_PROFILE"] = ""
+        env.pop("PROFILE_NAME", None)
+        env.pop("SILKSCREEN_SUBTITLE", None)
+        if extra:
+            env.update(extra)
+        return env
+
     def test_cli_export_all(self):
         """Spuštění CLI skriptu s volbou --all do dočasné složky."""
         cmd = [
@@ -706,13 +778,15 @@ class TestExportCli(unittest.TestCase):
             "--patch-l", "29.81",
             "--delta-l", "18.66",
         ]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._no_profile_env())
         self.assertEqual(proc.returncode, 0, f"Skript selhal s chybou:\n{proc.stderr}")
 
         pcb_file = os.path.join(self.temp_dir.name, "antenna_model4.kicad_pcb")
+        dru_file = os.path.join(self.temp_dir.name, "antenna_model4.kicad_dru")
         fp_file = os.path.join(self.temp_dir.name, "Antenna_Model4_LHCP.kicad_mod")
 
         self.assertTrue(os.path.exists(pcb_file))
+        self.assertTrue(os.path.exists(dru_file))
         self.assertTrue(os.path.exists(fp_file))
         self.assertIn("Export úspěšně dokončen", proc.stdout)
 
@@ -724,7 +798,7 @@ class TestExportCli(unittest.TestCase):
             "--output-dir", self.temp_dir.name,
             "--pcb",
         ]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._no_profile_env())
         self.assertEqual(proc.returncode, 0)
 
         pcb_file = os.path.join(self.temp_dir.name, "antenna_model4.kicad_pcb")
@@ -742,7 +816,7 @@ class TestExportCli(unittest.TestCase):
             "--all",
             "--mask-clearance", "0.40",
         ]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._no_profile_env())
         self.assertEqual(proc.returncode, 0)
         self.assertIn("Odsazení nepájivé masky (clearance):0.40 mm", proc.stdout)
 
@@ -754,10 +828,11 @@ class TestExportCli(unittest.TestCase):
 
     def test_cli_tight_pcb_options(self):
         """Ověření CLI přepínačů pro ořez desky: --tight-pcb, --no-tight-pcb, --crop-pcb, --full-pcb."""
-        # 1. Výchozí / explicitní --tight-pcb
+        # 1. Výchozí / explicitní --tight-pcb (s referenčním profilem urel)
         cmd_tight = [
             sys.executable,
             os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--profile", "urel",
             "--output-dir", os.path.join(self.temp_dir.name, "tight"),
             "--tight-pcb",
             "--patch-l", "29.95",
@@ -765,7 +840,7 @@ class TestExportCli(unittest.TestCase):
         proc_tight = subprocess.run(cmd_tight, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertEqual(proc_tight.returncode, 0)
         self.assertIn("Kompaktní / oříznutý (tight_pcb=True)", proc_tight.stdout)
-        # S načteným TRANS_L_L=18.70 z .env je kompaktní šířka 73.10 mm
+        # S načteným TRANS_L_L=18.70 z profilu urel je kompaktní šířka 73.10 mm
         self.assertIn("73.10 mm", proc_tight.stdout)
         self.assertIn("úspora plochy", proc_tight.stdout)
 
@@ -773,6 +848,7 @@ class TestExportCli(unittest.TestCase):
         cmd_full = [
             sys.executable,
             os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--profile", "urel",
             "--output-dir", os.path.join(self.temp_dir.name, "full"),
             "--no-tight-pcb",
             "--patch-l", "29.95",
@@ -790,7 +866,7 @@ class TestExportCli(unittest.TestCase):
             "--crop-pcb",
             "--margin-right", "12.0",
         ]
-        proc_alias = subprocess.run(cmd_alias, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc_alias = subprocess.run(cmd_alias, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._no_profile_env())
         self.assertEqual(proc_alias.returncode, 0)
         self.assertIn("Kompaktní / oříznutý", proc_alias.stdout)
 
@@ -808,7 +884,7 @@ class TestExportCli(unittest.TestCase):
             "--sma-pad-len", "4.50",
             "--sma-pad-w", "1.80",
         ]
-        proc_cli = subprocess.run(cmd_cli, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc_cli = subprocess.run(cmd_cli, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._no_profile_env())
         self.assertEqual(proc_cli.returncode, 0, f"CLI selhalo:\n{proc_cli.stderr}")
         self.assertIn("gap=0.85 mm", proc_cli.stdout)
         self.assertIn("pad=4.50x1.80 mm", proc_cli.stdout)
@@ -819,8 +895,7 @@ class TestExportCli(unittest.TestCase):
         self.assertIn('(size 4.5000 1.8000) (layers "F.Cu" "F.Mask")', fp_content)
 
         # 2. Načtení z env proměnných SMA_GAP, SMA_PAD_LEN, SMA_PAD_W
-        env = os.environ.copy()
-        env.update({
+        env = self._no_profile_env({
             "SMA_GAP": "0.60",
             "SMA_PAD_LEN": "4.00",
             "SMA_PAD_W": "1.60",
@@ -844,7 +919,7 @@ class TestExportCli(unittest.TestCase):
             "--pcb",
             "--sma-gap", "0",
         ]
-        proc_bad = subprocess.run(cmd_bad, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc_bad = subprocess.run(cmd_bad, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._no_profile_env())
         self.assertNotEqual(proc_bad.returncode, 0)
         self.assertIn("ValueError", proc_bad.stderr)
 
@@ -994,7 +1069,7 @@ class TestExportCli(unittest.TestCase):
             "--inset-gap-b", "0.45",
             "--inset-gap-l", "0.65",
         ]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._no_profile_env())
         self.assertEqual(proc.returncode, 0, f"CLI selhalo:\n{proc.stderr}")
 
         # Ověření přehledného výpisu obou větví v souhrnné tabulce
@@ -1057,7 +1132,7 @@ class TestExportCli(unittest.TestCase):
             "--inset-gap", "0.50",
             "--inset-gap-b", "0.40",
         ]
-        proc_prio = subprocess.run(cmd_prio, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc_prio = subprocess.run(cmd_prio, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._no_profile_env())
         self.assertEqual(proc_prio.returncode, 0, f"CLI selhalo:\n{proc_prio.stderr}")
         self.assertIn("Transformátor spodní (w_T_b/l_T_b):0.410 mm / 19.800 mm", proc_prio.stdout)
         self.assertIn("Transformátor levý (w_T_l/l_T_l):  0.350 mm / 19.000 mm", proc_prio.stdout)
@@ -1075,15 +1150,14 @@ class TestExportCli(unittest.TestCase):
             "--inset", "2.50",
             "--inset-gap", "0.50",
         ]
-        proc_sym = subprocess.run(cmd_sym, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc_sym = subprocess.run(cmd_sym, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._no_profile_env())
         self.assertEqual(proc_sym.returncode, 0, f"CLI selhalo:\n{proc_sym.stderr}")
         self.assertIn("Čtvrtvlnný transformátor w_T / l_T:0.380 mm / 19.100 mm", proc_sym.stdout)
         self.assertNotIn("Transformátor spodní", proc_sym.stdout)
         self.assertNotIn("Transformátor levý", proc_sym.stdout)
 
         # 3. Priorita env proměnných: TRANS_L_B přebíjí TRANS_L, levá větev dědí TRANS_L
-        env_prio = os.environ.copy()
-        env_prio.update({
+        env_prio = self._no_profile_env({
             "TRANS_W": "0.34",
             "TRANS_W_B": "",
             "TRANS_W_L": "",

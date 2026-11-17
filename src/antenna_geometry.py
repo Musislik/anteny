@@ -841,6 +841,14 @@ def get_model4_kicad_geometry(
     sma_mask_len = max(4.0, sma_pad_len_val + 0.5)
     sma_mask_half_h = max(4.0, sma_gnd_outer + max(mask_clearance, 0.31))
 
+    # Hráz nepájivé masky (solder mask dam) v G-S-G mezeře mezi RF_IN a GND na F.Mask
+    # Zabraňuje můstkování cínu při pájení SMA konektoru a eliminuje KiCad DRC chybu solder_mask_bridge
+    sma_mask_dam = min(0.15, 0.25 * sma_gap_val)
+    sma_gnd_mask_inner = min(
+        sma_gnd_inner,
+        max(w_50 / 2.0 + mask_clearance + sma_mask_dam, sma_gnd_inner - mask_clearance),
+    )
+
     info['mask_clearance'] = mask_clearance
     info['sma_gap'] = sma_gap_val
     info['sma_pad_len'] = sma_pad_len_val
@@ -850,6 +858,8 @@ def get_model4_kicad_geometry(
     info['sma_gnd_center_y'] = sma_gnd_center_y
     info['sma_mask_len'] = sma_mask_len
     info['sma_mask_half_h'] = sma_mask_half_h
+    info['sma_mask_dam'] = sma_mask_dam
+    info['sma_gnd_mask_inner'] = sma_gnd_mask_inner
 
     gnd_top_cad = [
         (x_port, y_T + sma_gnd_inner),
@@ -924,14 +934,22 @@ def get_model4_kicad_geometry(
         })
 
     # 6. Otevření nepájivé masky s definovaným přesahem (solder mask clearance)
-    # A) Jednolité otevření masky nad horním SMA rozhraním (dynamicky dle šířky G-S-G)
-    sma_mask_cad = [
-        (x_port, y_T - sma_mask_half_h),
-        (x_port + sma_mask_len, y_T - sma_mask_half_h),
+    # A) Oddělená otevření F.Mask nad horní a spodní SMA GND ploškou (s hrází masky od 50 Ohm RF_IN)
+    #    50 Ohm RF_IN přívod má vlastní F.Mask otevření v t_junc_mask_kicad -> čistá hráz bez solder_mask_bridge
+    sma_gnd_mask_top_cad = [
+        (x_port, y_T + sma_gnd_mask_inner),
+        (x_port + sma_mask_len, y_T + sma_gnd_mask_inner),
         (x_port + sma_mask_len, y_T + sma_mask_half_h),
         (x_port, y_T + sma_mask_half_h),
     ]
-    sma_mask_kicad = transform_poly_to_kicad(sma_mask_cad, ox, oy)
+    sma_gnd_mask_bot_cad = [
+        (x_port, y_T - sma_mask_half_h),
+        (x_port + sma_mask_len, y_T - sma_mask_half_h),
+        (x_port + sma_mask_len, y_T - sma_gnd_mask_inner),
+        (x_port, y_T - sma_gnd_mask_inner),
+    ]
+    sma_gnd_mask_top_kicad = transform_poly_to_kicad(sma_gnd_mask_top_cad, ox, oy)
+    sma_gnd_mask_bot_kicad = transform_poly_to_kicad(sma_gnd_mask_bot_cad, ox, oy)
 
     # B) Otevření masky nad vyzařovacím flíčkem pro ENIG zlacení s přesahem mask_clearance na každé straně
     patch_mask_cad = [
@@ -985,7 +1003,8 @@ def get_model4_kicad_geometry(
 
     # Celá sada otvorů horní masky na F.Mask
     mask_openings = [
-        sma_mask_kicad,
+        sma_gnd_mask_top_kicad,
+        sma_gnd_mask_bot_kicad,
         patch_mask_kicad,
         trans_b_mask_kicad,
         trans_l_mask_kicad,
