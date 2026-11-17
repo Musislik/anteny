@@ -21,6 +21,7 @@ Testuje:
 
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,9 @@ for p in (PROJECT_ROOT, SRC_DIR, SCRIPTS_DIR):
         sys.path.insert(0, p)
 
 from antenna_geometry import (
+    SMA_GAP,
+    SMA_PAD_LEN,
+    SMA_PAD_W,
     calc_curved_path_length,
     calc_microstrip_eps_eff,
     calc_microstrip_z0,
@@ -327,6 +331,160 @@ class TestAntennaGeometry(unittest.TestCase):
         self.assertAlmostEqual(c_info['cad_y_max'], 29.95 / 2.0 + 12.0, places=4)
         self.assertAlmostEqual(c_info['cad_y_min'], c_info['y_bot'] - 4.0, places=4)
 
+    def test_sma_gsg_backwards_compatibility_default_substrate(self):
+        """Ověření zpětné kompatibility SMA G-S-G pro výchozí substrát h=1.52 mm, eps_r=4.3."""
+        params = {'patch_L': 28.8, 'patch_W': 28.8, 'sub_h': 1.52, 'eps_r': 4.3}
+        geom = get_model4_kicad_geometry(params, is_footprint=False)
+        info = geom.routing_info
+
+        self.assertAlmostEqual(info['sma_gap'], SMA_GAP, places=6)
+        self.assertAlmostEqual(info['sma_pad_len'], SMA_PAD_LEN, places=6)
+        self.assertAlmostEqual(info['sma_pad_w'], SMA_PAD_W, places=6)
+        self.assertAlmostEqual(info['sma_gnd_inner'], 2.19, delta=0.01)
+        self.assertAlmostEqual(info['sma_gnd_outer'], 3.69, delta=0.01)
+        self.assertAlmostEqual(info['sma_gnd_center_y'], 2.94, delta=0.01)
+        self.assertAlmostEqual(info['sma_mask_len'], 4.0, places=6)
+        self.assertAlmostEqual(info['sma_mask_half_h'], 4.0, places=6)
+        self.assertEqual(geom.sma_pad_size, (3.50, 1.50))
+        self.assertEqual(geom.sma_mask_size, (4.0, 8.0))
+
+        # Prokovy na X offsetech [1.0, 2.0, 3.0] od x_min a Y vycentrovaném na y_T +- sma_gnd_center_y
+        x_min, _, _, _ = geom.edge_cuts_rect
+        y_T_kicad = geom.origin_y - info['y_T']
+        via_x_offsets = sorted({round(v['x'] - x_min, 4) for v in geom.vias})
+        self.assertEqual(via_x_offsets, [1.0, 2.0, 3.0])
+
+        for v in geom.vias:
+            self.assertAlmostEqual(abs(v['y'] - y_T_kicad), info['sma_gnd_center_y'], places=3)
+
+    def test_sma_gsg_wide_50ohm_line_no_short_and_mask_coverage(self):
+        """Ověření SMA G-S-G pro tlustší desku / nižší eps_r (h=2.0, eps_r=3.5 -> w_50 > 4.4 mm)."""
+        params = {
+            'patch_L': 28.8,
+            'patch_W': 28.8,
+            'sub_h': 2.0,
+            'eps_r': 3.5,
+            'mask_clearance': 0.30,
+        }
+        geom = get_model4_kicad_geometry(params, is_footprint=False)
+        info = geom.routing_info
+
+        # Ověř, že w_50 > 4.4 mm (dříve by došlo ke zkratu na pevné hranici +-2.19 mm)
+        self.assertGreater(info['w_50'], 4.4)
+        self.assertGreater(info['w_50'] / 2.0, 2.19)
+
+        y_T_kicad = geom.origin_y - info['y_T']
+        x_min, _, _, _ = geom.edge_cuts_rect
+
+        # 50 Ohm přívod u portu (rf_polygons[5] = t_junc_kicad)
+        t_junc_poly = geom.rf_polygons[5]
+        port_pts = [p for p in t_junc_poly if abs(p[0] - x_min) < 1e-4]
+        self.assertEqual(len(port_pts), 2)
+        rf_y_min = min(p[1] for p in port_pts)
+        rf_y_max = max(p[1] for p in port_pts)
+        self.assertAlmostEqual(rf_y_max - rf_y_min, info['w_50'], places=4)
+
+        # Horní a spodní GND plošky na F.Cu (v KiCadu: menší Y = CAD +Y, větší Y = CAD -Y)
+        gnd_top_poly, gnd_bot_poly = geom.gnd_polygons_top
+        gnd_top_ys = [p[1] for p in gnd_top_poly]
+        gnd_bot_ys = [p[1] for p in gnd_bot_poly]
+
+        # Žádný překryv RF a GND a přesná mezera sma_gap = 0.70 mm na obou stranách
+        gap_upper = rf_y_min - max(gnd_top_ys)
+        gap_lower = min(gnd_bot_ys) - rf_y_max
+        self.assertGreater(gap_upper, 0.0)
+        self.assertGreater(gap_lower, 0.0)
+        self.assertAlmostEqual(gap_upper, SMA_GAP, places=4)
+        self.assertAlmostEqual(gap_lower, SMA_GAP, places=4)
+
+        # Všechny prokovy leží přesně uprostřed (v ose Y) a uvnitř (v ose X) příslušných GND plošek
+        top_center_y = 0.5 * (min(gnd_top_ys) + max(gnd_top_ys))
+        bot_center_y = 0.5 * (min(gnd_bot_ys) + max(gnd_bot_ys))
+        self.assertEqual(len(geom.vias), 6)
+        for v in geom.vias:
+            self.assertGreaterEqual(v['x'], x_min + 0.5 - 1e-4)
+            self.assertLessEqual(v['x'], x_min + info['sma_pad_len'] - 0.5 + 1e-4)
+            dist_to_nearest_center = min(abs(v['y'] - top_center_y), abs(v['y'] - bot_center_y))
+            self.assertAlmostEqual(dist_to_nearest_center, 0.0, places=4)
+
+        # Maska F.Mask i B.Mask se zvětšila (> 8.0 mm) a bezpečně pokrývá vnější hrany GND plošek
+        self.assertGreater(info['sma_mask_half_h'], 4.0)
+        expected_half_h = info['sma_gnd_outer'] + 0.31
+        self.assertAlmostEqual(info['sma_mask_half_h'], expected_half_h, places=4)
+
+        for mask_poly in (geom.mask_openings[0], geom.mask_openings_bottom[0]):
+            m_xs = [p[0] for p in mask_poly]
+            m_ys = [p[1] for p in mask_poly]
+            self.assertAlmostEqual(min(m_xs), x_min, places=4)
+            self.assertAlmostEqual(max(m_xs) - min(m_xs), info['sma_mask_len'], places=4)
+            self.assertAlmostEqual(max(m_ys) - min(m_ys), 2.0 * info['sma_mask_half_h'], places=4)
+            self.assertLessEqual(min(m_ys), min(gnd_top_ys) - 0.30 + 1e-4)
+            self.assertGreaterEqual(max(m_ys), max(gnd_bot_ys) + 0.30 - 1e-4)
+            self.assertAlmostEqual(0.5 * (min(m_ys) + max(m_ys)), y_T_kicad, places=4)
+
+    def test_sma_gsg_thin_substrate(self):
+        """Ověření SMA G-S-G pro tenčí desku (h=0.8 mm, eps_r=4.4 -> úzké w_50)."""
+        params = {'patch_L': 28.8, 'patch_W': 28.8, 'sub_h': 0.8, 'eps_r': 4.4}
+        geom = get_model4_kicad_geometry(params, is_footprint=False)
+        info = geom.routing_info
+
+        self.assertLess(info['w_50'], 2.0)
+        self.assertAlmostEqual(info['sma_gnd_inner'], info['w_50'] / 2.0 + SMA_GAP, places=6)
+        self.assertAlmostEqual(info['sma_gnd_outer'], info['sma_gnd_inner'] + SMA_PAD_W, places=6)
+        # Pro užší vedení zůstává minimální maska 4.0 x 8.0 mm pro tělo SMA konektoru
+        self.assertAlmostEqual(info['sma_mask_len'], 4.0, places=6)
+        self.assertAlmostEqual(info['sma_mask_half_h'], 4.0, places=6)
+
+        y_T_kicad = geom.origin_y - info['y_T']
+        self.assertAlmostEqual(abs(geom.sma_top_pad_center[1] - y_T_kicad), info['sma_gnd_center_y'], places=4)
+        self.assertAlmostEqual(abs(geom.sma_bot_pad_center[1] - y_T_kicad), info['sma_gnd_center_y'], places=4)
+
+    def test_sma_custom_params_and_validation(self):
+        """Ověření vlastního nastavení SMA parametrů, aliasů, rozvržení prokovů a validace."""
+        base = {'patch_L': 28.8, 'patch_W': 28.8, 'sub_h': 1.52, 'eps_r': 4.3}
+
+        # 1. Delší a širší SMA plošky s větší mezerou
+        custom = dict(base, sma_gap=0.90, sma_pad_len=5.0, sma_pad_w=2.0)
+        geom = get_model4_kicad_geometry(custom, is_footprint=False)
+        info = geom.routing_info
+        x_min, _, _, _ = geom.edge_cuts_rect
+
+        self.assertAlmostEqual(info['sma_gap'], 0.90, places=6)
+        self.assertAlmostEqual(info['sma_pad_len'], 5.0, places=6)
+        self.assertAlmostEqual(info['sma_pad_w'], 2.0, places=6)
+        self.assertEqual(geom.sma_pad_size, (5.0, 2.0))
+        self.assertAlmostEqual(info['sma_mask_len'], 5.5, places=6)
+        self.assertAlmostEqual(info['sma_mask_half_h'], info['sma_gnd_outer'] + 0.31, places=6)
+
+        # Všechny prokovy leží bezpečně v [0.5, sma_pad_len - 0.5]
+        via_x_offsets = sorted({round(v['x'] - x_min, 4) for v in geom.vias})
+        self.assertEqual(len(via_x_offsets), 3)
+        for off in via_x_offsets:
+            self.assertGreaterEqual(off, 0.5 - 1e-4)
+            self.assertLessEqual(off, 5.0 - 0.5 + 1e-4)
+
+        # 2. Kratší SMA plošky (např. 2.4 mm) a aliasy
+        short_alias = dict(base, sma_gsg_gap=0.55, sma_gnd_pad_len=2.4, sma_gnd_pad_w=1.2)
+        geom_short = get_model4_kicad_geometry(short_alias, is_footprint=False)
+        x_min_s, _, _, _ = geom_short.edge_cuts_rect
+        via_x_short = sorted({round(v['x'] - x_min_s, 4) for v in geom_short.vias})
+        self.assertEqual(len(via_x_short), 3)
+        for off in via_x_short:
+            self.assertGreaterEqual(off, 0.5 - 1e-4)
+            self.assertLessEqual(off, 2.4 - 0.5 + 1e-4)
+
+        # 3. Validace neplatných hodnot (<= 0 vyhodí ValueError)
+        for bad_update in (
+            {'sma_gap': 0.0},
+            {'sma_gap': -0.2},
+            {'sma_pad_len': 0.0},
+            {'sma_pad_len': -1.0},
+            {'sma_pad_w': 0.0},
+            {'sma_pad_w': -0.5},
+        ):
+            with self.assertRaises(ValueError):
+                get_model4_kicad_geometry(dict(base, **bad_update))
+
 
 class TestKiCadGenerator(unittest.TestCase):
     """Testy generování KiCad 10 S-výrazů v kicad_generator.py."""
@@ -463,6 +621,68 @@ class TestKiCadGenerator(unittest.TestCase):
             content_full = f.read()
         self.assertIn(f'(end {25.0 + res_full["W_sub"]:.4f}', content_full)
 
+    def test_generate_kicad_pcb_and_footprint_wide_substrate_sma(self):
+        """Ověření dynamických SMA maskových otvorů F.Mask/B.Mask a GND padů v .kicad_pcb i .kicad_mod."""
+        wide_params = {
+            'patch_L': 28.8,
+            'patch_W': 28.8,
+            'sub_h': 2.0,
+            'eps_r': 3.5,
+            'design_freq_ghz': 2.3325,
+            'port_impedance': 50.0,
+            'sma_gap': 0.70,
+            'sma_pad_len': 4.20,
+            'sma_pad_w': 1.60,
+        }
+        pcb_file = os.path.join(self.temp_dir.name, "wide.kicad_pcb")
+        fp_file = os.path.join(self.temp_dir.name, "wide.kicad_mod")
+
+        res_pcb = generate_kicad_pcb(wide_params, pcb_file)
+        res_fp = generate_kicad_footprint(wide_params, fp_file)
+
+        info = res_fp['routing_info']
+        expected_mask_len = max(4.0, 4.20 + 0.5)
+        expected_half_h = info['sma_gnd_outer'] + 0.31
+        self.assertAlmostEqual(info['sma_mask_len'], expected_mask_len, places=4)
+        self.assertAlmostEqual(info['sma_mask_half_h'], expected_half_h, places=4)
+        self.assertGreater(expected_half_h, 4.5)
+
+        # Kontrola footprintu (.kicad_mod): pady 2, 3 mají rozměr 4.20 x 1.60 a masky F.Mask/B.Mask odpovídají rozměrům
+        with open(fp_file, "r", encoding="utf-8") as f:
+            fp_content = f.read()
+        self.assertIn('(size 4.2000 1.6000) (layers "F.Cu" "F.Mask")', fp_content)
+
+        for layer in ("F.Mask", "B.Mask"):
+            pattern = (
+                r'\(fp_rect \(start ([\-\d\.]+) ([\-\d\.]+)\) \(end ([\-\d\.]+) ([\-\d\.]+)\) '
+                r'\(stroke \(width 0\) \(type solid\)\) \(fill yes\) \(layer "' + re.escape(layer) + r'"\)'
+            )
+            m = re.search(pattern, fp_content)
+            self.assertIsNotNone(m, f"Chybí SMA fp_rect na vrstvě {layer}")
+            sx, sy, ex, ey = (float(m.group(i)) for i in range(1, 5))
+            self.assertAlmostEqual(ex - sx, expected_mask_len, places=3)
+            self.assertAlmostEqual(ey - sy, 2.0 * expected_half_h, places=3)
+
+        # Kontrola PCB (.kicad_pcb): B.Mask polygon má přesně dynamický rozměr
+        with open(pcb_file, "r", encoding="utf-8") as f:
+            pcb_content = f.read()
+        self.assertIn('(thickness 2.000)', pcb_content)
+        self.assertEqual(res_pcb['vias_count'], 6)
+        b_mask_block = re.search(
+            r'\(gr_poly\n\s+\(pts\n((?:\s+\(xy [^\n]+\n)+)\s+\)\n'
+            r'\s+\(stroke \(width 0\) \(type solid\)\) \(fill yes\) \(layer "B\.Mask"\)',
+            pcb_content,
+        )
+        self.assertIsNotNone(b_mask_block, "Chybí B.Mask SMA polygon v .kicad_pcb")
+        coords = [
+            (float(x), float(y))
+            for x, y in re.findall(r'\(xy ([\-\d\.]+) ([\-\d\.]+)\)', b_mask_block.group(1))
+        ]
+        xs = [c[0] for c in coords]
+        ys = [c[1] for c in coords]
+        self.assertAlmostEqual(max(xs) - min(xs), expected_mask_len, places=3)
+        self.assertAlmostEqual(max(ys) - min(ys), 2.0 * expected_half_h, places=3)
+
 
 class TestExportCli(unittest.TestCase):
     """Testy CLI skriptu scripts/export_kicad.py."""
@@ -569,6 +789,60 @@ class TestExportCli(unittest.TestCase):
         proc_alias = subprocess.run(cmd_alias, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertEqual(proc_alias.returncode, 0)
         self.assertIn("Kompaktní / oříznutý", proc_alias.stdout)
+
+    def test_cli_sma_options_and_env_override(self):
+        """Ověření CLI přepínačů --sma-gap, --sma-pad-len, --sma-pad-w a env proměnných."""
+        # 1. CLI přepisy včetně širšího substrátu
+        cmd_cli = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", os.path.join(self.temp_dir.name, "cli_sma"),
+            "--all",
+            "--sub-h", "2.0",
+            "--eps-r", "3.5",
+            "--sma-gap", "0.85",
+            "--sma-pad-len", "4.50",
+            "--sma-pad-w", "1.80",
+        ]
+        proc_cli = subprocess.run(cmd_cli, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(proc_cli.returncode, 0, f"CLI selhalo:\n{proc_cli.stderr}")
+        self.assertIn("gap=0.85 mm", proc_cli.stdout)
+        self.assertIn("pad=4.50x1.80 mm", proc_cli.stdout)
+
+        fp_file = os.path.join(self.temp_dir.name, "cli_sma", "Antenna_Model4_LHCP.kicad_mod")
+        with open(fp_file, "r", encoding="utf-8") as f:
+            fp_content = f.read()
+        self.assertIn('(size 4.5000 1.8000) (layers "F.Cu" "F.Mask")', fp_content)
+
+        # 2. Načtení z env proměnných SMA_GAP, SMA_PAD_LEN, SMA_PAD_W
+        env = os.environ.copy()
+        env.update({
+            "SMA_GAP": "0.60",
+            "SMA_PAD_LEN": "4.00",
+            "SMA_PAD_W": "1.60",
+        })
+        cmd_env = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", os.path.join(self.temp_dir.name, "env_sma"),
+            "--footprint",
+        ]
+        proc_env = subprocess.run(cmd_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+        self.assertEqual(proc_env.returncode, 0, f"CLI s env selhalo:\n{proc_env.stderr}")
+        self.assertIn("gap=0.60 mm", proc_env.stdout)
+        self.assertIn("pad=4.00x1.60 mm", proc_env.stdout)
+
+        # 3. Neplatná hodnota --sma-gap <= 0 selže s chybou
+        cmd_bad = [
+            sys.executable,
+            os.path.join(SCRIPTS_DIR, "export_kicad.py"),
+            "--output-dir", os.path.join(self.temp_dir.name, "bad_sma"),
+            "--pcb",
+            "--sma-gap", "0",
+        ]
+        proc_bad = subprocess.run(cmd_bad, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertNotEqual(proc_bad.returncode, 0)
+        self.assertIn("ValueError", proc_bad.stderr)
 
 
 if __name__ == "__main__":

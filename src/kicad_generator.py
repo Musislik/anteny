@@ -342,15 +342,17 @@ def generate_kicad_footprint(
         f'(stroke (width 0.05) (type default)) (fill no) (layer "F.CrtYd") (uuid "{_gen_uuid()}"))'
     )
 
-    # Jednolité obdélníkové otevření masky SMA rozhraní na F.Mask a B.Mask (4.0 x 8.0 mm)
+    # Jednolité obdélníkové otevření masky SMA rozhraní na F.Mask a B.Mask (dynamicky dle šířky G-S-G)
     x_port = float(info['x_port'])
     y_T = float(info['y_T'])
-    # CAD: x in [x_port, x_port + 4.0], y in [y_T - 4.0, y_T + 4.0]
+    sma_mask_len = float(info['sma_mask_len'])
+    sma_mask_half_h = float(info['sma_mask_half_h'])
+    # CAD: x in [x_port, x_port + sma_mask_len], y in [y_T - sma_mask_half_h, y_T + sma_mask_half_h]
     # KiCad (origin=0): x_k = x, y_k = -y
     m_x1 = x_port
-    m_x2 = x_port + 4.0
-    m_y1 = -y_T - 4.0
-    m_y2 = -y_T + 4.0
+    m_x2 = x_port + sma_mask_len
+    m_y1 = -y_T - sma_mask_half_h
+    m_y2 = -y_T + sma_mask_half_h
     lines.append(
         f'  (fp_rect (start {min(m_x1, m_x2):.4f} {min(m_y1, m_y2):.4f}) '
         f'(end {max(m_x1, m_x2):.4f} {max(m_y1, m_y2):.4f}) '

@@ -16,6 +16,9 @@ PORT_Z0 = 50.0                # Jmenovitá impedance portu [Ohm]
 COORD_TOL = 1e-9
 OVERLAP_DELTA = 0.05          # Záměrný přesah 50 µm pro eliminaci DRC mikro-mezer v KiCadu
 MASK_CLEARANCE = 0.30         # Výchozí přesah nepájivé masky (solder mask clearance) [mm]
+SMA_GAP = 0.70                # Výchozí mezera G-S-G mezi 50 Ohm páskem a SMA GND ploškou [mm]
+SMA_PAD_LEN = 3.50            # Výchozí délka SMA GND plošky [mm]
+SMA_PAD_W = 1.50              # Výchozí šířka SMA GND plošky [mm]
 
 
 # ==============================================================================
@@ -618,9 +621,11 @@ class KiCadGeometryData:
     mask_openings_bottom: List[List[Tuple[float, float]]] # B.Mask otvory
     sma_top_pad_center: Tuple[float, float]
     sma_bot_pad_center: Tuple[float, float]
-    sma_pad_size: Tuple[float, float]                   # (dx, dy) = (3.5, 1.5)
+    sma_pad_size: Tuple[float, float]                   # (dx, dy) = (sma_pad_len, sma_pad_w)
     routing_info: Dict[str, Any]
     tight_pcb: bool = True
+    sma_gap: float = SMA_GAP
+    sma_mask_size: Tuple[float, float] = (4.0, 8.0)     # (dx, dy) = (sma_mask_len, 2 * sma_mask_half_h)
 
 
 def get_model4_kicad_geometry(
@@ -631,6 +636,9 @@ def get_model4_kicad_geometry(
     overlap_delta: float = OVERLAP_DELTA,
     mask_clearance: Optional[float] = None,
     tight_pcb: Optional[bool] = None,
+    sma_gap: Optional[float] = None,
+    sma_pad_len: Optional[float] = None,
+    sma_pad_w: Optional[float] = None,
 ) -> KiCadGeometryData:
     """
     Vytvoří kompletní sadu KiCad 10 geometrických prvků (F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts, Vias)
@@ -790,25 +798,70 @@ def get_model4_kicad_geometry(
         t_junc_kicad,
     ]
 
-    # 3. SMA Rozhraní (Cinch Johnson 142-0701-801) - G-S-G
-    # Signálový pad je integrován v 50 Ohm přívodu: šířka w_50 = 2.98 mm, délka 3.5 mm od x_port.
-    # Horní a spodní zemní plošky: šířka 1.50 mm, délka 3.50 mm, mezera g = 0.70 mm.
-    # Horní GND pad CAD: x in [x_port, x_port + 3.5], y in [y_T + 2.19, y_T + 3.69]
-    # Spodní GND pad CAD: x in [x_port, x_port + 3.5], y in [y_T - 3.69, y_T - 2.19]
-    sma_pad_len = 3.50
-    sma_pad_w = 1.50
+    # 3. SMA Rozhraní (Cinch Johnson 142-0701-801) - G-S-G (parametrické dle w_50)
+    # Signálový pad je integrován v 50 Ohm přívodu o šířce w_50 od x_port.
+    # Horní a spodní zemní plošky se dynamicky umísťují s mezerou sma_gap od hran 50 Ohm vedení.
+    if sma_gap is None:
+        raw_sma_gap = next(
+            (params[k] for k in ('sma_gap', 'sma_gsg_gap', 'feed_sma_gap') if params.get(k) is not None),
+            None,
+        )
+        sma_gap_val = float(raw_sma_gap) if raw_sma_gap is not None else SMA_GAP
+    else:
+        sma_gap_val = float(sma_gap)
+
+    if sma_pad_len is None:
+        raw_sma_pad_len = next(
+            (params[k] for k in ('sma_pad_len', 'sma_gnd_pad_len', 'sma_pad_length') if params.get(k) is not None),
+            None,
+        )
+        sma_pad_len_val = float(raw_sma_pad_len) if raw_sma_pad_len is not None else SMA_PAD_LEN
+    else:
+        sma_pad_len_val = float(sma_pad_len)
+
+    if sma_pad_w is None:
+        raw_sma_pad_w = next(
+            (params[k] for k in ('sma_pad_w', 'sma_gnd_pad_w', 'sma_pad_width') if params.get(k) is not None),
+            None,
+        )
+        sma_pad_w_val = float(raw_sma_pad_w) if raw_sma_pad_w is not None else SMA_PAD_W
+    else:
+        sma_pad_w_val = float(sma_pad_w)
+
+    if sma_gap_val <= 0.0:
+        raise ValueError(f"Mezera SMA G-S-G sma_gap={sma_gap_val:.4f} mm musí být kladná (> 0).")
+    if sma_pad_len_val <= 0.0:
+        raise ValueError(f"Délka SMA GND plošky sma_pad_len={sma_pad_len_val:.4f} mm musí být kladná (> 0).")
+    if sma_pad_w_val <= 0.0:
+        raise ValueError(f"Šířka SMA GND plošky sma_pad_w={sma_pad_w_val:.4f} mm musí být kladná (> 0).")
+
+    sma_gnd_inner = w_50 / 2.0 + sma_gap_val
+    sma_gnd_outer = sma_gnd_inner + sma_pad_w_val
+    sma_gnd_center_y = sma_gnd_inner + sma_pad_w_val / 2.0
+    sma_mask_len = max(4.0, sma_pad_len_val + 0.5)
+    sma_mask_half_h = max(4.0, sma_gnd_outer + max(mask_clearance, 0.31))
+
+    info['mask_clearance'] = mask_clearance
+    info['sma_gap'] = sma_gap_val
+    info['sma_pad_len'] = sma_pad_len_val
+    info['sma_pad_w'] = sma_pad_w_val
+    info['sma_gnd_inner'] = sma_gnd_inner
+    info['sma_gnd_outer'] = sma_gnd_outer
+    info['sma_gnd_center_y'] = sma_gnd_center_y
+    info['sma_mask_len'] = sma_mask_len
+    info['sma_mask_half_h'] = sma_mask_half_h
 
     gnd_top_cad = [
-        (x_port, y_T + 2.19),
-        (x_port + sma_pad_len, y_T + 2.19),
-        (x_port + sma_pad_len, y_T + 3.69),
-        (x_port, y_T + 3.69),
+        (x_port, y_T + sma_gnd_inner),
+        (x_port + sma_pad_len_val, y_T + sma_gnd_inner),
+        (x_port + sma_pad_len_val, y_T + sma_gnd_outer),
+        (x_port, y_T + sma_gnd_outer),
     ]
     gnd_bot_cad = [
-        (x_port, y_T - 3.69),
-        (x_port + sma_pad_len, y_T - 3.69),
-        (x_port + sma_pad_len, y_T - 2.19),
-        (x_port, y_T - 2.19),
+        (x_port, y_T - sma_gnd_outer),
+        (x_port + sma_pad_len_val, y_T - sma_gnd_outer),
+        (x_port + sma_pad_len_val, y_T - sma_gnd_inner),
+        (x_port, y_T - sma_gnd_inner),
     ]
     gnd_polygons_top = [
         transform_poly_to_kicad(gnd_top_cad, ox, oy),
@@ -816,11 +869,11 @@ def get_model4_kicad_geometry(
     ]
 
     # Středy SMA GND plošek v KiCad souřadnicích (pro footprint pady)
-    top_center_cad = (x_port + sma_pad_len / 2.0, y_T + 2.94)
-    bot_center_cad = (x_port + sma_pad_len / 2.0, y_T - 2.94)
+    top_center_cad = (x_port + sma_pad_len_val / 2.0, y_T + sma_gnd_center_y)
+    bot_center_cad = (x_port + sma_pad_len_val / 2.0, y_T - sma_gnd_center_y)
     sma_top_pad_center = transform_cad_to_kicad(top_center_cad, ox, oy)
     sma_bot_pad_center = transform_cad_to_kicad(bot_center_cad, ox, oy)
-    sma_pad_size = (sma_pad_len, sma_pad_w)
+    sma_pad_size = (sma_pad_len_val, sma_pad_w_val)
 
     # 4. Spodní celistvá zem na B.Cu (Net 1 "GND")
     b_cu_gnd_cad = [
@@ -831,12 +884,26 @@ def get_model4_kicad_geometry(
     ]
     gnd_polygon_bottom = transform_poly_to_kicad(b_cu_gnd_cad, ox, oy)
 
-    # 5. Zemní prokovy (Via Stitching 2x3 prokovy)
+    # 5. Zemní prokovy (Via Stitching 2x3 prokovy vycentrované v SMA GND ploškách)
     vias: List[Dict[str, Any]] = []
-    via_x_offsets = [1.0, 2.0, 3.0]
+    if sma_pad_len_val > 1.0:
+        via_x_min = 1.0 if sma_pad_len_val >= 3.0 else 0.5
+        via_x_max = sma_pad_len_val - 0.5
+        via_x_offsets = [
+            via_x_min,
+            0.5 * (via_x_min + via_x_max),
+            via_x_max,
+        ]
+    else:
+        via_x_offsets = [
+            0.25 * sma_pad_len_val,
+            0.50 * sma_pad_len_val,
+            0.75 * sma_pad_len_val,
+        ]
+
     for x_off in via_x_offsets:
         # Horní prokov
-        pt_top = transform_cad_to_kicad((x_port + x_off, y_T + 2.94), ox, oy)
+        pt_top = transform_cad_to_kicad((x_port + x_off, y_T + sma_gnd_center_y), ox, oy)
         vias.append({
             'x': round(pt_top[0], 4),
             'y': round(pt_top[1], 4),
@@ -846,7 +913,7 @@ def get_model4_kicad_geometry(
             'net_name': "GND",
         })
         # Spodní prokov
-        pt_bot = transform_cad_to_kicad((x_port + x_off, y_T - 2.94), ox, oy)
+        pt_bot = transform_cad_to_kicad((x_port + x_off, y_T - sma_gnd_center_y), ox, oy)
         vias.append({
             'x': round(pt_bot[0], 4),
             'y': round(pt_bot[1], 4),
@@ -857,12 +924,12 @@ def get_model4_kicad_geometry(
         })
 
     # 6. Otevření nepájivé masky s definovaným přesahem (solder mask clearance)
-    # A) Jednolité otevření masky nad horním SMA rozhraním: 4.0 mm x 8.0 mm
+    # A) Jednolité otevření masky nad horním SMA rozhraním (dynamicky dle šířky G-S-G)
     sma_mask_cad = [
-        (x_port, y_T - 4.0),
-        (x_port + 4.0, y_T - 4.0),
-        (x_port + 4.0, y_T + 4.0),
-        (x_port, y_T + 4.0),
+        (x_port, y_T - sma_mask_half_h),
+        (x_port + sma_mask_len, y_T - sma_mask_half_h),
+        (x_port + sma_mask_len, y_T + sma_mask_half_h),
+        (x_port, y_T + sma_mask_half_h),
     ]
     sma_mask_kicad = transform_poly_to_kicad(sma_mask_cad, ox, oy)
 
@@ -927,12 +994,12 @@ def get_model4_kicad_geometry(
         t_junc_mask_kicad,
     ]
 
-    # H) Otevření spodní nepájivé masky na B.Mask pro SMA konektor (4.0 mm x 8.0 mm)
+    # H) Otevření spodní nepájivé masky na B.Mask pro SMA konektor (dynamicky dle šířky G-S-G)
     sma_mask_bot_cad = [
-        (x_port, y_T - 4.0),
-        (x_port + 4.0, y_T - 4.0),
-        (x_port + 4.0, y_T + 4.0),
-        (x_port, y_T + 4.0),
+        (x_port, y_T - sma_mask_half_h),
+        (x_port + sma_mask_len, y_T - sma_mask_half_h),
+        (x_port + sma_mask_len, y_T + sma_mask_half_h),
+        (x_port, y_T + sma_mask_half_h),
     ]
     mask_openings_bottom = [
         transform_poly_to_kicad(sma_mask_bot_cad, ox, oy),
@@ -955,4 +1022,6 @@ def get_model4_kicad_geometry(
         sma_pad_size=sma_pad_size,
         routing_info=info,
         tight_pcb=tight_pcb,
+        sma_gap=sma_gap_val,
+        sma_mask_size=(sma_mask_len, 2.0 * sma_mask_half_h),
     )

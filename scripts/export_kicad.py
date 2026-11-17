@@ -65,6 +65,9 @@ def load_model4_params_from_env() -> Dict[str, Any]:
         'MARGIN_RIGHT': 'margin_right',
         'MARGIN_TOP': 'margin_top',
         'MARGIN_BOTTOM': 'margin_bottom',
+        'SMA_GAP': 'sma_gap',
+        'SMA_PAD_LEN': 'sma_pad_len',
+        'SMA_PAD_W': 'sma_pad_w',
     }
     for env_var, param_key in opt_env_map.items():
         val = os.getenv(env_var)
@@ -153,6 +156,21 @@ def main() -> int:
     parser.add_argument("--inset", type=float, help="Hloubka zanoření zářezů na obou ramenech [mm]")
     parser.add_argument("--inset-gap", type=float, help="Šířka mezery zářezu [mm]")
     parser.add_argument("--mask-clearance", type=float, help="Odsazení nepájivé masky (mask clearance) [mm]")
+    parser.add_argument(
+        "--sma-gap",
+        type=float,
+        help="Mezera G-S-G mezi 50 Ohm páskem a SMA GND ploškou [mm] (výchozí: 0.70)",
+    )
+    parser.add_argument(
+        "--sma-pad-len",
+        type=float,
+        help="Délka SMA GND plošky [mm] (výchozí: 3.50)",
+    )
+    parser.add_argument(
+        "--sma-pad-w",
+        type=float,
+        help="Šířka SMA GND plošky [mm] (výchozí: 1.50)",
+    )
 
     args = parser.parse_args()
 
@@ -203,6 +221,12 @@ def main() -> int:
         params['feed_inset_gap_l'] = args.inset_gap
     if args.mask_clearance is not None:
         params['mask_clearance'] = args.mask_clearance
+    if args.sma_gap is not None:
+        params['sma_gap'] = args.sma_gap
+    if args.sma_pad_len is not None:
+        params['sma_pad_len'] = args.sma_pad_len
+    if args.sma_pad_w is not None:
+        params['sma_pad_w'] = args.sma_pad_w
 
     out_dir = os.path.abspath(args.output_dir)
     os.makedirs(out_dir, exist_ok=True)
@@ -270,7 +294,11 @@ def main() -> int:
     print(f"  Délka spodní větve (L_100_b):      {info['L_100_b']:.3f} mm")
     print(f"  Fázovací rozdíl drah (Delta L):    {info['L_100_b'] - info['L_100_l']:.3f} mm (požadavek: {info['feed_delta_l']:.3f} mm)")
     print(f"  Odsazení nepájivé masky (clearance):{info['mask_clearance']:.2f} mm (F.Mask RF + B.Mask SMA)")
-    print(f"  SMA rozhraní:                      Cinch Johnson 142-0701-801 (G-S-G, 6 prokovů D=0.3/0.6mm)")
+    print(
+        f"  SMA rozhraní:                      Cinch Johnson 142-0701-801 "
+        f"(G-S-G gap={info['sma_gap']:.2f} mm, pad={info['sma_pad_len']:.2f}x{info['sma_pad_w']:.2f} mm, "
+        f"maska={info['sma_mask_len']:.2f}x{2.0 * info['sma_mask_half_h']:.2f} mm, 6 prokovů D=0.3/0.6mm)"
+    )
     print("=" * 80)
     print(" Export úspěšně dokončen.")
     return 0
