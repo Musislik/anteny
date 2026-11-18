@@ -67,6 +67,7 @@ def build_palace_config(params, data_dir=None):
     save_step = int(params.get('save_step', 1))
     linear_tol = float(params.get('linear_tol', 1e-6))
     linear_max_its = int(params.get('linear_max_its', 100))
+    linear_max_size = int(params.get('linear_max_size', os.getenv('LINEAR_MAX_SIZE', 40)))
     
     model_config = {
         "Mesh": "data/mesh.msh",
@@ -133,7 +134,8 @@ def build_palace_config(params, data_dir=None):
                 "Type": "SuperLU",
                 "KSPType": "FGMRES",
                 "Tol": linear_tol,
-                "MaxIts": linear_max_its
+                "MaxIts": linear_max_its,
+                "MaxSize": linear_max_size
             }
         }
     }

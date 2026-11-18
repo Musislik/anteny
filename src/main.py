@@ -226,6 +226,7 @@ def main(custom_params=None, skip_simulation=False, clean=False, profile=None):
     port_impedance = _resolve_param('port_impedance', 'PORT_IMPEDANCE', default_port_z0, custom_params, float)
     linear_tol = _resolve_param('linear_tol', 'LINEAR_TOL', 1e-6, custom_params, float)
     linear_max_its = _resolve_param('linear_max_its', 'LINEAR_MAX_ITS', 100, custom_params, int)
+    linear_max_size = _resolve_param('linear_max_size', 'LINEAR_MAX_SIZE', 40, custom_params, int)
 
     print(f"--- Model {antenna_model} | Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, Port Z0 {port_impedance:.1f} Ohm ---")
 
@@ -260,6 +261,7 @@ def main(custom_params=None, skip_simulation=False, clean=False, profile=None):
         'port_impedance': port_impedance,
         'linear_tol': linear_tol,
         'linear_max_its': linear_max_its,
+        'linear_max_size': linear_max_size,
         'design_freq_ghz': design_freq_ghz,
     }
 
@@ -904,6 +906,8 @@ if __name__ == "__main__":
                         help="Relativní tolerance lineárního řešiče FGMRES (výchozí: 1e-6 nebo z LINEAR_TOL)")
     parser.add_argument("--linear-its", "--linear-max-its", type=int, default=None, dest="linear_max_its",
                         help="Maximální počet iterací lineárního řešiče FGMRES (výchozí: 100 nebo z LINEAR_MAX_ITS)")
+    parser.add_argument("--linear-max-size", type=int, default=None, dest="linear_max_size",
+                        help="Maximální velikost Krylovova podprostoru pro FGMRES / restart (výchozí: 40 nebo z LINEAR_MAX_SIZE)")
     parser.add_argument("--port-impedance", type=float, default=None, dest="port_impedance",
                         help="Impedance portů v Ohmech (výchozí: 50.0 pro Model 1 a 4, 100.0 pro Model 2, 3, 5 a 6, nebo z PORT_IMPEDANCE)")
 
@@ -963,7 +967,7 @@ if __name__ == "__main__":
 
     cli_params = {}
     for param in ['antenna_model', 'freq_min', 'freq_max', 'freq_step', 'mesh_size_max', 'mesh_size_min', 'amr_max_its',
-                  'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its', 'port_impedance',
+                  'amr_threshold', 'farfield_nsample', 'save_step', 'linear_tol', 'linear_max_its', 'linear_max_size', 'port_impedance',
                   'patch_L', 'patch_W', 'feed_inset', 'feed_inset_b', 'feed_inset_l', 'feed_inset_gap_b', 'feed_inset_gap_l',
                   'feed_len_b', 'feed_len_l', 'feed_delta_l', 'trans_w', 'trans_l', 'trans_l_b', 'trans_l_l', 'driven_port',
                   'feed_bend_radius', 'feed_t_fillet_r', 'feed_50_len', 'feed_end_straight', 'feed_arm_offset',
