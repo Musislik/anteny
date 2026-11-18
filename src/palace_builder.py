@@ -67,7 +67,8 @@ def build_palace_config(params, data_dir=None):
     save_step = int(params.get('save_step', 1))
     linear_tol = float(params.get('linear_tol', 1e-6))
     linear_max_its = int(params.get('linear_max_its', 100))
-    linear_max_size = int(params.get('linear_max_size', os.getenv('LINEAR_MAX_SIZE', 40)))
+    linear_max_size_raw = params.get('linear_max_size', os.getenv('LINEAR_MAX_SIZE'))
+    linear_max_size = int(linear_max_size_raw) if linear_max_size_raw else None
     
     model_config = {
         "Mesh": "data/mesh.msh",
@@ -82,6 +83,15 @@ def build_palace_config(params, data_dir=None):
         if amr_tol > 0:
             ref_dict["Tol"] = amr_tol
         model_config["Refinement"] = ref_dict
+
+    linear_solver_dict = {
+        "Type": "SuperLU",
+        "KSPType": "FGMRES",
+        "Tol": linear_tol,
+        "MaxIts": linear_max_its,
+    }
+    if linear_max_size:
+        linear_solver_dict["MaxSize"] = linear_max_size
 
     config = {
         "Problem": {
@@ -130,13 +140,7 @@ def build_palace_config(params, data_dir=None):
                 "SaveStep": save_step,
                 "AdaptiveTol": 1e-3
             },
-            "Linear": {
-                "Type": "SuperLU",
-                "KSPType": "FGMRES",
-                "Tol": linear_tol,
-                "MaxIts": linear_max_its,
-                "MaxSize": linear_max_size
-            }
+            "Linear": linear_solver_dict
         }
     }
     
