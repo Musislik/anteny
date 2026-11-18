@@ -41,7 +41,7 @@ def _resolve_param(key, env_key, default_val, custom_params=None, cast_type=floa
         if key.upper() in custom_params and custom_params[key.upper()] is not None:
             return cast_type(custom_params[key.upper()])
     val = os.getenv(env_key)
-    if val is not None:
+    if val is not None and str(val).strip() != "":
         try:
             return cast_type(val)
         except (ValueError, TypeError):
@@ -226,7 +226,7 @@ def main(custom_params=None, skip_simulation=False, clean=False, profile=None):
     port_impedance = _resolve_param('port_impedance', 'PORT_IMPEDANCE', default_port_z0, custom_params, float)
     linear_tol = _resolve_param('linear_tol', 'LINEAR_TOL', 1e-6, custom_params, float)
     linear_max_its = _resolve_param('linear_max_its', 'LINEAR_MAX_ITS', 100, custom_params, int)
-    linear_max_size = _resolve_param('linear_max_size', 'LINEAR_MAX_SIZE', 40, custom_params, int)
+    linear_max_size = _resolve_param('linear_max_size', 'LINEAR_MAX_SIZE', None, custom_params, int)
 
     print(f"--- Model {antenna_model} | Freq {freq_min:.3f}-{freq_max:.3f} GHz (krok {freq_step:.4f} GHz), Síť {mesh_size_min}-{mesh_size_max} mm, Port Z0 {port_impedance:.1f} Ohm ---")
 
@@ -907,7 +907,7 @@ if __name__ == "__main__":
     parser.add_argument("--linear-its", "--linear-max-its", type=int, default=None, dest="linear_max_its",
                         help="Maximální počet iterací lineárního řešiče FGMRES (výchozí: 100 nebo z LINEAR_MAX_ITS)")
     parser.add_argument("--linear-max-size", type=int, default=None, dest="linear_max_size",
-                        help="Maximální velikost Krylovova podprostoru pro FGMRES / restart (výchozí: 40 nebo z LINEAR_MAX_SIZE)")
+                        help="Maximální velikost Krylovova podprostoru pro FGMRES / restart (výchozí: None = bez restartu nebo z LINEAR_MAX_SIZE)")
     parser.add_argument("--port-impedance", type=float, default=None, dest="port_impedance",
                         help="Impedance portů v Ohmech (výchozí: 50.0 pro Model 1 a 4, 100.0 pro Model 2, 3, 5 a 6, nebo z PORT_IMPEDANCE)")
 
