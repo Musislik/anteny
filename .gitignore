@@ -42,6 +42,7 @@ mesh.msh
 config.json
 *.step
 *.brep
+*.rpt
 *.png
 !assets/
 !assets/*.png
