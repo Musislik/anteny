@@ -626,6 +626,131 @@ class KiCadGeometryData:
     tight_pcb: bool = True
     sma_gap: float = SMA_GAP
     sma_mask_size: Tuple[float, float] = (4.0, 8.0)     # (dx, dy) = (sma_mask_len, 2 * sma_mask_half_h)
+    mfg_corner_marks: List[List[Tuple[float, float]]] = field(default_factory=list)
+    mfg_ident_polygons: List[List[Tuple[float, float]]] = field(default_factory=list)
+    is_mirrored: bool = False
+
+
+def compute_mfg_corner_marks(
+    x_min: float,
+    x_max: float,
+    y_min: float,
+    y_max: float,
+    mark_len: float = 8.0,
+    mark_w: float = 2.0,
+) -> List[List[Tuple[float, float]]]:
+    """
+    Vypočte 8 ořezových značek (2 obdélníky pro každý ze 4 rohů) v CAD souřadnicích.
+    Značky přiléhají k vnějším hranám obdélníku [x_min, x_max] x [y_min, y_max]
+    dle pokynů pro výrobu antén na VUT (Manufacturing of antennas - instructions.pdf).
+    Všechny polygony jsou orientovány proti směru hodinových ručiček (CCW).
+    """
+    x1 = float(min(x_min, x_max))
+    x2 = float(max(x_min, x_max))
+    y1 = float(min(y_min, y_max))
+    y2 = float(max(y_min, y_max))
+    lm = float(mark_len)
+    wm = float(mark_w)
+
+    marks = [
+        # 1. Top-Left: vodorovný pruh nad hranou, svislý pruh vlevo od hrany
+        [(x1, y2), (x1 + lm, y2), (x1 + lm, y2 + wm), (x1, y2 + wm)],
+        [(x1 - wm, y2 - lm), (x1, y2 - lm), (x1, y2), (x1 - wm, y2)],
+        # 2. Top-Right: vodorovný pruh nad hranou, svislý pruh vpravo od hrany
+        [(x2 - lm, y2), (x2, y2), (x2, y2 + wm), (x2 - lm, y2 + wm)],
+        [(x2, y2 - lm), (x2 + wm, y2 - lm), (x2 + wm, y2), (x2, y2)],
+        # 3. Bottom-Left: vodorovný pruh pod hranou, svislý pruh vlevo od hrany
+        [(x1, y1 - wm), (x1 + lm, y1 - wm), (x1 + lm, y1), (x1, y1)],
+        [(x1 - wm, y1), (x1, y1), (x1, y1 + lm), (x1 - wm, y1 + lm)],
+        # 4. Bottom-Right: vodorovný pruh pod hranou, svislý pruh vpravo od hrany
+        [(x2 - lm, y1 - wm), (x2, y1 - wm), (x2, y1), (x2 - lm, y1)],
+        [(x2, y1), (x2 + wm, y1), (x2 + wm, y1 + lm), (x2, y1 + lm)],
+    ]
+    return marks
+
+
+def compute_mfg_ident_polygons(
+    text: str = "PM.",
+    center_x: float = 0.0,
+    base_y: float = 35.0,
+    height: float = 5.0,
+    stroke_w: float = 0.8,
+    mirror: bool = False,
+) -> List[List[Tuple[float, float]]]:
+    """
+    Vytvoří 2D polygony pro identifikační značku (výchozí 'PM.') v CAD souřadnicích.
+    Při mirror=True provede zrcadlení podél osy Y (x -> -x) dle bodu 4 výrobních pokynů.
+    """
+    H = float(height)
+    ws = float(stroke_w)
+    by = float(base_y)
+
+    polys: List[List[Tuple[float, float]]] = []
+
+    clean_text = str(text).strip().upper()
+    if clean_text in ("PM.", "PM"):
+        # Návrh tahů pro 'P', 'M' a '.'
+        wp = 3.2 * (H / 5.0)
+        wm = 4.2 * (H / 5.0)
+        spacing = 1.0 * (H / 5.0)
+        w_dot = ws
+        total_w = wp + spacing + wm + (spacing + w_dot if clean_text.endswith(".") else 0.0)
+        start_x = float(center_x) - total_w / 2.0
+
+        # P
+        xp = start_x
+        p_stem = [(xp, by), (xp + ws, by), (xp + ws, by + H), (xp, by + H)]
+        p_top = [(xp + ws, by + H - ws), (xp + wp, by + H - ws), (xp + wp, by + H), (xp + ws, by + H)]
+        p_mid = [
+            (xp + ws, by + H * 0.45),
+            (xp + wp, by + H * 0.45),
+            (xp + wp, by + H * 0.45 + ws),
+            (xp + ws, by + H * 0.45 + ws),
+        ]
+        p_right = [
+            (xp + wp - ws, by + H * 0.45),
+            (xp + wp, by + H * 0.45),
+            (xp + wp, by + H),
+            (xp + wp - ws, by + H),
+        ]
+
+        # M
+        xm = xp + wp + spacing
+        m_stem_l = [(xm, by), (xm + ws, by), (xm + ws, by + H), (xm, by + H)]
+        m_stem_r = [(xm + wm - ws, by), (xm + wm, by), (xm + wm, by + H), (xm + wm - ws, by + H)]
+        mid_x = xm + wm / 2.0
+        y_apex = by + H * 0.25
+        m_diag_l = [
+            (xm + ws, by + H),
+            (mid_x, y_apex + ws),
+            (mid_x, y_apex),
+            (xm + ws, by + H - ws * 1.4),
+        ]
+        m_diag_r = [
+            (xm + wm - ws, by + H),
+            (xm + wm - ws, by + H - ws * 1.4),
+            (mid_x, y_apex),
+            (mid_x, y_apex + ws),
+        ]
+
+        polys = [p_stem, p_top, p_mid, p_right, m_stem_l, m_stem_r, m_diag_l, m_diag_r]
+
+        # Dot
+        if clean_text.endswith("."):
+            x_dot = xm + wm + spacing
+            dot = [(x_dot, by), (x_dot + w_dot, by), (x_dot + w_dot, by + w_dot), (x_dot, by + w_dot)]
+            polys.append(dot)
+    else:
+        # Generický zjednodušený fallback pro jiný monogram
+        tw = 8.0 * (H / 5.0)
+        sx = float(center_x) - tw / 2.0
+        polys = [[(sx, by), (sx + tw, by), (sx + tw, by + H), (sx, by + H)]]
+
+    if mirror:
+        # Zrcadlení x -> -x a zachování CCW orientace přes otočení pořadí vrcholů
+        polys = [[(-x, y) for (x, y) in poly][::-1] for poly in polys]
+
+    return polys
 
 
 def get_model4_kicad_geometry(
@@ -639,6 +764,9 @@ def get_model4_kicad_geometry(
     sma_gap: Optional[float] = None,
     sma_pad_len: Optional[float] = None,
     sma_pad_w: Optional[float] = None,
+    mfg_vut: Optional[bool] = None,
+    ident_symbol: Optional[str] = None,
+    mirror_x: Optional[bool] = None,
 ) -> KiCadGeometryData:
     """
     Vytvoří kompletní sadu KiCad 10 geometrických prvků (F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts, Vias)
@@ -1024,6 +1152,60 @@ def get_model4_kicad_geometry(
         transform_poly_to_kicad(sma_mask_bot_cad, ox, oy),
     ]
 
+    # I) Výrobní prvky dle pokynů VUT (Manufacturing of antennas - instructions.pdf)
+    if mfg_vut is None:
+        raw_mfg = params.get('mfg_vut', params.get('mfg', False))
+        mfg_vut = (raw_mfg.strip().lower() not in ('0', 'false', 'no', 'off')) if isinstance(raw_mfg, str) else bool(raw_mfg)
+
+    if ident_symbol is None:
+        ident_symbol = str(params.get('ident_symbol', 'PM.'))
+
+    if mirror_x is None:
+        raw_mir = params.get('mirror_x', params.get('mirror', False))
+        mirror_x = (raw_mir.strip().lower() not in ('0', 'false', 'no', 'off')) if isinstance(raw_mir, str) else bool(raw_mir)
+
+    mfg_corner_marks: List[List[Tuple[float, float]]] = []
+    mfg_ident_polygons: List[List[Tuple[float, float]]] = []
+
+    if mfg_vut:
+        # 1. 8 ořezových značek v rozích obrysu substrátu
+        marks_cad = compute_mfg_corner_marks(cad_x_min, cad_x_max, cad_y_min, cad_y_max)
+        mfg_corner_marks = [transform_poly_to_kicad(p, ox, oy) for p in marks_cad]
+
+        # 2. Identifikační značka (výchozí 'PM.') nad horní hranou substrátu
+        ident_cad = compute_mfg_ident_polygons(
+            text=ident_symbol,
+            center_x=(cad_x_min + cad_x_max) / 2.0,
+            base_y=cad_y_max + 4.0,
+            height=5.0,
+            mirror=False,
+        )
+        mfg_ident_polygons = [transform_poly_to_kicad(p, ox, oy) for p in ident_cad]
+
+    # Globální horizontální reflexe (x -> -x) pro přípravu filmů fotocesty (mirror_x=True)
+    if mirror_x:
+        x_reflect = edge_x_min + edge_x_max
+
+        def _mirror_poly(poly: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+            return [(x_reflect - p[0], p[1]) for p in poly][::-1]
+
+        rf_polygons = [_mirror_poly(p) for p in rf_polygons]
+        gnd_polygons_top = [_mirror_poly(p) for p in gnd_polygons_top]
+        gnd_polygon_bottom = _mirror_poly(gnd_polygon_bottom)
+        mask_openings = [_mirror_poly(p) for p in mask_openings]
+        mask_openings_bottom = [_mirror_poly(p) for p in mask_openings_bottom]
+        if mfg_corner_marks:
+            mfg_corner_marks = [_mirror_poly(p) for p in mfg_corner_marks]
+        if mfg_ident_polygons:
+            mfg_ident_polygons = [_mirror_poly(p) for p in mfg_ident_polygons]
+
+        vias = [
+            {'x': x_reflect - v['x'], 'y': v['y'], 'size': v['size'], 'drill': v['drill']}
+            for v in vias
+        ]
+        sma_top_pad_center = (x_reflect - sma_top_pad_center[0], sma_top_pad_center[1])
+        sma_bot_pad_center = (x_reflect - sma_bot_pad_center[0], sma_bot_pad_center[1])
+
     return KiCadGeometryData(
         origin_x=ox,
         origin_y=oy,
@@ -1043,4 +1225,7 @@ def get_model4_kicad_geometry(
         tight_pcb=tight_pcb,
         sma_gap=sma_gap_val,
         sma_mask_size=(sma_mask_len, 2.0 * sma_mask_half_h),
+        mfg_corner_marks=mfg_corner_marks,
+        mfg_ident_polygons=mfg_ident_polygons,
+        is_mirrored=bool(mirror_x),
     )

@@ -212,6 +212,24 @@ def main() -> int:
         help="Šířka SMA GND plošky [mm] (výchozí: 1.50)",
     )
 
+    # Výrobní možnosti VUT (Manufacturing of antennas - instructions.pdf)
+    parser.add_argument(
+        "--mfg-vut",
+        action="store_true",
+        help="Aktivovat výrobní prvky pro VUT (8 ořezových značek a identifikační symbol na F.Cu a F.Mask)",
+    )
+    parser.add_argument(
+        "--ident-symbol",
+        type=str,
+        default="PM.",
+        help="Identifikační symbol pro výrobu (výchozí: 'PM.')",
+    )
+    parser.add_argument(
+        "--mirror",
+        action="store_true",
+        help="Zrcadlit desku podél osy Y (x -> -x) pro přípravu filmů fotocesty (bod 4 pokynů)",
+    )
+
     args = parser.parse_args()
 
     # 2. Načtení kořenového .env a případného profilu varianty
@@ -235,6 +253,13 @@ def main() -> int:
         params['tight_pcb'] = False
     elif args.crop_pcb_alias:
         params['tight_pcb'] = True
+
+    if args.mfg_vut:
+        params['mfg_vut'] = True
+    if args.ident_symbol is not None:
+        params['ident_symbol'] = args.ident_symbol
+    if args.mirror:
+        params['mirror_x'] = True
 
     if args.margin_right is not None:
         params['tight_margin_right'] = args.margin_right
@@ -321,11 +346,15 @@ def main() -> int:
 
     res_pcb = None
     res_fp = None
+    mfg_suffix = ""
+    if params.get('mfg_vut'):
+        mfg_suffix = "_mfg_mirrored" if params.get('mirror_x') else "_mfg"
+
     if profile_slug:
-        pcb_file = os.path.join(out_dir, f"antenna_model4_{profile_slug}.kicad_pcb")
+        pcb_file = os.path.join(out_dir, f"antenna_model4_{profile_slug}{mfg_suffix}.kicad_pcb")
         fp_file = os.path.join(out_dir, f"Antenna_Model4_LHCP_{profile_slug}.kicad_mod")
     else:
-        pcb_file = os.path.join(out_dir, "antenna_model4.kicad_pcb")
+        pcb_file = os.path.join(out_dir, f"antenna_model4{mfg_suffix}.kicad_pcb")
         fp_file = os.path.join(out_dir, "Antenna_Model4_LHCP.kicad_mod")
 
     if do_pcb:

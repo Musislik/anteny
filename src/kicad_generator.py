@@ -75,6 +75,9 @@ def generate_kicad_pcb(
     origin_x: Optional[float] = None,
     origin_y: Optional[float] = None,
     tight_pcb: Optional[bool] = None,
+    mfg_vut: Optional[bool] = None,
+    ident_symbol: Optional[str] = None,
+    mirror_x: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Vygeneruje kompletní desku plošných spojů (.kicad_pcb) pro KiCad 10.
@@ -88,9 +91,18 @@ def generate_kicad_pcb(
       - Obrys desky W_sub x L_sub na Edge.Cuts (volitelně kompaktní tight_pcb).
       - Otevření nepájivé masky na F.Mask s clearance (SMA rozhraní + vyzařovač + RF vedení).
       - Otevření nepájivé masky na B.Mask pro SMA rozhraní (pájení spodních zemních pinů).
+      - Volitelné výrobní prvky VUT (8 ořezových značek a identifikační symbol na F.Cu a F.Mask).
+      - Volitelné horizontální zrcadlení pro přípravu filmů fotocesty (mirror_x=True).
     """
     geom: KiCadGeometryData = get_model4_kicad_geometry(
-        params, origin_x=origin_x, origin_y=origin_y, is_footprint=False, tight_pcb=tight_pcb
+        params,
+        origin_x=origin_x,
+        origin_y=origin_y,
+        is_footprint=False,
+        tight_pcb=tight_pcb,
+        mfg_vut=mfg_vut,
+        ident_symbol=ident_symbol,
+        mirror_x=mirror_x,
     )
 
     info = geom.routing_info
@@ -189,8 +201,10 @@ def generate_kicad_pcb(
         )
     u_rf = _gen_uuid()
     y_rf_label = geom.origin_y - float(info['y_T'])
+    rf_label_x = x_max + 3.0 if geom.is_mirrored else x_min - 3.0
+    rf_label_rot = 270 if geom.is_mirrored else 90
     lines.append(
-        f'  (gr_text "50 Ohm RF IN" (at {x_min - 3.0:.4f} {y_rf_label:.4f} 90) '
+        f'  (gr_text "50 Ohm RF IN" (at {rf_label_x:.4f} {y_rf_label:.4f} {rf_label_rot}) '
         f'(layer "F.SilkS") (uuid "{u_rf}") (effects (font (size 0.9 0.9) (thickness 0.12))))'
     )
 
@@ -245,7 +259,12 @@ def generate_kicad_pcb(
     lines.append('  (footprint "SMA_Edge_Launch_142-0701-801"')
     lines.append('    (layer "F.Cu")')
     lines.append(f'    (uuid "{_gen_uuid()}")')
-    lines.append(f'    (at {x_min:.4f} {y_rf_label:.4f})')
+    sma_x = x_max if geom.is_mirrored else x_min
+    sma_rot = 180 if geom.is_mirrored else 0
+    if sma_rot != 0:
+        lines.append(f'    (at {sma_x:.4f} {y_rf_label:.4f} {sma_rot})')
+    else:
+        lines.append(f'    (at {sma_x:.4f} {y_rf_label:.4f})')
     lines.append('    (attr smd)')
     lines.append(
         f'    (property "Reference" "J1" (at {pad_len / 2.0:.4f} {-(sma_mask_half_h + 1.5):.4f} 0) '
@@ -294,6 +313,39 @@ def generate_kicad_pcb(
         lines.append('  (gr_poly')
         lines.append(pts_str)
         lines.append(f'    (stroke (width 0) (type solid)) (fill yes) (layer "B.Mask") (uuid "{u_mask}")')
+        lines.append('  )')
+
+    # Výrobní prvky VUT (ořezové značky a identifikační symbol)
+    for idx, cm in enumerate(geom.mfg_corner_marks, start=50):
+        lines.append(
+            _format_zone(
+                net_name="GND",
+                layer="F.Cu",
+                polygon_pts=cm,
+                priority=idx,
+            )
+        )
+        u_mask_cm = _gen_uuid()
+        pts_str_cm = _format_pts(cm, indent=6)
+        lines.append('  (gr_poly')
+        lines.append(pts_str_cm)
+        lines.append(f'    (stroke (width 0) (type solid)) (fill yes) (layer "F.Mask") (uuid "{u_mask_cm}")')
+        lines.append('  )')
+
+    for idx, ip in enumerate(geom.mfg_ident_polygons, start=70):
+        lines.append(
+            _format_zone(
+                net_name="GND",
+                layer="F.Cu",
+                polygon_pts=ip,
+                priority=idx,
+            )
+        )
+        u_mask_ip = _gen_uuid()
+        pts_str_ip = _format_pts(ip, indent=6)
+        lines.append('  (gr_poly')
+        lines.append(pts_str_ip)
+        lines.append(f'    (stroke (width 0) (type solid)) (fill yes) (layer "F.Mask") (uuid "{u_mask_ip}")')
         lines.append('  )')
 
     # Ukončení PCB souboru
