@@ -151,7 +151,31 @@ python scripts/export_kicad.py --profile <variant>
 
 You can also activate a profile via the `ANTENNA_PROFILE=<variant>` environment variable. When a profile is active, KiCad outputs are written to `results/<variant>/kicad/antenna_model4_<variant>.kicad_pcb`, `results/<variant>/kicad/Antenna_Model4_LHCP_<variant>.kicad_mod`, and `results/<variant>/kicad/gerber/`. Without a profile, exports default to `export/kicad/`.
 
-### 6. Run Tests
+### 6. Manufacturing Preparation (VUT Prototype Instructions)
+To generate manufacturing data fulfilling the VUT prototype antenna fabrication requirements ([`docs/Manufacturing of antennas - instructions.pdf`](docs/Manufacturing%20of%20antennas%20-%20instructions.pdf)):
+
+- **3D STEP Model Export:**
+  Generates an isolated CAD model in standard ISO 10303 STEP format with the top conductor surface at $z = 0$, 8 corner crop cubes of height $h$, identification symbol (`PM.`), horizontal reflection ($x \to -x$), and all substrate/air/port entities stripped:
+  ```bash
+  # Run via Docker pipeline container (recommended, includes Gmsh OpenCASCADE):
+  ./scripts/export_mfg_step.sh [variant]
+
+  # Or run directly via Python CLI (if gmsh is installed locally):
+  python scripts/export_mfg_step.py [--profile <variant>] [--ident-symbol "PM."] [--output <path>]
+  ```
+  *(Output: `export/vut_mfg/antenna_model4_mfg_PM.step`)*
+
+- **KiCad 10 Manufacturing Board (.kicad_pcb):**
+  Generates the PCB containing bare copper corner crop marks on `F.Cu`/`F.Mask` (serving as optical guides for shearing/milling the board to final dimensions) and the `PM.` identification symbol, with optional horizontal reflection (`--mirror`) for photolithography transparency printing:
+  ```bash
+  # Generate manufacturing PCB with corner marks and PM. mark:
+  python scripts/export_kicad.py --mfg-vut --ident-symbol "PM."
+
+  # Generate mirrored version for direct emulsion-down exposure:
+  python scripts/export_kicad.py --mfg-vut --ident-symbol "PM." --mirror
+  ```
+
+### 7. Run Tests
 Install local development dependencies from [`requirements-dev.txt`](requirements-dev.txt) and verify analytical RF calculations, de-embedding math, CAD/mesh generation, Palace config generation, plotting rules, and code linting:
 
 ```bash
