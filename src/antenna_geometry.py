@@ -1,39 +1,39 @@
 """
-antenna_geometry.py - Pure-Python modul pro analytické výpočty, trasování a geometrii Modelu 4.
-Nezávislý na Gmsh i systémovém NumPy (využívá pouze standardní knihovnu Pythonu: math, dataclasses).
-Sdílený mezi Gmsh 3D CAD modelem (geometry_v4.py) a KiCad 10 generátorem (kicad_generator.py).
+antenna_geometry.py - Pure-Python module for analytical calculations, routing, and geometry of Model 4.
+Independent of Gmsh and system NumPy (uses only the Python standard library: math, dataclasses).
+Shared between the Gmsh 3D CAD model (geometry_v4.py) and the KiCad 10 generator (kicad_generator.py).
 """
 
 import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-# Základní fyzikální a vysokofrekvenční konstanty
-C_0_MM_GHZ = 299.792458       # Rychlost světla ve vakuu [mm * GHz]
-ETA_0 = 376.7303135           # Vlnová impedance vakua [Ohm]
-DESIGN_FREQ_GHZ = 2.3325      # Střední návrhová frekvence SDARS [GHz]
-PORT_Z0 = 50.0                # Jmenovitá impedance portu [Ohm]
+# Fundamental physical and RF constants
+C_0_MM_GHZ = 299.792458       # Speed of light in vacuum [mm * GHz]
+ETA_0 = 376.7303135           # Free-space wave impedance [Ohm]
+DESIGN_FREQ_GHZ = 2.3325      # SDARS center design frequency [GHz]
+PORT_Z0 = 50.0                # Nominal port impedance [Ohm]
 COORD_TOL = 1e-9
-OVERLAP_DELTA = 0.05          # Záměrný přesah 50 µm pro eliminaci DRC mikro-mezer v KiCadu
-MASK_CLEARANCE = 0.30         # Výchozí přesah nepájivé masky (solder mask clearance) [mm]
-SMA_GAP = 0.70                # Výchozí mezera G-S-G mezi 50 Ohm páskem a SMA GND ploškou [mm]
-SMA_PAD_LEN = 3.50            # Výchozí délka SMA GND plošky [mm]
-SMA_PAD_W = 1.50              # Výchozí šířka SMA GND plošky [mm]
+OVERLAP_DELTA = 0.05          # Intentional 50 µm overlap to eliminate DRC micro-gaps in KiCad
+MASK_CLEARANCE = 0.30         # Default solder mask clearance [mm]
+SMA_GAP = 0.70                # Default G-S-G gap between 50 Ohm trace and SMA GND pads [mm]
+SMA_PAD_LEN = 3.50            # Default SMA GND pad length [mm]
+SMA_PAD_W = 1.50              # Default SMA GND pad width [mm]
 
 
 # ==============================================================================
-# 1. ČISTÉ VYSOKOFREKVENČNÍ VÝPOČTY (STANDALONE RF FORMULAS)
+# 1. PURE RF CALCULATIONS (STANDALONE RF FORMULAS)
 # ==============================================================================
 
 def calc_microstrip_eps_eff(w: float, h: float, eps_r: float) -> float:
-    """Vypočte efektivní permitivitu mikropáskového vedení (Hammerstad & Jensen)."""
+    """Compute effective permittivity of a microstrip line (Hammerstad & Jensen)."""
     u = float(w) / float(h)
     eps_eff = (eps_r + 1.0) / 2.0 + ((eps_r - 1.0) / 2.0) * (1.0 / math.sqrt(1.0 + 12.0 / u))
     return float(eps_eff)
 
 
 def calc_microstrip_z0(w: float, h: float, eps_r: float) -> float:
-    """Vypočte charakteristickou impedanci mikropáskového vedení Z0."""
+    """Compute characteristic impedance Z0 of a microstrip line."""
     u = float(w) / float(h)
     eps_eff = calc_microstrip_eps_eff(w, h, eps_r)
     if u <= 1.0:
@@ -44,7 +44,7 @@ def calc_microstrip_z0(w: float, h: float, eps_r: float) -> float:
 
 
 def synth_microstrip_w(z0_target: float, h: float, eps_r: float) -> float:
-    """Syntetizuje šířku mikropásku w pro cílovou charakteristickou impedanci Z0 (Wheeler/Bahl)."""
+    """Synthesize microstrip width w for target characteristic impedance Z0 (Wheeler/Bahl)."""
     z0 = float(z0_target)
     h_f = float(h)
     er = float(eps_r)
@@ -74,30 +74,30 @@ def synth_microstrip_w(z0_target: float, h: float, eps_r: float) -> float:
 
 
 def calc_quarter_wave_length(freq_ghz: float, eps_eff: float) -> float:
-    """Vypočte čtvrtvlnnou délku lambda_g / 4 v mm."""
+    """Compute quarter-wavelength lambda_g / 4 in mm."""
     lambda_0 = C_0_MM_GHZ / float(freq_ghz)
     lambda_g = lambda_0 / math.sqrt(float(eps_eff))
     return float(lambda_g / 4.0)
 
 
 # ==============================================================================
-# 2. VEKTOROVÉ A TRASOVACÍ VÝPOČTY PRO VEDENÍ S OBLOUKY
+# 2. VECTOR AND ROUTING CALCULATIONS FOR CURVED TRACES
 # ==============================================================================
 
 def _unit_vec(p_from: Tuple[float, float], p_to: Tuple[float, float]) -> Tuple[Tuple[float, float], float]:
-    """Jednotkový směrový vektor a délka segmentu."""
+    """Unit direction vector and segment length."""
     dx = float(p_to[0] - p_from[0])
     dy = float(p_to[1] - p_from[1])
     length = float(math.hypot(dx, dy))
     if length <= COORD_TOL:
-        raise ValueError(f"Segment mezi {p_from} a {p_to} má nulovou délku.")
+        raise ValueError(f"Segment between {p_from} and {p_to} has zero length.")
     return (dx / length, dy / length), length
 
 
 def calc_curved_path_length(waypoints: List[Any], bend_radius: float) -> float:
     """
-    Vypočte přesnou délku střednice ortogonální lomené čáry po nahrazení všech 90° rohů
-    kruhovými oblouky o poloměru bend_radius.
+    Compute the exact centerline length of an orthogonal polyline after replacing all 90 deg corners
+    with circular arcs of radius bend_radius.
     """
     pts = [(float(p[0]), float(p[1])) for p in waypoints]
     if len(pts) < 2:
@@ -114,12 +114,12 @@ def calc_curved_path_length(waypoints: List[Any], bend_radius: float) -> float:
         straight_len = seg_len - trim_start - trim_end
         if straight_len < -1e-7:
             raise ValueError(
-                f"Segment {idx} ({pts[idx]} -> {pts[idx + 1]}) má délku "
-                f"{seg_len:.3f} mm, což nestačí pro oblouky R={r:.3f} mm."
+                f"Segment {idx} ({pts[idx]} -> {pts[idx + 1]}) has length "
+                f"{seg_len:.3f} mm, which is insufficient for arcs R={r:.3f} mm."
             )
         total_len += max(0.0, straight_len)
 
-    # Každý vnitřní roh přispívá délkou čtvrtkruhu pi * R / 2
+    # Each internal corner contributes a quarter-circle arc length pi * R / 2
     total_len += (len(pts) - 2) * (0.5 * math.pi * r)
     return float(total_len)
 
@@ -131,8 +131,8 @@ def compute_curved_ribbon_outline(
     arc_samples: int = 16,
 ) -> List[Tuple[float, float]]:
     """
-    Vrátí uzavřený 2D obrys [(x, y), ...] pásku o šířce `width` podél `waypoints`
-    s plynulými oblouky o poloměru `bend_radius`.
+    Return closed 2D outline [(x, y), ...] of a trace of width `width` along `waypoints`
+    with smooth arcs of radius `bend_radius`.
     """
     pts = [(float(p[0]), float(p[1])) for p in waypoints]
     half_w = float(width) / 2.0
@@ -156,7 +156,7 @@ def compute_curved_ribbon_outline(
         n_out = norms[i]
         cross = float(u_in[0] * u_out[1] - u_in[1] * u_out[0])
         if abs(abs(cross) - 1.0) > 1e-5:
-            raise ValueError(f"Roh {i} není ortogonální (cross={cross:.4f}).")
+            raise ValueError(f"Corner {i} is not orthogonal (cross={cross:.4f}).")
 
         c = (
             pts[i][0] - r * u_in[0] + r * u_out[0],
@@ -170,7 +170,7 @@ def compute_curved_ribbon_outline(
         r_in = (a[0] - half_w * n_in[0], a[1] - half_w * n_in[1])
         r_out = (b[0] - half_w * n_out[0], b[1] - half_w * n_out[1])
 
-        # Vzorkování oblouku pro levou a pravou hranu
+        # Arc sampling for left and right edges
         for rail_list, p_start, p_end in (
             (left_pts, l_in, l_out),
             (right_pts, r_in, r_out),
@@ -207,8 +207,8 @@ def compute_t_junction_polygon(
     arc_samples: int = 16,
 ) -> List[Tuple[float, float]]:
     """
-    Vrátí uzavřený 2D obrys [(x, y), ...] vodorovného 50 Ohm kmitočtového kmene z (x_port, y_T)
-    k otočené svislé příčce T-článku na x_T s plynulými vnitřními kruhovými zaobleními (fillety).
+    Return closed 2D outline [(x, y), ...] of the horizontal 50 Ohm feed trunk from (x_port, y_T)
+    to the rotated vertical T-junction crossbar at x_T with smooth inner circular fillets.
     """
     hw_50 = float(w_50) / 2.0
     hw_f = float(w_feed) / 2.0
@@ -235,35 +235,35 @@ def compute_t_junction_polygon(
     x_fillet_start = x_bar_left - r_f
     if x_fillet_start <= x_left + 1e-4:
         raise ValueError(
-            f"Délka 50 Ohm vedení (x_bar_left - x_port = {x_bar_left - x_left:.2f} mm) "
-            f"nestačí pro zaoblení T-článku r={r_f:.2f} mm."
+            f"50 Ohm line length (x_bar_left - x_port = {x_bar_left - x_left:.2f} mm) "
+            f"is insufficient for T-junction fillet radius r={r_f:.2f} mm."
         )
 
     pts: List[Tuple[float, float]] = []
-    # 1. Spodní hrana 50 Ohm přívodu
+    # 1. Bottom edge of 50 Ohm feed
     pts.append((x_left, y_center - hw_50))
     pts.append((x_fillet_start, y_center - hw_50))
 
-    # 2. Spodní zaoblení (střed: x_fillet_start, y_center - d_t, úhel: +pi/2 -> 0)
+    # 2. Bottom fillet (center: x_fillet_start, y_center - d_t, angle: +pi/2 -> 0)
     c_bot = (x_fillet_start, y_center - d_t)
     for s in range(1, arc_samples + 1):
         ang = (math.pi / 2.0) * (1.0 - float(s) / float(arc_samples))
         pts.append((c_bot[0] + r_f * math.cos(ang), c_bot[1] + r_f * math.sin(ang)))
 
-    # 3. Spodní a pravá hrana svislé příčky
+    # 3. Bottom and right edges of vertical crossbar
     pts.append((x_bar_right, y_center - d_t))
     pts.append((x_bar_right, y_center + d_t))
 
-    # 4. Horní hrana příčky
+    # 4. Top edge of crossbar
     pts.append((x_bar_left, y_center + d_t))
 
-    # 5. Horní zaoblení (střed: x_fillet_start, y_center + d_t, úhel: 0 -> -pi/2)
+    # 5. Top fillet (center: x_fillet_start, y_center + d_t, angle: 0 -> -pi/2)
     c_top = (x_fillet_start, y_center + d_t)
     for s in range(1, arc_samples + 1):
         ang = -(math.pi / 2.0) * (float(s) / float(arc_samples))
         pts.append((c_top[0] + r_f * math.cos(ang), c_top[1] + r_f * math.sin(ang)))
 
-    # 6. Horní hrana 50 Ohm přívodu a uzavření na levé hraně
+    # 6. Top edge of 50 Ohm feed and closing at left edge
     pts.append((x_left, y_center + hw_50))
 
     return [(float(p[0]), float(p[1])) for p in pts]
@@ -280,8 +280,8 @@ def compute_patch_with_insets_polygon(
     gap_l: float,
 ) -> List[Tuple[float, float]]:
     """
-    Vrátí uzavřený 2D obrys [(x, y), ...] čtvercového vyzařovacího flíčku W x L
-    s obdélníkovými výřezy (notches) pro zanořené transformátory na spodní a levé straně.
+    Return closed 2D outline [(x, y), ...] of the square radiating patch W x L
+    with rectangular notches for inset transformers on the bottom and left sides.
     """
     half_W = float(W) / 2.0
     half_L = float(L) / 2.0
@@ -289,42 +289,42 @@ def compute_patch_with_insets_polygon(
     notch_l_h = float(w_T_l) + 2.0 * float(gap_l)
 
     pts: List[Tuple[float, float]] = []
-    # 1. Pravý horní roh
+    # 1. Top-right corner
     pts.append((half_W, half_L))
-    # 2. Levý horní roh
+    # 2. Top-left corner
     pts.append((-half_W, half_L))
 
-    # 3. Levá hrana s levým zářezem
+    # 3. Left edge with left notch
     if inset_l > 1e-6:
         pts.append((-half_W, notch_l_h / 2.0))
         pts.append((-half_W + inset_l, notch_l_h / 2.0))
         pts.append((-half_W + inset_l, -notch_l_h / 2.0))
         pts.append((-half_W, -notch_l_h / 2.0))
 
-    # 4. Levý dolní roh
+    # 4. Bottom-left corner
     pts.append((-half_W, -half_L))
 
-    # 5. Dolní hrana se spodním zářezem
+    # 5. Bottom edge with bottom notch
     if inset_b > 1e-6:
         pts.append((-notch_b_w / 2.0, -half_L))
         pts.append((-notch_b_w / 2.0, -half_L + inset_b))
         pts.append((notch_b_w / 2.0, -half_L + inset_b))
         pts.append((notch_b_w / 2.0, -half_L))
 
-    # 6. Pravý dolní roh
+    # 6. Bottom-right corner
     pts.append((half_W, -half_L))
 
     return [(float(p[0]), float(p[1])) for p in pts]
 
 
 # ==============================================================================
-# 3. VÝPOČET ANALÝZY TRASOVÁNÍ A PARAMETRŮ MODELU 4
+# 3. ROUTING ANALYSIS AND PARAMETER COMPUTATION FOR MODEL 4
 # ==============================================================================
 
 def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Vypočte veškeré RF a geometrické souřadnice Modelu 4 v čistém Pythonu,
-    včetně přesných trasovacích bodů obou 100 Ohm větví a rozměrů substrátu.
+    Compute all RF and geometric coordinates of Model 4 in pure Python,
+    including exact routing waypoints of both 100 Ohm branches and substrate dimensions.
     """
     L = float(params['patch_L'])
     W = float(params.get('patch_W', L))
@@ -333,7 +333,7 @@ def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
     f_design = float(params.get('design_freq_ghz', DESIGN_FREQ_GHZ))
     port_z0 = float(params.get('port_impedance', PORT_Z0))
 
-    # 1. Šířky 50 Ohm přívodu a 100 Ohm větví děliče
+    # 1. Widths of 50 Ohm feed and 100 Ohm divider branches
     raw_w_50 = next((params[k] for k in ('feed_50_w', 'w_50', 'w1') if params.get(k) is not None), None)
     w_50 = float(raw_w_50) if raw_w_50 is not None else synth_microstrip_w(port_z0, h, eps_r)
 
@@ -346,7 +346,7 @@ def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
     eps_eff_feed = calc_microstrip_eps_eff(w_feed, h, eps_r)
     lambda_g_4_feed = calc_quarter_wave_length(f_design, eps_eff_feed)
 
-    # 2. Parametry čtvrtvlnného transformátoru
+    # 2. Quarter-wave transformer parameters
     w_T_default = float(params.get('trans_w', params.get('w_T', params.get('w_trans', 0.42))))
     eps_eff_trans_def = calc_microstrip_eps_eff(w_T_default, h, eps_r)
     l_T_default = calc_quarter_wave_length(f_design, eps_eff_trans_def)
@@ -374,48 +374,48 @@ def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
         else (l_T_b if abs(l_T_b - l_T_l) < 1e-9 else l_T_default)
     )
 
-    # 3. Mělký zářez a mezery
+    # 3. Shallow inset and gaps
     inset_b = float(params.get('feed_inset_b', params.get('inset_b', params.get('y0b', params.get('y0', params.get('feed_inset', 2.5))))))
     inset_l = float(params.get('feed_inset_l', params.get('inset_l', params.get('y0l', params.get('y0', params.get('feed_inset', 2.5))))))
     if inset_b < 0.0 or inset_l < 0.0:
-        raise ValueError(f"Hloubka zanoření (inset) musí být nezáporná: inset_b={inset_b}, inset_l={inset_l}")
+        raise ValueError(f"Inset depth must be non-negative: inset_b={inset_b}, inset_l={inset_l}")
 
     inset_gap_b = float(params.get('inset_gap_b', params.get('feed_inset_gap_b', params.get('gap_b', params.get('inset_gap', params.get('feed_inset_gap', 0.5))))))
     inset_gap_l = float(params.get('inset_gap_l', params.get('feed_inset_gap_l', params.get('gap_l', params.get('inset_gap', params.get('feed_inset_gap', 0.5))))))
 
-    # 4. Fázovací prodloužení delta_L v 100 Ohm vedení
+    # 4. Phasing extension delta_L in 100 Ohm line
     raw_delta_l = params.get('feed_delta_l', params.get('delta_l', params.get('phase_delay_mm', params.get('feed_delta'))))
     feed_delta_l = float(raw_delta_l) if raw_delta_l is not None else lambda_g_4_feed
 
-    # 5. Parametry oblouků a otočeného T-článku
+    # 5. Arc and rotated T-junction parameters
     bend_radius = float(params.get('feed_bend_radius', params.get('bend_radius', 3.0)))
     if bend_radius <= (w_feed / 2.0) + 0.1:
         raise ValueError(
-            f"Poloměr oblouku feed_bend_radius={bend_radius:.3f} mm musí být větší než w_feed/2 + 0.1 ({w_feed/2.0 + 0.1:.3f} mm)."
+            f"Arc radius feed_bend_radius={bend_radius:.3f} mm must be greater than w_feed/2 + 0.1 ({w_feed/2.0 + 0.1:.3f} mm)."
         )
 
     t_fillet_r = float(params.get('feed_t_fillet_r', params.get('t_fillet_r', 0.8)))
     if t_fillet_r < 0.0:
-        raise ValueError(f"Poloměr zaoblení T-článku feed_t_fillet_r={t_fillet_r:.3f} mm musí být nezáporný.")
+        raise ValueError(f"T-junction fillet radius feed_t_fillet_r={t_fillet_r:.3f} mm must be non-negative.")
 
     raw_feed_50_len = next((params[k] for k in ('feed_50_len', 'l1') if params.get(k) is not None), None)
     feed_50_len = float(raw_feed_50_len) if raw_feed_50_len is not None else 9.0
     if feed_50_len <= t_fillet_r + 0.5:
         raise ValueError(
-            f"Délka 50 Ohm přívodu feed_50_len={feed_50_len:.2f} mm musí být > feed_t_fillet_r + 0.5 ({t_fillet_r + 0.5:.2f} mm)."
+            f"50 Ohm feed length feed_50_len={feed_50_len:.2f} mm must be > feed_t_fillet_r + 0.5 ({t_fillet_r + 0.5:.2f} mm)."
         )
 
     raw_end_straight = next((params[k] for k in ('feed_end_straight', 'end_straight') if params.get(k) is not None), None)
     end_straight = float(raw_end_straight) if raw_end_straight is not None else 4.6
     if end_straight < 0.5:
-        raise ValueError(f"Koncový rovný úsek feed_end_straight={end_straight:.2f} mm musí být >= 0.5 mm.")
+        raise ValueError(f"Terminal straight section feed_end_straight={end_straight:.2f} mm must be >= 0.5 mm.")
 
     raw_arm_offset = next((params[k] for k in ('feed_arm_offset', 'arm_offset') if params.get(k) is not None), None)
     if raw_arm_offset is not None:
         arm_offset = float(raw_arm_offset)
         if arm_offset <= bend_radius + 0.5:
             raise ValueError(
-                f"Odsazení levého ramene feed_arm_offset={arm_offset:.2f} mm musí být > feed_bend_radius + 0.5 ({bend_radius + 0.5:.2f} mm)."
+                f"Left arm offset feed_arm_offset={arm_offset:.2f} mm must be > feed_bend_radius + 0.5 ({bend_radius + 0.5:.2f} mm)."
             )
     else:
         arm_offset = end_straight + bend_radius
@@ -426,13 +426,13 @@ def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
     raw_mask_clearance = params.get('mask_clearance', params.get('feed_mask_clearance'))
     mask_clearance = float(raw_mask_clearance) if raw_mask_clearance is not None else MASK_CLEARANCE
 
-    # 6. Pozice vstupů transformátorů a vnějších referenčních os
+    # 6. Transformer entry positions and outer reference axes
     y_junc_b = -L / 2.0 + inset_b - l_T_b
     x_junc_l = -W / 2.0 + inset_l - l_T_l
     x_left_vert = x_junc_l - arm_offset
     y_bot_default = y_junc_b - end_straight - bend_radius
 
-    # 7. Poloha otočeného T-článku (x_T, y_T)
+    # 7. Rotated T-junction position (x_T, y_T)
     d_t = (w_50 / 2.0) + t_fillet_r
     raw_x_T = params.get('feed_x_T', params.get('x_T'))
     x_T = float(raw_x_T) if raw_x_T is not None else x_left_vert
@@ -440,21 +440,21 @@ def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
     s_end_l = x_junc_l - x_T - bend_radius
     if s_end_l < 0.5 - 1e-6:
         raise ValueError(
-            f"Poloha T-uzlu x_T={x_T:.2f} mm nedává prostor pro oblouk R={bend_radius:.2f} mm před levým "
-            f"transformátorem x_junc_l={x_junc_l:.2f} mm (rovný úsek {s_end_l:.2f} mm < 0.5 mm)."
+            f"T-junction position x_T={x_T:.2f} mm leaves insufficient room for arc R={bend_radius:.2f} mm before left "
+            f"transformer x_junc_l={x_junc_l:.2f} mm (straight section {s_end_l:.2f} mm < 0.5 mm)."
         )
 
     s_horiz_b = -x_T - 2.0 * bend_radius
     if s_horiz_b < -1e-6:
         raise ValueError(
-            f"Vodorovný úsek spodní větve (-x_T = {-x_T:.2f} mm) nestačí pro dva oblouky R={bend_radius:.2f} mm "
+            f"Horizontal section of bottom branch (-x_T = {-x_T:.2f} mm) is insufficient for two arcs R={bend_radius:.2f} mm "
             f"(-x_T - 2*R = {s_horiz_b:.2f} mm < 0)."
         )
 
     raw_y_T = params.get('feed_y_T', params.get('y_T'))
     if raw_y_T is None:
         y_bot = y_bot_default
-        # Analytické řešení rovnice L_100_b(y_T) - L_100_l(y_T) == feed_delta_l (bez meandru)
+        # Analytical solution of equation L_100_b(y_T) - L_100_l(y_T) == feed_delta_l (no meander)
         y_T = 0.5 * (
             feed_delta_l
             + 2.0 * y_bot
@@ -473,26 +473,26 @@ def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
         s_end_b_check = y_junc_b - y_bot - bend_radius
         if s_end_b_check < end_straight - 1e-6:
             raise ValueError(
-                f"Zadané feed_y_T={y_T:.2f} mm vyžaduje y_bot={y_bot:.2f} mm pro fázování ΔL={feed_delta_l:.2f} mm, "
-                f"což zkracuje úsek před spodním transformátorem na {s_end_b_check:.2f} mm (< {end_straight:.2f} mm)."
+                f"Specified feed_y_T={y_T:.2f} mm requires y_bot={y_bot:.2f} mm for phasing ΔL={feed_delta_l:.2f} mm, "
+                f"which shortens the section before the bottom transformer to {s_end_b_check:.2f} mm (< {end_straight:.2f} mm)."
             )
 
     s_end_b = y_junc_b - y_bot - bend_radius
     s_T_up = -y_T - d_t - bend_radius
     if s_T_up < 0.5 - 1e-6:
         raise ValueError(
-            f"Horní rovný úsek za blokem T-článku s_T_up={s_T_up:.2f} mm (y_T={y_T:.2f} mm, d_t={d_t:.2f} mm, "
-            f"R={bend_radius:.2f} mm) musí být >= 0.5 mm."
+            f"Upper straight section past T-junction block s_T_up={s_T_up:.2f} mm (y_T={y_T:.2f} mm, d_t={d_t:.2f} mm, "
+            f"R={bend_radius:.2f} mm) must be >= 0.5 mm."
         )
 
     s_T_down = (y_T - y_bot) - d_t - bend_radius
     if s_T_down < 0.5 - 1e-6:
         raise ValueError(
-            f"Dolní rovný úsek za blokem T-článku s_T_down={s_T_down:.2f} mm (y_T={y_T:.2f} mm, y_bot={y_bot:.2f} mm, "
-            f"d_t={d_t:.2f} mm, R={bend_radius:.2f} mm) musí být >= 0.5 mm."
+            f"Lower straight section past T-junction block s_T_down={s_T_down:.2f} mm (y_T={y_T:.2f} mm, y_bot={y_bot:.2f} mm, "
+            f"d_t={d_t:.2f} mm, R={bend_radius:.2f} mm) must be >= 0.5 mm."
         )
 
-    # 8. Trasovací body (waypoints) od osy T-článku (x_T, y_T) k transformátorům
+    # 8. Waypoints from T-junction axis (x_T, y_T) to transformers
     arm_l_waypoints_full = [
         (x_T, y_T),
         (x_T, 0.0),
@@ -508,11 +508,11 @@ def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
     ]
     L_100_b = calc_curved_path_length(arm_b_waypoints_full, bend_radius)
 
-    # Stavební waypoints pro napojení bez překryvu na blok T-článku (y_T ± d_t)
+    # Build waypoints for overlap-free connection to the T-junction block (y_T ± d_t)
     arm_l_build_waypoints = [(x_T, y_T + d_t)] + arm_l_waypoints_full[1:]
     arm_b_build_waypoints = [(x_T, y_T - d_t)] + arm_b_waypoints_full[1:]
 
-    # 9. Poloha levého 50 Ohm portu a symetrické rozměry substrátu
+    # 9. Left 50 Ohm port position and symmetric substrate dimensions
     x_port_base = x_T - (w_feed / 2.0) - feed_50_len
     min_W_sub = 2.0 * max(abs(x_port_base), W / 2.0 + sub_margin)
     min_L_sub = 2.0 * max(abs(y_bot) + w_feed / 2.0 + sub_margin, L / 2.0 + sub_margin)
@@ -582,16 +582,16 @@ def compute_model4_routing(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ==============================================================================
-# 4. KICAD GEOMETRIE A TRANSFORMACE SOUŘADNIC
+# 4. KICAD GEOMETRY AND COORDINATE TRANSFORMATIONS
 # ==============================================================================
 
 def transform_cad_to_kicad(pt: Tuple[float, float], origin_x: float, origin_y: float) -> Tuple[float, float]:
     """
-    Převede kartézský CAD bod (OpenCASCADE: +X vpravo, +Y nahoru)
-    do souřadnic KiCadu (+X vpravo, +Y dolů).
+    Convert a Cartesian CAD point (OpenCASCADE: +X right, +Y up)
+    into KiCad coordinates (+X right, +Y down).
     x_kicad = origin_x + x_cad
     y_kicad = origin_y - y_cad
-    Zajišťuje striktní zachování LHCP polarizace (brání vertikálnímu převrácení).
+    Ensures strict preservation of LHCP polarization (prevents vertical flip).
     """
     return (float(origin_x + pt[0]), float(origin_y - pt[1]))
 
@@ -601,13 +601,13 @@ def transform_poly_to_kicad(
     origin_x: float,
     origin_y: float,
 ) -> List[Tuple[float, float]]:
-    """Transformuje celý 2D polygon z CAD do KiCad souřadnic."""
+    """Transform an entire 2D polygon from CAD to KiCad coordinates."""
     return [transform_cad_to_kicad(p, origin_x, origin_y) for p in poly]
 
 
 @dataclass
 class KiCadGeometryData:
-    """Kompletní reprezentace geometrie pro export do KiCad 10."""
+    """Complete geometry representation for KiCad 10 export."""
     origin_x: float
     origin_y: float
     W_sub: float
@@ -616,9 +616,9 @@ class KiCadGeometryData:
     rf_polygons: List[List[Tuple[float, float]]]       # F.Cu Net 2 (RF_IN)
     gnd_polygons_top: List[List[Tuple[float, float]]]   # F.Cu Net 1 (GND)
     gnd_polygon_bottom: List[Tuple[float, float]]       # B.Cu Net 1 (GND)
-    vias: List[Dict[str, Any]]                          # GND prokovy
-    mask_openings: List[List[Tuple[float, float]]]      # F.Mask otvory
-    mask_openings_bottom: List[List[Tuple[float, float]]] # B.Mask otvory
+    vias: List[Dict[str, Any]]                          # GND vias
+    mask_openings: List[List[Tuple[float, float]]]      # F.Mask openings
+    mask_openings_bottom: List[List[Tuple[float, float]]] # B.Mask openings
     sma_top_pad_center: Tuple[float, float]
     sma_bot_pad_center: Tuple[float, float]
     sma_pad_size: Tuple[float, float]                   # (dx, dy) = (sma_pad_len, sma_pad_w)
@@ -640,10 +640,10 @@ def compute_mfg_corner_marks(
     mark_w: float = 2.0,
 ) -> List[List[Tuple[float, float]]]:
     """
-    Vypočte 8 ořezových značek (2 obdélníky pro každý ze 4 rohů) v CAD souřadnicích.
-    Značky přiléhají k vnějším hranám obdélníku [x_min, x_max] x [y_min, y_max]
-    dle pokynů pro výrobu antén na VUT (Manufacturing of antennas - instructions.pdf).
-    Všechny polygony jsou orientovány proti směru hodinových ručiček (CCW).
+    Compute 8 corner cut marks (2 rectangles per corner for all 4 corners) in CAD coordinates.
+    Marks abut the outer edges of rectangle [x_min, x_max] x [y_min, y_max]
+    per BUT antenna manufacturing guidelines (Manufacturing of antennas - instructions.pdf).
+    All polygons are oriented counter-clockwise (CCW).
     """
     x1 = float(min(x_min, x_max))
     x2 = float(max(x_min, x_max))
@@ -653,16 +653,16 @@ def compute_mfg_corner_marks(
     wm = float(mark_w)
 
     marks = [
-        # 1. Top-Left: vodorovný pruh nad hranou, svislý pruh vlevo od hrany
+        # 1. Top-Left: horizontal bar above edge, vertical bar left of edge
         [(x1, y2), (x1 + lm, y2), (x1 + lm, y2 + wm), (x1, y2 + wm)],
         [(x1 - wm, y2 - lm), (x1, y2 - lm), (x1, y2), (x1 - wm, y2)],
-        # 2. Top-Right: vodorovný pruh nad hranou, svislý pruh vpravo od hrany
+        # 2. Top-Right: horizontal bar above edge, vertical bar right of edge
         [(x2 - lm, y2), (x2, y2), (x2, y2 + wm), (x2 - lm, y2 + wm)],
         [(x2, y2 - lm), (x2 + wm, y2 - lm), (x2 + wm, y2), (x2, y2)],
-        # 3. Bottom-Left: vodorovný pruh pod hranou, svislý pruh vlevo od hrany
+        # 3. Bottom-Left: horizontal bar below edge, vertical bar left of edge
         [(x1, y1 - wm), (x1 + lm, y1 - wm), (x1 + lm, y1), (x1, y1)],
         [(x1 - wm, y1), (x1, y1), (x1, y1 + lm), (x1 - wm, y1 + lm)],
-        # 4. Bottom-Right: vodorovný pruh pod hranou, svislý pruh vpravo od hrany
+        # 4. Bottom-Right: horizontal bar below edge, vertical bar right of edge
         [(x2 - lm, y1 - wm), (x2, y1 - wm), (x2, y1), (x2 - lm, y1)],
         [(x2, y1), (x2 + wm, y1), (x2 + wm, y1 + lm), (x2, y1 + lm)],
     ]
@@ -678,8 +678,8 @@ def compute_mfg_ident_polygons(
     mirror: bool = False,
 ) -> List[List[Tuple[float, float]]]:
     """
-    Vytvoří 2D polygony pro identifikační značku (výchozí 'PM.') v CAD souřadnicích.
-    Při mirror=True provede zrcadlení podél osy Y (x -> -x) dle bodu 4 výrobních pokynů.
+    Create 2D polygons for the identification mark (default 'PM.') in CAD coordinates.
+    When mirror=True, mirrors across the Y-axis (x -> -x) per item 4 of the manufacturing guidelines.
     """
     H = float(height)
     ws = float(stroke_w)
@@ -689,7 +689,7 @@ def compute_mfg_ident_polygons(
 
     clean_text = str(text).strip().upper()
     if clean_text in ("PM.", "PM"):
-        # Návrh tahů pro 'P', 'M' a '.'
+        # Stroke layout for 'P', 'M', and '.'
         wp = 3.2 * (H / 5.0)
         wm = 4.2 * (H / 5.0)
         spacing = 1.0 * (H / 5.0)
@@ -741,13 +741,13 @@ def compute_mfg_ident_polygons(
             dot = [(x_dot, by), (x_dot + w_dot, by), (x_dot + w_dot, by + w_dot), (x_dot, by + w_dot)]
             polys.append(dot)
     else:
-        # Generický zjednodušený fallback pro jiný monogram
+        # Generic simplified fallback for any other monogram
         tw = 8.0 * (H / 5.0)
         sx = float(center_x) - tw / 2.0
         polys = [[(sx, by), (sx + tw, by), (sx + tw, by + H), (sx, by + H)]]
 
     if mirror:
-        # Zrcadlení x -> -x a zachování CCW orientace přes otočení pořadí vrcholů
+        # Mirror x -> -x and preserve CCW orientation by reversing vertex order
         polys = [[(-x, y) for (x, y) in poly][::-1] for poly in polys]
 
     return polys
@@ -769,9 +769,9 @@ def get_model4_kicad_geometry(
     mirror_x: Optional[bool] = None,
 ) -> KiCadGeometryData:
     """
-    Vytvoří kompletní sadu KiCad 10 geometrických prvků (F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts, Vias)
-    včetně 50 µm přesahů pro eliminaci DRC mikro-mezer, odsazení nepájivé masky a SMA G-S-G rozhraní.
-    Podporuje kompaktní ořez desky (tight_pcb=True, výchozí) šetřící ~40 % plochy substrátu.
+    Create the complete set of KiCad 10 geometric elements (F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts, Vias)
+    including 50 µm overlaps to eliminate DRC micro-gaps, solder mask clearance, and SMA G-S-G interface.
+    Supports compact board cropping (tight_pcb=True, default) saving ~40% of substrate area.
     """
     info = compute_model4_routing(params)
 
@@ -841,9 +841,9 @@ def get_model4_kicad_geometry(
     else:
         mask_clearance = float(mask_clearance)
 
-    # Nastavení počátku souřadnic:
-    # Pro footprint: (0, 0) je střed vyzařovacího flíčku
-    # Pro PCB: posun o okraj 25 mm pro kladné souřadnice desky
+    # Coordinate origin setup:
+    # For footprint: (0, 0) is the center of the radiating patch
+    # For PCB: shift by 25 mm margin for positive board coordinates
     if is_footprint:
         ox = float(origin_x) if origin_x is not None else 0.0
         oy = float(origin_y) if origin_y is not None else 0.0
@@ -851,25 +851,25 @@ def get_model4_kicad_geometry(
         ox = float(origin_x) if origin_x is not None else (25.0 - cad_x_min)
         oy = float(origin_y) if origin_y is not None else (25.0 + cad_y_max)
 
-    # 1. Edge.Cuts obdélník
+    # 1. Edge.Cuts rectangle
     edge_x_min = ox + cad_x_min
     edge_x_max = ox + cad_x_max
     edge_y_min = oy - cad_y_max
     edge_y_max = oy - cad_y_min
     edge_cuts_rect = (edge_x_min, edge_y_min, edge_x_max, edge_y_max)
 
-    # 2. RF Segmenty (všechny se sítí Net 2 "RF_IN") s přesahem overlap_delta = 50 µm
+    # 2. RF segments (all on Net 2 "RF_IN") with overlap_delta = 50 µm
     delta = float(overlap_delta)
 
-    # A) Vyzařující flíček se zářezy
+    # A) Radiating patch with inset notches
     patch_cad = compute_patch_with_insets_polygon(
         W, L, inset_b, inset_l, w_T_b, w_T_l, inset_gap_b, inset_gap_l
     )
     patch_kicad = transform_poly_to_kicad(patch_cad, ox, oy)
 
-    # B) Spodní čtvrtvlnný transformátor
-    # Rozsah Y v CAD: od (y_junc_b - delta) do (-L/2 + inset_b + delta)
-    # Rozsah X v CAD: od -w_T_b/2 do +w_T_b/2
+    # B) Bottom quarter-wave transformer
+    # Y range in CAD: from (y_junc_b - delta) to (-L/2 + inset_b + delta)
+    # X range in CAD: from -w_T_b/2 to +w_T_b/2
     y_trans_b_start = y_junc_b - delta
     y_trans_b_end = -L / 2.0 + inset_b + delta
     trans_b_cad = [
@@ -880,9 +880,9 @@ def get_model4_kicad_geometry(
     ]
     trans_b_kicad = transform_poly_to_kicad(trans_b_cad, ox, oy)
 
-    # C) Levý čtvrtvlnný transformátor
-    # Rozsah X v CAD: od (x_junc_l - delta) do (-W/2 + inset_l + delta)
-    # Rozsah Y v CAD: od -w_T_l/2 do +w_T_l/2
+    # C) Left quarter-wave transformer
+    # X range in CAD: from (x_junc_l - delta) to (-W/2 + inset_l + delta)
+    # Y range in CAD: from -w_T_l/2 to +w_T_l/2
     x_trans_l_start = x_junc_l - delta
     x_trans_l_end = -W / 2.0 + inset_l + delta
     trans_l_cad = [
@@ -893,7 +893,7 @@ def get_model4_kicad_geometry(
     ]
     trans_l_kicad = transform_poly_to_kicad(trans_l_cad, ox, oy)
 
-    # D) Levá zakřivená 100 Ohm větev (arm_l) s přesahem
+    # D) Left curved 100 Ohm branch (arm_l) with overlap
     arm_l_wps = [
         (x_T, y_T + d_t - delta),
         (x_T, 0.0),
@@ -902,7 +902,7 @@ def get_model4_kicad_geometry(
     arm_l_cad = compute_curved_ribbon_outline(arm_l_wps, w_feed, bend_radius)
     arm_l_kicad = transform_poly_to_kicad(arm_l_cad, ox, oy)
 
-    # E) Spodní zakřivená 100 Ohm větev (arm_b) s přesahem
+    # E) Bottom curved 100 Ohm branch (arm_b) with overlap
     arm_b_wps = [
         (x_T, y_T - d_t + delta),
         (x_T, y_bot),
@@ -912,8 +912,8 @@ def get_model4_kicad_geometry(
     arm_b_cad = compute_curved_ribbon_outline(arm_b_wps, w_feed, bend_radius)
     arm_b_kicad = transform_poly_to_kicad(arm_b_cad, ox, oy)
 
-    # F) T-článek a 50 Ohm přívodní kmen
-    # Kmen začíná na x_port = -W_sub/2 (levá hrana desky / střed signálového padu SMA)
+    # F) T-junction and 50 Ohm feed trunk
+    # Trunk starts at x_port = -W_sub/2 (left board edge / center of SMA signal pad)
     t_junc_cad = compute_t_junction_polygon(x_port, x_T, y_T, w_50, w_feed, t_fillet_r)
     t_junc_kicad = transform_poly_to_kicad(t_junc_cad, ox, oy)
 
@@ -926,9 +926,9 @@ def get_model4_kicad_geometry(
         t_junc_kicad,
     ]
 
-    # 3. SMA Rozhraní (Cinch Johnson 142-0701-801) - G-S-G (parametrické dle w_50)
-    # Signálový pad je integrován v 50 Ohm přívodu o šířce w_50 od x_port.
-    # Horní a spodní zemní plošky se dynamicky umísťují s mezerou sma_gap od hran 50 Ohm vedení.
+    # 3. SMA Interface (Cinch Johnson 142-0701-801) - G-S-G (parametric w.r.t. w_50)
+    # Signal pad is integrated into the 50 Ohm feed of width w_50 starting at x_port.
+    # Top and bottom ground pads are dynamically placed with sma_gap clearance from the 50 Ohm trace edges.
     if sma_gap is None:
         raw_sma_gap = next(
             (params[k] for k in ('sma_gap', 'sma_gsg_gap', 'feed_sma_gap') if params.get(k) is not None),
@@ -957,11 +957,11 @@ def get_model4_kicad_geometry(
         sma_pad_w_val = float(sma_pad_w)
 
     if sma_gap_val <= 0.0:
-        raise ValueError(f"Mezera SMA G-S-G sma_gap={sma_gap_val:.4f} mm musí být kladná (> 0).")
+        raise ValueError(f"SMA G-S-G gap sma_gap={sma_gap_val:.4f} mm must be positive (> 0).")
     if sma_pad_len_val <= 0.0:
-        raise ValueError(f"Délka SMA GND plošky sma_pad_len={sma_pad_len_val:.4f} mm musí být kladná (> 0).")
+        raise ValueError(f"SMA GND pad length sma_pad_len={sma_pad_len_val:.4f} mm must be positive (> 0).")
     if sma_pad_w_val <= 0.0:
-        raise ValueError(f"Šířka SMA GND plošky sma_pad_w={sma_pad_w_val:.4f} mm musí být kladná (> 0).")
+        raise ValueError(f"SMA GND pad width sma_pad_w={sma_pad_w_val:.4f} mm must be positive (> 0).")
 
     sma_gnd_inner = w_50 / 2.0 + sma_gap_val
     sma_gnd_outer = sma_gnd_inner + sma_pad_w_val
@@ -969,8 +969,8 @@ def get_model4_kicad_geometry(
     sma_mask_len = max(4.0, sma_pad_len_val + 0.5)
     sma_mask_half_h = max(4.0, sma_gnd_outer + max(mask_clearance, 0.31))
 
-    # Hráz nepájivé masky (solder mask dam) v G-S-G mezeře mezi RF_IN a GND na F.Mask
-    # Zabraňuje můstkování cínu při pájení SMA konektoru a eliminuje KiCad DRC chybu solder_mask_bridge
+    # Solder mask dam in the G-S-G gap between RF_IN and GND on F.Mask
+    # Prevents solder bridging when soldering the SMA connector and eliminates KiCad DRC solder_mask_bridge error
     sma_mask_dam = min(0.15, 0.25 * sma_gap_val)
     sma_gnd_mask_inner = min(
         sma_gnd_inner,
@@ -1006,14 +1006,14 @@ def get_model4_kicad_geometry(
         transform_poly_to_kicad(gnd_bot_cad, ox, oy),
     ]
 
-    # Středy SMA GND plošek v KiCad souřadnicích (pro footprint pady)
+    # Centers of SMA GND pads in KiCad coordinates (for footprint pads)
     top_center_cad = (x_port + sma_pad_len_val / 2.0, y_T + sma_gnd_center_y)
     bot_center_cad = (x_port + sma_pad_len_val / 2.0, y_T - sma_gnd_center_y)
     sma_top_pad_center = transform_cad_to_kicad(top_center_cad, ox, oy)
     sma_bot_pad_center = transform_cad_to_kicad(bot_center_cad, ox, oy)
     sma_pad_size = (sma_pad_len_val, sma_pad_w_val)
 
-    # 4. Spodní celistvá zem na B.Cu (Net 1 "GND")
+    # 4. Bottom solid ground plane on B.Cu (Net 1 "GND")
     b_cu_gnd_cad = [
         (cad_x_min, cad_y_min),
         (cad_x_max, cad_y_min),
@@ -1022,7 +1022,7 @@ def get_model4_kicad_geometry(
     ]
     gnd_polygon_bottom = transform_poly_to_kicad(b_cu_gnd_cad, ox, oy)
 
-    # 5. Zemní prokovy (Via Stitching 2x3 prokovy vycentrované v SMA GND ploškách)
+    # 5. Ground vias (via stitching: 2x3 vias centered in SMA GND pads)
     vias: List[Dict[str, Any]] = []
     if sma_pad_len_val > 1.0:
         via_x_min = 1.0 if sma_pad_len_val >= 3.0 else 0.5
@@ -1040,7 +1040,7 @@ def get_model4_kicad_geometry(
         ]
 
     for x_off in via_x_offsets:
-        # Horní prokov
+        # Top via
         pt_top = transform_cad_to_kicad((x_port + x_off, y_T + sma_gnd_center_y), ox, oy)
         vias.append({
             'x': round(pt_top[0], 4),
@@ -1050,7 +1050,7 @@ def get_model4_kicad_geometry(
             'net': 1,
             'net_name': "GND",
         })
-        # Spodní prokov
+        # Bottom via
         pt_bot = transform_cad_to_kicad((x_port + x_off, y_T - sma_gnd_center_y), ox, oy)
         vias.append({
             'x': round(pt_bot[0], 4),
@@ -1061,9 +1061,9 @@ def get_model4_kicad_geometry(
             'net_name': "GND",
         })
 
-    # 6. Otevření nepájivé masky s definovaným přesahem (solder mask clearance)
-    # A) Oddělená otevření F.Mask nad horní a spodní SMA GND ploškou (s hrází masky od 50 Ohm RF_IN)
-    #    50 Ohm RF_IN přívod má vlastní F.Mask otevření v t_junc_mask_kicad -> čistá hráz bez solder_mask_bridge
+    # 6. Solder mask openings with defined clearance
+    # A) Separate F.Mask openings over top and bottom SMA GND pads (with mask dam from 50 Ohm RF_IN)
+    #    50 Ohm RF_IN feed has its own F.Mask opening in t_junc_mask_kicad -> clean dam without solder_mask_bridge
     sma_gnd_mask_top_cad = [
         (x_port, y_T + sma_gnd_mask_inner),
         (x_port + sma_mask_len, y_T + sma_gnd_mask_inner),
@@ -1079,7 +1079,7 @@ def get_model4_kicad_geometry(
     sma_gnd_mask_top_kicad = transform_poly_to_kicad(sma_gnd_mask_top_cad, ox, oy)
     sma_gnd_mask_bot_kicad = transform_poly_to_kicad(sma_gnd_mask_bot_cad, ox, oy)
 
-    # B) Otevření masky nad vyzařovacím flíčkem pro ENIG zlacení s přesahem mask_clearance na každé straně
+    # B) Mask opening over radiating patch for ENIG gold plating with mask_clearance on each side
     patch_mask_cad = [
         (-W / 2.0 - mask_clearance, -L / 2.0 - mask_clearance),
         (W / 2.0 + mask_clearance, -L / 2.0 - mask_clearance),
@@ -1088,7 +1088,7 @@ def get_model4_kicad_geometry(
     ]
     patch_mask_kicad = transform_poly_to_kicad(patch_mask_cad, ox, oy)
 
-    # C) Spodní čtvrtvlnný transformátor rozšířený o mask_clearance v šířce i délce
+    # C) Bottom quarter-wave transformer expanded by mask_clearance in both width and length
     trans_b_mask_cad = [
         (-w_T_b / 2.0 - mask_clearance, y_trans_b_start - mask_clearance),
         (w_T_b / 2.0 + mask_clearance, y_trans_b_start - mask_clearance),
@@ -1097,7 +1097,7 @@ def get_model4_kicad_geometry(
     ]
     trans_b_mask_kicad = transform_poly_to_kicad(trans_b_mask_cad, ox, oy)
 
-    # D) Levý čtvrtvlnný transformátor rozšířený o mask_clearance v šířce i délce
+    # D) Left quarter-wave transformer expanded by mask_clearance in both width and length
     trans_l_mask_cad = [
         (x_trans_l_start - mask_clearance, -w_T_l / 2.0 - mask_clearance),
         (x_trans_l_end + mask_clearance, -w_T_l / 2.0 - mask_clearance),
@@ -1106,19 +1106,19 @@ def get_model4_kicad_geometry(
     ]
     trans_l_mask_kicad = transform_poly_to_kicad(trans_l_mask_cad, ox, oy)
 
-    # E) Levá zakřivená 100 Ohm větev (arm_l) s šířkou w_feed + 2 * mask_clearance
+    # E) Left curved 100 Ohm branch (arm_l) with width w_feed + 2 * mask_clearance
     arm_l_mask_cad = compute_curved_ribbon_outline(
         arm_l_wps, w_feed + 2.0 * mask_clearance, bend_radius
     )
     arm_l_mask_kicad = transform_poly_to_kicad(arm_l_mask_cad, ox, oy)
 
-    # F) Spodní zakřivená 100 Ohm větev (arm_b) s šířkou w_feed + 2 * mask_clearance
+    # F) Bottom curved 100 Ohm branch (arm_b) with width w_feed + 2 * mask_clearance
     arm_b_mask_cad = compute_curved_ribbon_outline(
         arm_b_wps, w_feed + 2.0 * mask_clearance, bend_radius
     )
     arm_b_mask_kicad = transform_poly_to_kicad(arm_b_mask_cad, ox, oy)
 
-    # G) T-článek s rozšířenými šířkami w_50 + 2 * mask_clearance a w_feed + 2 * mask_clearance
+    # G) T-junction with expanded widths w_50 + 2 * mask_clearance and w_feed + 2 * mask_clearance
     t_junc_mask_cad = compute_t_junction_polygon(
         x_port,
         x_T,
@@ -1129,7 +1129,7 @@ def get_model4_kicad_geometry(
     )
     t_junc_mask_kicad = transform_poly_to_kicad(t_junc_mask_cad, ox, oy)
 
-    # Celá sada otvorů horní masky na F.Mask
+    # Complete set of top mask openings on F.Mask
     mask_openings = [
         sma_gnd_mask_top_kicad,
         sma_gnd_mask_bot_kicad,
@@ -1141,7 +1141,7 @@ def get_model4_kicad_geometry(
         t_junc_mask_kicad,
     ]
 
-    # H) Otevření spodní nepájivé masky na B.Mask pro SMA konektor (dynamicky dle šířky G-S-G)
+    # H) Bottom solder mask opening on B.Mask for SMA connector (dynamic per G-S-G width)
     sma_mask_bot_cad = [
         (x_port, y_T - sma_mask_half_h),
         (x_port + sma_mask_len, y_T - sma_mask_half_h),
@@ -1152,7 +1152,7 @@ def get_model4_kicad_geometry(
         transform_poly_to_kicad(sma_mask_bot_cad, ox, oy),
     ]
 
-    # I) Výrobní prvky dle pokynů VUT (Manufacturing of antennas - instructions.pdf)
+    # I) Manufacturing features per BUT guidelines (Manufacturing of antennas - instructions.pdf)
     if mfg_vut is None:
         raw_mfg = params.get('mfg_vut', params.get('mfg', False))
         mfg_vut = (raw_mfg.strip().lower() not in ('0', 'false', 'no', 'off')) if isinstance(raw_mfg, str) else bool(raw_mfg)
@@ -1168,11 +1168,11 @@ def get_model4_kicad_geometry(
     mfg_ident_polygons: List[List[Tuple[float, float]]] = []
 
     if mfg_vut:
-        # 1. 8 ořezových značek v rozích obrysu substrátu
+        # 1. 8 corner cut marks at substrate outline corners
         marks_cad = compute_mfg_corner_marks(cad_x_min, cad_x_max, cad_y_min, cad_y_max)
         mfg_corner_marks = [transform_poly_to_kicad(p, ox, oy) for p in marks_cad]
 
-        # 2. Identifikační značka (výchozí 'PM.') nad horní hranou substrátu
+        # 2. Identification mark (default 'PM.') above top substrate edge
         ident_cad = compute_mfg_ident_polygons(
             text=ident_symbol,
             center_x=(cad_x_min + cad_x_max) / 2.0,
@@ -1182,7 +1182,7 @@ def get_model4_kicad_geometry(
         )
         mfg_ident_polygons = [transform_poly_to_kicad(p, ox, oy) for p in ident_cad]
 
-    # Globální horizontální reflexe (x -> -x) pro přípravu filmů fotocesty (mirror_x=True)
+    # Global horizontal reflection (x -> -x) for photolithography film preparation (mirror_x=True)
     if mirror_x:
         x_reflect = edge_x_min + edge_x_max
 

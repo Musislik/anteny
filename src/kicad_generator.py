@@ -1,7 +1,7 @@
 """
-kicad_generator.py - Pure-Python generátor KiCad 10 výrobních a knihovních podkladů pro Model 4.
-Formát souborů: KiCad 10 S-výrazy (verze formátu 20260206).
-Nevyžaduje žádné externí binárky ani knihovny (běží v čistém Pythonu se standardní knihovnou).
+kicad_generator.py - Pure-Python generator of KiCad 10 manufacturing and library files for Model 4.
+File format: KiCad 10 S-expressions (format version 20260206).
+Requires no external binaries or libraries (runs in pure Python using the standard library).
 """
 
 import os
@@ -15,17 +15,17 @@ from antenna_geometry import (
 
 
 def _gen_uuid() -> str:
-    """Vygeneruje unikátní RFC 4122 UUID pro KiCad prvek."""
+    """Generate a unique RFC 4122 UUID for a KiCad element."""
     return str(uuid.uuid4())
 
 
 def _escape_kicad_str(text: str) -> str:
-    """Escapuje zpětná lomítka a uvozovky pro S-výrazy KiCad."""
+    """Escape backslashes and quotes for KiCad S-expressions."""
     return str(text).replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _format_pts(points: List[Tuple[float, float]], indent: int = 8) -> str:
-    """Naformátuje seznam bodů (x, y) do bloku (pts (xy x y)...)."""
+    """Format a list of points (x, y) into a (pts (xy x y)...) block."""
     sp = " " * indent
     lines = [f"{sp}(pts"]
     for x, y in points:
@@ -45,7 +45,7 @@ def _format_zone(
     thermal_bridge: float = 0.5,
     indent: int = 2,
 ) -> str:
-    """Sestaví S-výraz pro plně naplněnou zónu (zone) v KiCad 10."""
+    """Build an S-expression for a solid filled copper zone in KiCad 10."""
     sp = " " * indent
     pts_str = _format_pts(polygon_pts, indent=indent + 4)
     u = _gen_uuid()
@@ -80,19 +80,19 @@ def generate_kicad_pcb(
     mirror_x: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
-    Vygeneruje kompletní desku plošných spojů (.kicad_pcb) pro KiCad 10.
+    Generate a complete printed circuit board (.kicad_pcb) for KiCad 10.
 
-    Zahrnuje:
-      - Explicitní vrstvy KiCad 10: F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts, F.SilkS atd.
-      - Pojmenované sítě přímo na prvcích: "GND" a "RF_IN".
-      - Horní RF strukturu na F.Cu (flíček, transformátory, oblouky, T-článek) se sítí "RF_IN".
-      - Spodní souvislou zem na B.Cu se sítí "GND".
-      - SMA rozhraní na F.Cu se zemními ploškami a 6 prokovy se sítí "GND".
-      - Obrys desky W_sub x L_sub na Edge.Cuts (volitelně kompaktní tight_pcb).
-      - Otevření nepájivé masky na F.Mask s clearance (SMA rozhraní + vyzařovač + RF vedení).
-      - Otevření nepájivé masky na B.Mask pro SMA rozhraní (pájení spodních zemních pinů).
-      - Volitelné výrobní prvky VUT (8 ořezových značek a identifikační symbol na F.Cu a F.Mask).
-      - Volitelné horizontální zrcadlení pro přípravu filmů fotocesty (mirror_x=True).
+    Includes:
+      - Explicit KiCad 10 layers: F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts, F.SilkS, etc.
+      - Named nets directly on elements: "GND" and "RF_IN".
+      - Top RF structure on F.Cu (patch, transformers, arcs, T-junction) on net "RF_IN".
+      - Bottom continuous ground plane on B.Cu on net "GND".
+      - SMA interface on F.Cu with ground pads and 6 vias on net "GND".
+      - Board outline W_sub x L_sub on Edge.Cuts (optionally compact tight_pcb).
+      - Solder mask openings on F.Mask with clearance (SMA interface + radiator + RF traces).
+      - Solder mask opening on B.Mask for SMA interface (soldering bottom ground pins).
+      - Optional BUT manufacturing features (8 corner cut marks and identification symbol on F.Cu and F.Mask).
+      - Optional horizontal mirroring for photolithography film preparation (mirror_x=True).
     """
     geom: KiCadGeometryData = get_model4_kicad_geometry(
         params,
@@ -111,10 +111,10 @@ def generate_kicad_pcb(
 
     lines: List[str] = []
 
-    # Hlavička KiCad 10 PCB
+    # KiCad 10 PCB header
     lines.append('(kicad_pcb')
     lines.append('  (version 20260206)')
-    lines.append('  (generator "antena_kicad_generator")')
+    lines.append('  (generator "antenna_kicad_generator")')
     lines.append('  (generator_version "10.0")')
     lines.append('  (general')
     lines.append(f'    (thickness {sub_h:.3f})')
@@ -122,7 +122,7 @@ def generate_kicad_pcb(
     lines.append('  )')
     lines.append('  (paper "A4")')
 
-    # Deklarace vrstev (kanonické číslování KiCad 10)
+    # Layer declarations (canonical KiCad 10 numbering)
     lines.append('  (layers')
     lines.append('    (0 "F.Cu" signal)')
     lines.append('    (2 "B.Cu" power)')
@@ -146,7 +146,7 @@ def generate_kicad_pcb(
     lines.append('    (33 "B.Fab" user)')
     lines.append('  )')
 
-    # DRC a Plot nastavení
+    # DRC and Plot settings
     lines.append('  (setup')
     lines.append('    (pad_to_mask_clearance 0)')
     lines.append('    (allow_soldermask_bridges_in_footprints no)')
@@ -162,7 +162,7 @@ def generate_kicad_pcb(
     lines.append('    )')
     lines.append('  )')
 
-    # Obrys desky na Edge.Cuts (4 obvodové čáry)
+    # Board outline on Edge.Cuts (4 perimeter segments)
     edges = [
         ((x_min, y_min), (x_max, y_min)),
         ((x_max, y_min), (x_max, y_max)),
@@ -176,7 +176,7 @@ def generate_kicad_pcb(
             f'(stroke (width 0.1) (type solid)) (layer "Edge.Cuts") (uuid "{u}"))'
         )
 
-    # Popisy na vrstvě F.SilkS
+    # Labels on F.SilkS layer
     raw_subtitle = params.get('silkscreen_subtitle')
     raw_profile = params.get('profile_name')
     subtitle_text: Optional[str] = None
@@ -208,7 +208,7 @@ def generate_kicad_pcb(
         f'(layer "F.SilkS") (uuid "{u_rf}") (effects (font (size 0.9 0.9) (thickness 0.12))))'
     )
 
-    # Spodní celistvá zemní plocha B.Cu ("GND")
+    # Bottom solid ground plane B.Cu ("GND")
     lines.append(
         _format_zone(
             net_name="GND",
@@ -218,7 +218,7 @@ def generate_kicad_pcb(
         )
     )
 
-    # Horní SMA zemní plošky F.Cu ("GND") – odlišné priority pro čistý DRC
+    # Top SMA ground pads F.Cu ("GND") - distinct priorities for clean DRC
     for idx, gnd_poly in enumerate(geom.gnd_polygons_top, start=1):
         lines.append(
             _format_zone(
@@ -229,7 +229,7 @@ def generate_kicad_pcb(
             )
         )
 
-    # Zemní prokovy (Via Stitching, "GND")
+    # Ground vias (via stitching, "GND")
     for v in geom.vias:
         u_via = _gen_uuid()
         lines.append(
@@ -237,7 +237,7 @@ def generate_kicad_pcb(
             f'(layers "F.Cu" "B.Cu") (net "GND") (uuid "{u_via}"))'
         )
 
-    # Horní RF struktura F.Cu ("RF_IN") – unikátní priority eliminují DRC zones_intersect při 50 µm přesazích
+    # Top RF structure F.Cu ("RF_IN") - unique priorities eliminate DRC zones_intersect on 50 µm overlaps
     for idx, rf_poly in enumerate(geom.rf_polygons, start=10):
         lines.append(
             _format_zone(
@@ -248,9 +248,9 @@ def generate_kicad_pcb(
             )
         )
 
-    # Integrované SMD rozhraní konektoru SMA (J1, Cinch Johnson 142-0701-801)
-    # Elektricky kotví sítě RF_IN a GND v KiCadu (eliminuje isolated_copper i při --refill-zones).
-    # Masky zůstávají řízeny přesnými gr_poly otvory na F.Mask/B.Mask (s hrází proti solder_mask_bridge).
+    # Integrated SMD SMA connector interface (J1, Cinch Johnson 142-0701-801)
+    # Electrically anchors RF_IN and GND nets in KiCad (eliminates isolated_copper even with --refill-zones).
+    # Masks remain driven by exact gr_poly openings on F.Mask/B.Mask (with solder mask dam against solder_mask_bridge).
     pad_len, pad_w = geom.sma_pad_size
     w_50 = float(info['w_50'])
     sma_gnd_center_y = float(info['sma_gnd_center_y'])
@@ -297,7 +297,7 @@ def generate_kicad_pcb(
     )
     lines.append('  )')
 
-    # Otevření nepájivé masky na F.Mask
+    # Solder mask openings on F.Mask
     for mask_poly in geom.mask_openings:
         u_mask = _gen_uuid()
         pts_str = _format_pts(mask_poly, indent=6)
@@ -306,7 +306,7 @@ def generate_kicad_pcb(
         lines.append(f'    (stroke (width 0) (type solid)) (fill yes) (layer "F.Mask") (uuid "{u_mask}")')
         lines.append('  )')
 
-    # Otevření nepájivé masky na B.Mask (SMA konektor)
+    # Solder mask openings on B.Mask (SMA connector)
     for mask_poly in geom.mask_openings_bottom:
         u_mask = _gen_uuid()
         pts_str = _format_pts(mask_poly, indent=6)
@@ -315,7 +315,7 @@ def generate_kicad_pcb(
         lines.append(f'    (stroke (width 0) (type solid)) (fill yes) (layer "B.Mask") (uuid "{u_mask}")')
         lines.append('  )')
 
-    # Výrobní prvky VUT (ořezové značky a identifikační symbol)
+    # BUT manufacturing features (corner cut marks and identification symbol)
     for idx, cm in enumerate(geom.mfg_corner_marks, start=50):
         lines.append(
             _format_zone(
@@ -348,7 +348,7 @@ def generate_kicad_pcb(
         lines.append(f'    (stroke (width 0) (type solid)) (fill yes) (layer "F.Mask") (uuid "{u_mask_ip}")')
         lines.append('  )')
 
-    # Ukončení PCB souboru
+    # End of PCB file
     lines.append('  (embedded_fonts no)')
     lines.append(')')
     content = "\n".join(lines) + "\n"
@@ -358,7 +358,7 @@ def generate_kicad_pcb(
     with open(abs_output_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-    # Vlastní DRC pravidla (.kicad_dru) pro edge-launch SMA konektor a celoplošnou zem B.Cu až k hraně desky
+    # Custom DRC rules (.kicad_dru) for edge-launch SMA connector and full-board B.Cu ground plane up to board edge
     stem, _ = os.path.splitext(abs_output_path)
     dru_path = f"{stem}.kicad_dru"
     dru_content = (
@@ -392,14 +392,14 @@ def generate_kicad_footprint(
     tight_pcb: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
-    Vygeneruje knihovní pouzdro součástky (.kicad_mod) pro KiCad 10.
+    Generate a component library footprint (.kicad_mod) for KiCad 10.
 
-    Kotevní bod (0, 0) leží v geometrickém středu vyzařujícího flíčku.
-    Struktura:
-      - Vlastní SMD pad "1" ("RF_IN") obsahující kompletní geometrii antény na F.Cu a F.Mask.
-      - SMD pady "2" a "3" ("GND") pro nožičky SMA konektoru.
-      - Otevření masky F.Mask pro SMA konektor.
-      - Obrys substrátu a ohraničení na vrstvách F.Fab a F.CrtYd.
+    Anchor point (0, 0) lies at the geometric center of the radiating patch.
+    Structure:
+      - Custom SMD pad "1" ("RF_IN") containing the complete antenna geometry on F.Cu and F.Mask.
+      - SMD pads "2" and "3" ("GND") for the SMA connector pins.
+      - F.Mask openings for the SMA connector.
+      - Board outline and courtyard on F.Fab and F.CrtYd layers.
     """
     geom: KiCadGeometryData = get_model4_kicad_geometry(
         params, origin_x=0.0, origin_y=0.0, is_footprint=True, tight_pcb=tight_pcb
@@ -423,16 +423,16 @@ def generate_kicad_footprint(
         fp_name = "Antenna_Model4_LHCP"
     fp_name_esc = _escape_kicad_str(fp_name)
 
-    # Hlavička Footprintu KiCad 10
+    # KiCad 10 Footprint header
     lines.append(f'(footprint "{fp_name_esc}"')
     lines.append('  (version 20260206)')
-    lines.append('  (generator "antena_kicad_generator")')
+    lines.append('  (generator "antenna_kicad_generator")')
     lines.append('  (generator_version "10.0")')
     lines.append('  (layer "F.Cu")')
     lines.append('  (descr "Model 4 LHCP Patch Antenna (SDARS 2.3325 GHz) with Cinch Johnson 142-0701-801 SMA interface")')
     lines.append('  (tags "antenna patch lhcp rf sdars 50ohm sma")')
 
-    # Standardní vlastnosti pouzdra
+    # Standard footprint properties
     lines.append(f'  (property "Reference" "ANT**" (at 0.0000 {y_min - 4.0:.4f} 0) (layer "F.SilkS") (uuid "{_gen_uuid()}")')
     lines.append('    (effects (font (size 1 1) (thickness 0.15)))')
     lines.append('  )')
@@ -447,7 +447,7 @@ def generate_kicad_footprint(
     lines.append('  )')
     lines.append('  (duplicate_pad_numbers_are_jumpers no)')
 
-    # Zákaznický pad 1 ("RF_IN") s celou RF geometrií
+    # Custom pad 1 ("RF_IN") with the entire RF geometry
     mask_clearance = float(params.get('mask_clearance', info.get('mask_clearance', 0.30)))
     lines.append('  (pad "1" smd custom (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask")')
     lines.append(f'    (solder_mask_margin {mask_clearance:.4f})')
@@ -464,7 +464,7 @@ def generate_kicad_footprint(
     lines.append(f'    (uuid "{_gen_uuid()}")')
     lines.append('  )')
 
-    # SMD plošky pro SMA zemní nožičky
+    # SMD pads for SMA ground legs
     lines.append(
         f'  (pad "2" smd rect (at {top_x:.4f} {top_y:.4f}) (size {pad_len:.4f} {pad_w:.4f}) '
         f'(layers "F.Cu" "F.Mask") (uuid "{_gen_uuid()}"))'
@@ -474,7 +474,7 @@ def generate_kicad_footprint(
         f'(layers "F.Cu" "F.Mask") (uuid "{_gen_uuid()}"))'
     )
 
-    # Obrys desky a clearance na F.Fab a F.CrtYd
+    # Board outline and clearance on F.Fab and F.CrtYd
     lines.append(
         f'  (fp_rect (start {x_min:.4f} {y_min:.4f}) (end {x_max:.4f} {y_max:.4f}) '
         f'(stroke (width 0.1) (type default)) (fill no) (layer "F.Fab") (uuid "{_gen_uuid()}"))'
@@ -484,7 +484,7 @@ def generate_kicad_footprint(
         f'(stroke (width 0.05) (type default)) (fill no) (layer "F.CrtYd") (uuid "{_gen_uuid()}"))'
     )
 
-    # Oddělená otevření F.Mask nad SMA GND ploškami (s hrází masky od RF_IN) a jednolité B.Mask pod SMA
+    # Separate F.Mask openings over SMA GND pads (with mask dam from RF_IN) and solid B.Mask under SMA
     x_port = float(info['x_port'])
     y_T = float(info['y_T'])
     sma_mask_len = float(info['sma_mask_len'])
@@ -516,13 +516,13 @@ def generate_kicad_footprint(
         f'(stroke (width 0) (type solid)) (fill yes) (layer "B.Mask") (uuid "{_gen_uuid()}"))'
     )
 
-    # Popis portu
+    # Port label
     lines.append(
         f'  (fp_text user "50 OHM RF IN" (at {x_min + 7.0:.4f} {-y_T:.4f} 0) (layer "F.SilkS") '
         f'(uuid "{_gen_uuid()}") (effects (font (size 0.8 0.8) (thickness 0.12))))'
     )
 
-    # Ukončení footprintu
+    # End of footprint
     lines.append('  (embedded_fonts no)')
     lines.append(')')
     content = "\n".join(lines) + "\n"

@@ -1,15 +1,15 @@
 """
-geometry_v7.py - Model 7: Zrcadlený model k Modelu 4 pro generování opačné polarizace (RHCP).
-Architektura:
-  - Odvozeno z finálního Modelu 4 přesnou prostorovou reflexí podél osy Y (x -> -x).
-  - Vodorovný 50 Ohm přívodní kmen a otočený T-článek jsou umístěny na pravé straně (x_T > 0, x_port = +W_sub/2).
-  - Pravá větev (excitace Ex na pravé hraně flíčku x = +W/2, referenční fáze 0°):
-      vedení s 1 obloukem z horního ramene T-článku do pravého čtvrtvlnného transformátoru.
-  - Spodní větev (excitace Ey na spodní hraně flíčku y = -L/2, zpoždění -90°):
-      vedení se 2 oblouky ze spodního ramene T-článku do spodního transformátoru (delta_L ≈ lambda_g/4).
-  - Vzhledem k prostorovému zrcadlení x -> -x se smysl otáčení vektoru elektrického pole obrací:
-      původní levotočivá polarizace (LHCP) Modelu 4 přechází na čistou pravotočivou kruhovou polarizaci (RHCP).
-  - Impedanční poměry, přizpůsobení (S11), rezonanční kmitočet i osový poměr (AR) zůstávají identické s Modelem 4.
+geometry_v7.py - Model 7: Mirrored Model 4 for generating opposite polarization (RHCP).
+Architecture:
+  - Derived from final Model 4 via exact spatial reflection across the Y-axis (x -> -x).
+  - Horizontal 50 Ohm feed trunk and rotated T-junction are located on the right side (x_T > 0, x_port = +W_sub/2).
+  - Right branch (Ex excitation on right patch edge x = +W/2, reference phase 0 deg):
+      trace with 1 arc from the upper arm of the T-junction to the right quarter-wave transformer.
+  - Bottom branch (Ey excitation on bottom patch edge y = -L/2, -90 deg delay):
+      trace with 2 arcs from the lower arm of the T-junction to the bottom transformer (delta_L ≈ lambda_g/4).
+  - Due to spatial mirroring x -> -x, the sense of rotation of the electric field vector reverses:
+      the original left-hand circular polarization (LHCP) of Model 4 becomes pure right-hand circular polarization (RHCP).
+  - Impedance ratios, matching (S11), resonant frequency, and axial ratio (AR) remain identical to Model 4.
 """
 
 import os
@@ -35,10 +35,10 @@ COORD_TOL = 1e-9
 
 def compute_model7_routing(params):
     """
-    Vypočte veškeré RF a geometrické souřadnice zrcadleného Modelu 7 (bez spuštění Gmsh).
-    Přebírá analytický výpočet délek z Modelu 4 a zrcadlí souřadnice podél osy Y (x -> -x).
+    Compute all RF and geometric coordinates of the mirrored Model 7 (without starting Gmsh).
+    Reuses the analytical path calculation from Model 4 and mirrors coordinates across the Y-axis (x -> -x).
     """
-    # Pokud by uživatel zadal kladné x_T pro Model 7, převedeme ho pro interní výpočet Modelu 4 na záporné
+    # If the user passed a positive x_T for Model 7, convert it to negative for internal Model 4 calculation
     params_m4 = dict(params)
     raw_x_T = params_m4.get('feed_x_T', params_m4.get('x_T'))
     if raw_x_T is not None and float(raw_x_T) > 0:
@@ -46,7 +46,7 @@ def compute_model7_routing(params):
 
     info4 = compute_model4_routing(params_m4)
 
-    # Zrcadlení souřadnic kolem osy Y: x -> -x, y -> y
+    # Mirror coordinates across Y-axis: x -> -x, y -> y
     x_T = -float(info4['x_T'])
     x_junc_r = -float(info4['x_junc_l'])
     x_port = -float(info4['x_port'])
@@ -58,7 +58,7 @@ def compute_model7_routing(params):
     arm_r_build_waypoints = [(-float(p[0]), float(p[1])) for p in info4['arm_l_build_waypoints']]
     arm_b_build_waypoints = [(-float(p[0]), float(p[1])) for p in info4['arm_b_build_waypoints']]
 
-    # Délky drah a rozdíl fázování jsou identické s Modelem 4 (izometrie)
+    # Path lengths and phase difference are identical to Model 4 (isometry)
     L_100_r = float(info4['L_100_l'])
     L_100_b = float(info4['L_100_b'])
 
@@ -68,7 +68,7 @@ def compute_model7_routing(params):
         'polarization_type': 'RHCP',
         'x_T': x_T,
         'x_junc_r': x_junc_r,
-        'x_junc_l': -x_junc_r,  # pro kompatibilitu
+        'x_junc_l': -x_junc_r,  # for compatibility
         'x_port': x_port,
         'x_right_vert': x_right_vert,
         'x_left_vert': -x_right_vert,
@@ -92,9 +92,9 @@ def compute_model7_routing(params):
 
 def build_t_junction_trunk_occ_v7(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, z):
     """
-    Vytvoří plochu vodorovného 50 Ohm přívodního kmene z pravého portu (x_port, y_T)
-    doleva k otočené svislé příčce T-článku na x_T ([x_T - hw_f, x_T + hw_f],
-    y in [y_T - d_t, y_T + d_t]), se zaoblením vnitřních rohů o poloměru t_fillet_r.
+    Create the surface of the horizontal 50 Ohm feed trunk from the right port (x_port, y_T)
+    leftward to the rotated vertical T-junction crossbar at x_T ([x_T - hw_f, x_T + hw_f],
+    y in [y_T - d_t, y_T + d_t]), with inner corner fillets of radius t_fillet_r.
     """
     hw_50 = float(w_50) / 2.0
     hw_f = float(w_feed) / 2.0
@@ -115,8 +115,8 @@ def build_t_junction_trunk_occ_v7(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, z)
     x_fillet_start = x_bar_right + r_f
     if x_fillet_start >= x_right - 1e-4:
         raise ValueError(
-            f"Délka 50 Ohm vedení (x_port - x_bar_right = {x_right - x_bar_right:.2f} mm) "
-            f"nestačí pro zaoblení T-článku r={r_f:.2f} mm."
+            f"50 Ohm line length (x_port - x_bar_right = {x_right - x_bar_right:.2f} mm) "
+            f"is insufficient for T-junction fillet radius r={r_f:.2f} mm."
         )
 
     p_br_port = gmsh.model.occ.addPoint(x_right, y_center - hw_50, z)
@@ -146,7 +146,7 @@ def build_t_junction_trunk_occ_v7(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, z)
 
 def build_model_v7(params):
     """
-    Vytvoří 3D CAD model Modelu 7 (zrcadlený Model 4 pro RHCP) v OpenCASCADE.
+    Create the 3D CAD model of Model 7 (mirrored Model 4 for RHCP) in OpenCASCADE.
     """
     info = compute_model7_routing(params)
 
@@ -176,7 +176,7 @@ def build_model_v7(params):
     y_junc_b = info['y_junc_b']
     x_junc_r = info['x_junc_r']
 
-    # Uložení vypočtených parametrů zpět do params
+    # Store computed parameters back into params
     params['antenna_model'] = 7
     params['polarization_type'] = 'RHCP'
     params['w_50'] = float(np.round(w_50, 4))
@@ -265,7 +265,7 @@ def build_model_v7(params):
     params['arm_b_waypoints'] = info['arm_b_waypoints']
     params['arm_l_waypoints'] = info['arm_r_waypoints']
 
-    # 1. Inicializace Gmsh a základní objemy (Substrát a Vzduchový box)
+    # 1. Initialize Gmsh and base volumes (Substrate and Air box)
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 1)
     gmsh.model.add("rhcp_antenna_model7")
@@ -280,7 +280,7 @@ def build_model_v7(params):
         h + 2.0 * margin,
     )
 
-    # 2. Vyzařující flíček se zářezy na spodní a pravé hraně (z = h)
+    # 2. Radiating patch with inset notches on bottom and right edges (z = h)
     patch_base = gmsh.model.occ.addRectangle(-W / 2.0, -L / 2.0, h, W, L)
     tool_notches = []
     if inset_b > 0.0:
@@ -298,11 +298,11 @@ def build_model_v7(params):
     else:
         patch_tag = patch_base
 
-    # 3. Čtvrtvlnné transformátory u flíčku (z = h)
+    # 3. Quarter-wave transformers at the patch (z = h)
     trans_b = gmsh.model.occ.addRectangle(-w_T_b / 2.0, y_junc_b, h, w_T_b, l_T_b)
     trans_r = gmsh.model.occ.addRectangle(W / 2.0 - inset_r, -w_T_r / 2.0, h, l_T_r, w_T_r)
 
-    # 4. Zakřivená 100 Ohm vedení a otočený 50 Ohm T-článek vpravo (sloučeno přes occ.fuse)
+    # 4. Curved 100 Ohm lines and rotated 50 Ohm T-junction on the right (merged via occ.fuse)
     trunk_tag, _ = build_t_junction_trunk_occ_v7(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, h)
     arm_r_tag = build_curved_trace_occ(info['arm_r_build_waypoints'], w_feed, bend_radius, h)
     arm_b_tag = build_curved_trace_occ(info['arm_b_build_waypoints'], w_feed, bend_radius, h)
@@ -313,7 +313,7 @@ def build_model_v7(params):
     metal_surfs = [patch_tag, trans_b, trans_r] + feed_net_tags
     gmsh.model.occ.synchronize()
 
-    # 5. Výstupní 50 Ohm lumped port (YZ rovina na pravé hraně substrátu x = x_port = +W_sub/2)
+    # 5. Output 50 Ohm lumped port (YZ plane on right substrate edge x = x_port = +W_sub/2)
     p1 = gmsh.model.occ.addPoint(x_port, y_T - w_50 / 2.0, 0.0)
     p2 = gmsh.model.occ.addPoint(x_port, y_T + w_50 / 2.0, 0.0)
     p3 = gmsh.model.occ.addPoint(x_port, y_T + w_50 / 2.0, h)
@@ -325,12 +325,12 @@ def build_model_v7(params):
     cl = gmsh.model.occ.addCurveLoop([l1, l2, l3, l4])
     port_tag = gmsh.model.occ.addPlaneSurface([cl])
 
-    # 6. Zemní plocha GND (z = 0)
+    # 6. Ground plane GND (z = 0)
     gnd_tag = gmsh.model.occ.addRectangle(-W_sub / 2.0, -L_sub / 2.0, 0.0, W_sub, L_sub)
 
     gmsh.model.occ.synchronize()
 
-    # 7. Konformní fúze objemů a ploch (Boolean Fragments)
+    # 7. Conformal fusion of volumes and surfaces (Boolean Fragments)
     vols = gmsh.model.occ.getEntities(3)
     input_surfs = [(2, s) for s in metal_surfs] + [(2, gnd_tag), (2, port_tag)]
 

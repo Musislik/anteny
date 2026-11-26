@@ -1,5 +1,5 @@
 """
-sweep_model1.py - Parametrický sweep pro Model 1 (1 port, T-dělič výkonu).
+sweep_model1.py - Parametric sweep for Model 1 (1 port, T-junction power divider).
 """
 
 import os
@@ -8,7 +8,7 @@ import time
 import argparse
 import numpy as np
 
-# Zajistíme dostupnost src a scripts složek pro importy
+# Ensure src and scripts directories are available for imports
 src_dir = os.path.dirname(os.path.abspath(__file__))
 scripts_dir = os.path.abspath(os.path.join(src_dir, "..", "scripts"))
 for d in (src_dir, scripts_dir):
@@ -22,7 +22,7 @@ from main import main
 from rf_calc import synth_square_patch_size, DESIGN_FREQ_GHZ
 from tracker import print_summary_table
 
-# Import exportní utility pro uložení balíčků po každém kroku
+# Import export utility for saving packages after each step
 try:
     from export_package import export_paraview_package
 except ImportError:
@@ -111,7 +111,7 @@ def _resolve_model1_sim_params(
     linear_max_its=None,
     export_each=None,
 ):
-    """Vyhodnotí společné simulační parametry pro sweepy Modelu 1."""
+    """Resolve common simulation parameters for Model 1 sweeps."""
     sim_params = {
         'freq_min': freq_min if freq_min is not None else _resolve_env_float("SWEEP_FREQ_MIN", "FREQ_MIN", 2.280),
         'freq_max': freq_max if freq_max is not None else _resolve_env_float("SWEEP_FREQ_MAX", "FREQ_MAX", 2.380),
@@ -128,7 +128,7 @@ def _resolve_model1_sim_params(
 
 
 def _execute_model1_step(custom_params, export_name, export_each, skip_simulation, step_label):
-    """Spustí jeden simulační krok Modelu 1 a volitelně exportuje ParaView balíček."""
+    """Run a single Model 1 simulation step and optionally export a ParaView package."""
     try:
         main(custom_params=custom_params, skip_simulation=skip_simulation, clean=True)
 
@@ -136,12 +136,12 @@ def _execute_model1_step(custom_params, export_name, export_each, skip_simulatio
             try:
                 export_paraview_package(output_name=export_name)
             except Exception as exp_err:
-                print(f"Varování: Export balíčku {export_name} selhal: {exp_err}")
+                print(f"Warning: Export of package {export_name} failed: {exp_err}")
 
         time.sleep(1)
         return True
     except Exception as e:
-        print(f"[CHYBA] Krok {step_label} selhal: {e}")
+        print(f"[ERROR] Step {step_label} failed: {e}")
         return False
 
 
@@ -181,10 +181,10 @@ def run_inset_sweep(
 
     total_steps = len(insets)
     print("=" * 65)
-    print("ZAHÁJENÍ PARAMETRICKÉHO SWEEPU MODELU 1 (T-DĚLIČ)")
-    print(f"  • Testované hodnoty zanoření: {insets} mm")
-    print(f"  • Frekvenční rozsah:          {sim_params['freq_min']:.3f} - {sim_params['freq_max']:.3f} GHz (krok {sim_params['freq_step']:.4f} GHz)")
-    print(f"  • Rozměry flíčku:             L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
+    print("STARTING MODEL 1 PARAMETRIC SWEEP (T-DIVIDER)")
+    print(f"  * Tested inset values:        {insets} mm")
+    print(f"  * Frequency range:            {sim_params['freq_min']:.3f} - {sim_params['freq_max']:.3f} GHz (step {sim_params['freq_step']:.4f} GHz)")
+    print(f"  * Patch dimensions:           L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
     print("=" * 65)
 
     successful_runs = 0
@@ -192,7 +192,7 @@ def run_inset_sweep(
     for i, inset in enumerate(insets, start=1):
         inset_val = float(np.round(inset, 3))
         export_name = f"m1_inset_{inset_val:.2f}mm"
-        print(f"\n>>> [{i}/{total_steps}] Model 1 krok: feed_inset = {inset_val:.3f} mm <<<")
+        print(f"\n>>> [{i}/{total_steps}] Model 1 step: feed_inset = {inset_val:.3f} mm <<<")
 
         custom_params = {
             'antenna_model': 1,
@@ -203,11 +203,11 @@ def run_inset_sweep(
             **sim_params,
         }
 
-        if _execute_model1_step(custom_params, export_name, export_each, skip_simulation, f"s feed_inset={inset_val} mm"):
+        if _execute_model1_step(custom_params, export_name, export_each, skip_simulation, f"with feed_inset={inset_val} mm"):
             successful_runs += 1
 
     print("\n" + "=" * 65)
-    print(f"SWEEP MODELU 1 DOKONČEN! Úspěšně proběhlo {successful_runs}/{total_steps} běhů.")
+    print(f"MODEL 1 SWEEP COMPLETED! {successful_runs}/{total_steps} runs succeeded.")
     print("=" * 65)
 
     print_summary_table(model_version=1)
@@ -244,8 +244,8 @@ def run_patch_length_sweep(
     )
 
     print("=" * 65)
-    print("ZAHÁJENÍ PARAMETRICKÉHO SWEEPU PRO PATCH_L (MODEL 1)")
-    print(f"Hodnoty k testování: {patch_lengths} mm")
+    print("STARTING PARAMETRIC SWEEP FOR PATCH_L (MODEL 1)")
+    print(f"Values to test: {patch_lengths} mm")
     print("=" * 65)
 
     for i, length in enumerate(patch_lengths, start=1):
@@ -260,10 +260,10 @@ def run_patch_length_sweep(
             **sim_params,
         }
 
-        _execute_model1_step(custom_params, export_name, export_each, skip_simulation, f"s patch_L={length_val} mm")
+        _execute_model1_step(custom_params, export_name, export_each, skip_simulation, f"with patch_L={length_val} mm")
 
     print("\n" + "=" * 65)
-    print("Sweep patch_L dokončen!")
+    print("Sweep patch_L completed!")
     print("=" * 65)
 
     print_summary_table(model_version=1)
@@ -299,7 +299,7 @@ def run_sweep_model1(**kwargs):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Parametrický sweep Modelu 1 (T-dělič)")
+    parser = argparse.ArgumentParser(description="Model 1 parametric sweep (T-divider)")
     parser.add_argument("--param", choices=["inset", "patch_l"], default="inset")
     parser.add_argument("--insets", type=float, nargs="+", default=None)
     parser.add_argument("--patch-lengths", type=float, nargs="+", default=None, dest="patch_lengths")

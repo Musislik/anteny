@@ -1,7 +1,7 @@
 import os
 import gmsh
 
-# Konstanty geometrické přesnosti a tolerancí
+# Geometric precision and tolerance constants
 GEOM_TOL = 1e-6
 EDGE_CLEARANCE_TOL = 1e-3
 
@@ -16,7 +16,7 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
     sub_vols = []
     air_vols = []
     
-    # 1. Klasifikace objemů podle těžiště a bounding boxu
+    # 1. Volume classification by center of mass and bounding box
     for dim, tag in vols:
         bbox = gmsh.model.getBoundingBox(dim, tag)
         if abs(bbox[2]) < GEOM_TOL and abs(bbox[5] - h) < GEOM_TOL:
@@ -27,14 +27,14 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
     gmsh.model.addPhysicalGroup(3, sub_vols, tag=1, name="Substrate")
     gmsh.model.addPhysicalGroup(3, air_vols, tag=2, name="Air")
     
-    # 2. Klasifikace ploch (PEC, Port, Absorbing)
+    # 2. Surface classification (PEC, Port, Absorbing)
     pec_surfs = []
     port_surfs = []
     port1_surfs = []
     port2_surfs = []
     absorbing_surfs = []
     
-    # Pokud geometry.py předala přesné tagy z Boolean Fragment operace, použijeme je přednostně
+    # If geometry.py passed exact tags from Boolean Fragment, use them with priority
     if params.get('pec_tags'):
         pec_surfs = list(params['pec_tags'])
     if params.get('port1_tags'):
@@ -52,19 +52,19 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
         bbox = gmsh.model.getBoundingBox(dim, tag)
         xmin, ymin, zmin, xmax, ymax, zmax = bbox
         
-        # Absorpční stěny (vnější hranice vzduchového boxu)
+        # Absorbing boundaries (outer boundary of the air box)
         if abs(zmax - (h + margin)) < GEOM_TOL or abs(zmin - (-margin)) < GEOM_TOL or \
            abs(xmax - (params['sub_W']/2 + margin)) < GEOM_TOL or abs(xmin - (-params['sub_W']/2 - margin)) < GEOM_TOL or \
            abs(ymax - (params['sub_L']/2 + margin)) < GEOM_TOL or abs(ymin - (-params['sub_L']/2 - margin)) < GEOM_TOL:
             absorbing_surfs.append(tag)
             continue
             
-        # Fallback detekce PEC a Portu, pokud by nebyly předány z geometry.py
+        # Fallback PEC and Port detection if not provided by geometry.py
         if not params.get('pec_tags'):
-            # GND na z = 0
+            # GND at z = 0
             if abs(zmax) < GEOM_TOL and abs(zmin) < GEOM_TOL:
                 pec_surfs.append(tag)
-            # Patch a přívody na z = h (testujeme, zda plocha neleží vně kovových obrysů)
+            # Patch and feed lines at z = h (test whether surface lies within metallic outlines)
             elif abs(zmin - h) < GEOM_TOL and abs(zmax - h) < GEOM_TOL:
                 com = gmsh.model.occ.getCenterOfMass(dim, tag)
                 in_patch = (abs(com[0]) <= params['patch_W']/2 + GEOM_TOL and abs(com[1]) <= params['patch_L']/2 + GEOM_TOL)
@@ -74,7 +74,7 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
                     
         if not params.get('port_tags') and not params.get('port1_tags'):
             if model_version == 6:
-                # Model 6: Port 1 (interní svislá plocha v rovině XZ na y = y_T - d_t)
+                # Model 6: Port 1 (internal vertical surface in XZ plane at y = y_T - d_t)
                 x_T_val = params.get('feed_x_T', params.get('x_T'))
                 y_p1 = params.get('port1_y', params.get('y_port_1'))
                 if y_p1 is None and params.get('feed_y_T') is not None and params.get('d_t') is not None:
@@ -86,19 +86,19 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
                             port1_surfs.append(tag)
                             port_surfs.append(tag)
             elif model_version == 7:
-                # Model 7: jediný 50 Ohm port (YZ rovina na pravém kraji substrátu x = +W_sub/2 kolem port_y)
+                # Model 7: single 50 Ohm port (YZ plane on right substrate edge x = +W_sub/2 around port_y)
                 if abs(xmin - (params['sub_W']/2)) < GEOM_TOL and abs(xmax - (params['sub_W']/2)) < GEOM_TOL and \
                    abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
                     if ymin >= port_y - feed_w/2 - EDGE_CLEARANCE_TOL and ymax <= port_y + feed_w/2 + EDGE_CLEARANCE_TOL:
                         port_surfs.append(tag)
             elif model_version == 4:
-                # Model 4: jediný 50 Ohm port (YZ rovina na levém kraji substrátu x = -W_sub/2 kolem port_y)
+                # Model 4: single 50 Ohm port (YZ plane on left substrate edge x = -W_sub/2 around port_y)
                 if abs(xmin - (-params['sub_W']/2)) < GEOM_TOL and abs(xmax - (-params['sub_W']/2)) < GEOM_TOL and \
                    abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
                     if ymin >= port_y - feed_w/2 - EDGE_CLEARANCE_TOL and ymax <= port_y + feed_w/2 + EDGE_CLEARANCE_TOL:
                         port_surfs.append(tag)
             elif model_version == 5:
-                # Model 5: Port 1 (YZ rovina na levém kraji substrátu x = -W_sub/2 kolem y_port_1)
+                # Model 5: Port 1 (YZ plane on left substrate edge x = -W_sub/2 around y_port_1)
                 port_y_1 = params.get('y_port_1', port_y)
                 if abs(xmin - (-params['sub_W']/2)) < GEOM_TOL and abs(xmax - (-params['sub_W']/2)) < GEOM_TOL and \
                    abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
@@ -106,7 +106,7 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
                         port1_surfs.append(tag)
                         port_surfs.append(tag)
             else:
-                # Port 1 (XZ rovina na spodním kraji substrátu y = -L_sub/2)
+                # Port 1 (XZ plane on bottom substrate edge y = -L_sub/2)
                 if abs(ymin - (-params['sub_L']/2)) < GEOM_TOL and abs(ymax - (-params['sub_L']/2)) < GEOM_TOL and \
                    abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
                     if xmin >= port_x - feed_w/2 - EDGE_CLEARANCE_TOL and xmax <= port_x + feed_w/2 + EDGE_CLEARANCE_TOL:
@@ -115,7 +115,7 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
 
         if not params.get('port2_tags') and model_version in (2, 3, 5, 6):
             if model_version == 6:
-                # Model 6: Port 2 (interní svislá plocha v rovině XZ na y = y_T + d_t)
+                # Model 6: Port 2 (internal vertical surface in XZ plane at y = y_T + d_t)
                 x_T_val = params.get('feed_x_T', params.get('x_T'))
                 y_p2 = params.get('port2_y', params.get('y_port_2'))
                 if y_p2 is None and params.get('feed_y_T') is not None and params.get('d_t') is not None:
@@ -126,14 +126,14 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
                         if xmin >= x_T_val - feed_w/2 - EDGE_CLEARANCE_TOL and xmax <= x_T_val + feed_w/2 + EDGE_CLEARANCE_TOL:
                             port2_surfs.append(tag)
             else:
-                # Port 2 (YZ rovina na levém kraji substrátu x = -W_sub/2)
+                # Port 2 (YZ plane on left substrate edge x = -W_sub/2)
                 port_y_2 = params.get('y_port_2', 0.0)
                 if abs(xmin - (-params['sub_W']/2)) < GEOM_TOL and abs(xmax - (-params['sub_W']/2)) < GEOM_TOL and \
                    abs(zmax - h) < GEOM_TOL and abs(zmin) < GEOM_TOL:
                     if ymin >= port_y_2 - feed_w/2 - EDGE_CLEARANCE_TOL and ymax <= port_y_2 + feed_w/2 + EDGE_CLEARANCE_TOL:
                         port2_surfs.append(tag)
 
-    # 2. Klasifikace ploch (3: PEC, 4: Port / Port1, 5: Absorbing, 6: Port2 pro Model 2, 3, 5 a 6)
+    # 2. Surface classification (3: PEC, 4: Port / Port1, 5: Absorbing, 6: Port2 for Model 2, 3, 5, and 6)
     gmsh.model.addPhysicalGroup(2, list(set(pec_surfs)), tag=3, name="PEC")
 
     if model_version in (2, 3, 5, 6) and port1_surfs and port2_surfs:
@@ -147,7 +147,7 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
 
     gmsh.model.addPhysicalGroup(2, list(set(absorbing_surfs)), tag=5, name="Absorbing")
     
-    # 3. Nastavení lokálního adaptivního zjemnění (Distance / Threshold pole)
+    # 3. Local adaptive refinement setup (Distance / Threshold field)
     top_conductors = []
     for dim, tag in surfs:
         bbox = gmsh.model.getBoundingBox(dim, tag)
@@ -178,7 +178,7 @@ def assign_physical_groups_and_mesh(params, data_dir=None):
         gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
         gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 
-    # 4. Globální meze a kompatibilní export pro MFEM / Palace (MSH 2.2)
+    # 4. Global bounds and compatible export for MFEM / Palace (MSH 2.2)
     gmsh.option.setNumber("Mesh.MeshSizeMax", params['mesh_size_max'])
     gmsh.option.setNumber("Mesh.MeshSizeMin", params['mesh_size_min'])
     gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)

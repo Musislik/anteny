@@ -1,12 +1,12 @@
 """
-Export animovaného GIFu rozložení točivého elektrického pole (LHCP).
+Export an animated GIF of the rotating circularly polarized electric field (LHCP).
 
-Možnosti spuštění:
-1. Pomocí Dockeru:
+Usage options:
+1. Using Docker:
     docker compose run --rm pipeline python scripts/export_lhcp_gif.py
-2. Pomocí pvpython (ParaView):
+2. Using pvpython (ParaView):
     pvpython scripts/export_lhcp_gif.py
-3. Přímo v Pythonu (pokud máte pyvista nebo vtk s matplotlib):
+3. Directly in Python (with pyvista or vtk + matplotlib installed):
     python scripts/export_lhcp_gif.py
 """
 
@@ -24,7 +24,7 @@ from postpro_utils import load_env, ensure_paraview_linked
 
 
 def find_default_dataset():
-    """Najde výstupní soubor simulace z DATA_DIR definovaného v .env (střední rezonanční frekvence)."""
+    """Find the simulation output file from DATA_DIR defined in .env (center resonant frequency)."""
     _, data_dir = load_env()
     ensure_paraview_linked(data_dir)
     cycles = sorted(glob.glob(os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "Cycle*", "data.pvtu")))
@@ -39,13 +39,13 @@ def find_default_dataset():
 
 
 def read_mesh_fields(vtu_path):
-    """Univerzální načtení bodů a komplexních polí (pyvista, vtk nebo meshio)."""
-    print(f"--- Načítám data pole z: {vtu_path} ---")
+    """Universal loader for mesh points and complex fields (pyvista, vtk, or meshio)."""
+    print(f"--- Loading field data from: {vtu_path} ---")
     points = None
     e_real = None
     e_imag = None
 
-    # 1. Zkusíme PyVista (standard v Docker kontejneru pipeline)
+    # 1. Try PyVista (standard in the pipeline Docker container)
     try:
         import pyvista as pv
         mesh = pv.read(vtu_path)
@@ -53,11 +53,11 @@ def read_mesh_fields(vtu_path):
         if "E_real" in mesh.point_data and "E_imag" in mesh.point_data:
             e_real = np.array(mesh.point_data["E_real"])
             e_imag = np.array(mesh.point_data["E_imag"])
-        print(f"Načteno přes PyVista ({len(points)} bodů).")
+        print(f"Loaded via PyVista ({len(points)} points).")
     except Exception:
         pass
 
-    # 2. Zkusíme VTK (standard v pvpython)
+    # 2. Try VTK (standard in pvpython)
     if points is None:
         try:
             import vtk
@@ -74,11 +74,11 @@ def read_mesh_fields(vtu_path):
             if pd.GetArray("E_real") and pd.GetArray("E_imag"):
                 e_real = numpy_support.vtk_to_numpy(pd.GetArray("E_real"))
                 e_imag = numpy_support.vtk_to_numpy(pd.GetArray("E_imag"))
-            print(f"Načteno přes VTK ({len(points)} bodů).")
+            print(f"Loaded via VTK ({len(points)} points).")
         except Exception:
             pass
 
-    # 3. Zkusíme meshio jako zálohu
+    # 3. Try meshio as fallback
     if points is None:
         try:
             import meshio
@@ -87,21 +87,21 @@ def read_mesh_fields(vtu_path):
             if "E_real" in mesh.point_data and "E_imag" in mesh.point_data:
                 e_real = mesh.point_data["E_real"]
                 e_imag = mesh.point_data["E_imag"]
-            print(f"Načteno přes Meshio ({len(points)} bodů).")
+            print(f"Loaded via Meshio ({len(points)} points).")
         except Exception:
             pass
 
     if points is None or e_real is None or e_imag is None:
         raise RuntimeError(
-            f"Chyba: Nepodařilo se načíst body nebo pole E_real/E_imag ze souboru {vtu_path}.\n"
-            "Ujistěte se, že spouštíte skript v Dockeru (pipeline) nebo přes pvpython."
+            f"Error: Failed to load points or E_real/E_imag fields from {vtu_path}.\n"
+            "Make sure you run the script inside Docker (pipeline) or via pvpython."
         )
 
     return points, e_real, e_imag
 
 
 def _load_params_for_vtu(vtu_path, data_dir):
-    """Načte params.json ze složky u vtu_path, jejích nadřazených složek nebo z data_dir."""
+    """Load params.json from the vtu_path directory, its parent directories, or data_dir."""
     candidates = []
     if vtu_path:
         cur = os.path.dirname(os.path.abspath(vtu_path))
@@ -138,8 +138,8 @@ def export_lhcp_gif(vtu_path=None,
     if vtu_path is None:
         vtu_path = find_default_dataset()
         if vtu_path is None:
-            print("CHYBA: Nebyl nalezen žádný výstupní soubor simulace (.pvtu/.vtu)!")
-            print(f"Zkontrolujte DATA_DIR ({data_dir}) nebo nejprve spusťte simulaci.")
+            print("ERROR: No simulation output file (.pvtu/.vtu) found!")
+            print(f"Check DATA_DIR ({data_dir}) or run the simulation first.")
             return
 
     model_params = _load_params_for_vtu(vtu_path, data_dir)
@@ -153,46 +153,46 @@ def export_lhcp_gif(vtu_path=None,
 
     points, e_real, e_imag = read_mesh_fields(vtu_path)
 
-    # Detekce měřítka jednotek (metry vs milimetry)
+    # Detect coordinate units (meters vs. millimeters)
     max_coord = np.max(np.abs(points[:, 0]))
     if max_coord < 1.0:
-        print("Detekovány souřadnice v metrech -> převádím na mm.")
+        print("Detected coordinates in meters -> converting to mm.")
         x_mm = points[:, 0] * 1e3
         y_mm = points[:, 1] * 1e3
         z_mm = points[:, 2] * 1e3
     else:
-        print("Detekovány souřadnice v milimetrech.")
+        print("Detected coordinates in millimeters.")
         x_mm = points[:, 0]
         y_mm = points[:, 1]
         z_mm = points[:, 2]
 
-    # Filtrace bodů v rovině patche (z cca sub_h_mm = 1.52 mm)
+    # Filter points in the patch plane (z approx. sub_h_mm = 1.52 mm)
     z_tol = 0.1
     mask_plane = np.abs(z_mm - sub_h_mm) <= z_tol
     if np.sum(mask_plane) < 10:
         z_tol = 0.5
         mask_plane = np.abs(z_mm - sub_h_mm) <= z_tol
 
-    # Omezení na doménu patche a napájecího vedení
+    # Restrict to patch and feedline domain
     domain_mask = mask_plane & (np.abs(x_mm) <= domain_extent_mm) & (np.abs(y_mm) <= domain_extent_mm)
     xp = x_mm[domain_mask]
     yp = y_mm[domain_mask]
     er_p = e_real[domain_mask]
     ei_p = e_imag[domain_mask]
 
-    print(f"Vybráno {len(xp)} bodů sítě v rovině patche (z = {sub_h_mm:.2f} mm, oblast +/-{domain_extent_mm} mm).")
+    print(f"Selected {len(xp)} mesh points in the patch plane (z = {sub_h_mm:.2f} mm, region +/-{domain_extent_mm} mm).")
     if len(xp) < 10:
-        print("CHYBA: Nalezen nedostatečný počet bodů v rovině patche pro vykreslení!")
+        print("ERROR: Insufficient number of points found in the patch plane for plotting!")
         return
 
-    # Vytvoření regulární 2D mřížky pro čisté zobrazení
+    # Create regular 2D grid for clean visualization
     grid_res = 80
     xi = np.linspace(-domain_extent_mm, domain_extent_mm, grid_res)
     yi = np.linspace(-domain_extent_mm, domain_extent_mm, grid_res)
     Xi, Yi = np.meshgrid(xi, yi)
 
-    # Triangulace bodů pro interpolaci na mřížku
-    print("Provádím triangulaci sítě pro interpolaci...")
+    # Triangulate points for grid interpolation
+    print("Triangulating mesh for interpolation...")
     triang = mtri.Triangulation(xp, yp)
     
     interp_er_x = mtri.LinearTriInterpolator(triang, er_p[:, 0])
@@ -211,13 +211,13 @@ def export_lhcp_gif(vtu_path=None,
     Ey_i = interp_ei_y(Xi, Yi)
     Ez_i = interp_ei_z(Xi, Yi)
 
-    # Nahrazení NaN mimo doménu nulami
+    # Replace NaNs outside the domain with zeros
     for arr in [Ex_r, Ey_r, Ez_r, Ex_i, Ey_i, Ez_i]:
         arr[np.isnan(arr)] = 0.0
 
     phases = np.linspace(0, 2 * np.pi, n_frames, endpoint=False)
 
-    # Stanovení stálé horní meze škály (98. percentil)
+    # Determine fixed color scale upper limit (98th percentile)
     max_mag = 0.0
     for phi in phases[::4]:
         Ex = Ex_r * np.cos(phi) - Ex_i * np.sin(phi)
@@ -231,19 +231,19 @@ def export_lhcp_gif(vtu_path=None,
     if max_mag <= 0:
         max_mag = 1.0
 
-    # Příprava grafického okna
+    # Prepare figure layout
     fig, ax = plt.subplots(figsize=(7.5, 6.5), dpi=110)
     plt.subplots_adjust(left=0.1, right=0.86, top=0.9, bottom=0.1)
     cax = fig.add_axes([0.88, 0.15, 0.03, 0.7])
 
-    step = 4  # krok pro vektorové šipky quiveru
+    step = 4  # stride for quiver vector arrows
 
     def update(frame):
         ax.clear()
         phi = phases[frame]
         deg = int(round(np.degrees(phi)))
 
-        # Vypočet okamžitého harmonického pole: E(t) = E_re * cos(wt) - E_im * sin(wt)
+        # Compute instantaneous harmonic field: E(t) = E_re * cos(wt) - E_im * sin(wt)
         Ex = Ex_r * np.cos(phi) - Ex_i * np.sin(phi)
         Ey = Ey_r * np.cos(phi) - Ey_i * np.sin(phi)
         Ez = Ez_r * np.cos(phi) - Ez_i * np.sin(phi)
@@ -251,7 +251,7 @@ def export_lhcp_gif(vtu_path=None,
 
         im = ax.pcolormesh(Xi, Yi, mag, cmap='turbo', shading='auto', vmin=0, vmax=max_mag)
 
-        # Šipky vektoru elektrického pole v rovině (Ex, Ey)
+        # In-plane electric field vector arrows (Ex, Ey)
         ax.quiver(
             Xi[::step, ::step], Yi[::step, ::step],
             Ex[::step, ::step], Ey[::step, ::step],
@@ -259,7 +259,7 @@ def export_lhcp_gif(vtu_path=None,
             alpha=0.9, width=0.005
         )
 
-        # Obrys flíčku antény (patch_W x patch_L)
+        # Antenna patch outline (patch_W x patch_L)
         rect = plt.Rectangle(
             (-patch_w / 2, -patch_l / 2), patch_w, patch_l,
             fill=False, edgecolor='cyan', linestyle='--', linewidth=1.5, label='Patch'
@@ -267,7 +267,7 @@ def export_lhcp_gif(vtu_path=None,
         ax.add_patch(rect)
 
         ax.set_title(
-            f"Rotace pole LHCP — Fáze $\\omega t = {deg:03d}^\\circ$\n"
+            f"LHCP Field Rotation — Phase $\\omega t = {deg:03d}^\\circ$\n"
             r"$\vec{E}(\omega t) = \vec{E}_{re}\cos(\omega t) - \vec{E}_{im}\sin(\omega t)$",
             fontsize=11, fontweight='bold'
         )
@@ -284,7 +284,7 @@ def export_lhcp_gif(vtu_path=None,
 
         return ax,
 
-    print(f"Generuji {n_frames} snímků animace rotace pole...")
+    print(f"Generating {n_frames} frames of field rotation animation...")
     anim = FuncAnimation(fig, update, frames=n_frames, blit=False)
 
     os.makedirs(os.path.dirname(output_gif) or ".", exist_ok=True)
@@ -293,7 +293,7 @@ def export_lhcp_gif(vtu_path=None,
     plt.close()
 
     print("==================================================")
-    print(f"Animovaný GIF byl úspěšně vygenerován do: {output_gif}")
+    print(f"Animated GIF successfully generated at: {output_gif}")
     print("==================================================")
 
 

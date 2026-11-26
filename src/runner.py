@@ -4,15 +4,15 @@ import os
 import shutil
 
 def run_palace():
-    print("Spouštím solver Palace...")
+    print("Starting Palace solver...")
     env = os.environ.copy()
     
-    # Spuštění solveru přes Docker Compose (funguje z hostitele i z pipeline kontejneru přes docker.sock)
+    # Run the solver via Docker Compose (works from host as well as pipeline container via docker.sock)
     docker_compose_bin = shutil.which("docker-compose") or shutil.which("docker-compose.exe")
     docker_bin = shutil.which("docker") or shutil.which("docker.exe")
     
     if not (docker_compose_bin or docker_bin):
-        raise RuntimeError("Docker / Docker Compose nebyl nalezen! Simulace může běžet pouze přes Docker.")
+        raise RuntimeError("Docker / Docker Compose not found! Simulation can only run via Docker.")
         
     cmd = (
         [docker_compose_bin, "--profile", "worker", "run", "--rm", "palace"]
@@ -20,12 +20,12 @@ def run_palace():
         else [docker_bin, "compose", "--profile", "worker", "run", "--rm", "palace"]
     )
     
-    print(f"Spouštím solver v Dockeru: {' '.join(cmd)}")
-    # Odebráno capture_output=True -> logy z Palace se teď budou vypisovat živě do terminálu!
+    print(f"Starting solver in Docker: {' '.join(cmd)}")
+    # Removed capture_output=True -> Palace logs will now stream live to the terminal!
     result = subprocess.run(
         cmd,
         check=True,
         env=env,
         shell=(sys.platform == "win32")
     )
-    print("Řešič proběhl úspěšně.")
+    print("Solver finished successfully.")

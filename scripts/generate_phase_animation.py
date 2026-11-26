@@ -1,9 +1,9 @@
 """
-Skript pro generování časové řady rotace fázoru (animace fáze LHCP pole).
-Vypočte harmonický vývoj v jedné periodě T (fáze 0° až 350° po 10°):
+Script to generate a phasor-rotation time series (LHCP field phase animation).
+Computes harmonic evolution over one period T (phase 0 deg to 350 deg in 10 deg steps):
     E(phi) = E_real * cos(phi) - E_imag * sin(phi)
     J_s(phi) = J_s_real * cos(phi) - J_s_imag * sin(phi)
-Výstup se uloží jako ParaView PVD kolekce, kterou lze v ParaView přímo přehrát tlačítkem Play.
+The output is saved as a ParaView PVD collection that can be played directly in ParaView.
 """
 
 import os
@@ -38,11 +38,11 @@ def generate_phase_series(
                 input_pvtu = os.path.abspath(default_cycle)
 
     if not input_pvtu or not os.path.exists(input_pvtu):
-        print(f"[CHYBA] Vstupní soubor nebyl nalezen: {input_pvtu}")
-        print(f"Zkontrolujte DATA_DIR ({data_dir}) v .env nebo spusťte simulaci.")
+        print(f"[ERROR] Input file not found: {input_pvtu}")
+        print(f"Check DATA_DIR ({data_dir}) in .env or run the simulation first.")
         return False
 
-    print(f"--- 1. Načítám data pole z rezonančního kroku ({freq_label}): {input_pvtu} ---")
+    print(f"--- 1. Loading field data from resonant step ({freq_label}): {input_pvtu} ---")
     ResetSession()
     reader = XMLPartitionedUnstructuredGridReader(FileName=[input_pvtu])
     reader.UpdatePipeline()
@@ -52,7 +52,7 @@ def generate_phase_series(
     phases_rad = np.radians(phases_deg)
 
     pvd_entries = []
-    print(f"--- 2. Generuji {n_frames} fázových rámců (0° až 350°) ---")
+    print(f"--- 2. Generating {n_frames} phase frames (0 deg to 350 deg) ---")
 
     for idx, (deg, rad) in enumerate(zip(phases_deg, phases_rad)):
         cos_val = np.cos(rad)
@@ -63,7 +63,7 @@ def generate_phase_series(
         calc.Function = f'E_real * ({cos_val:.8f}) - E_imag * ({sin_val:.8f})'
         calc.UpdatePipeline()
 
-        # Přidáme i plošný proud, pokud existuje
+        # Also add surface current if available
         calc2 = Calculator(registrationName=f'Calc_J_{idx}', Input=calc)
         calc2.ResultArrayName = 'J_phase'
         calc2.Function = f'J_s_real * ({cos_val:.8f}) - J_s_imag * ({sin_val:.8f})'
@@ -80,9 +80,9 @@ def generate_phase_series(
 
         pvd_entries.append(f'    <DataSet timestep="{deg:.1f}" group="" part="0" file="{vtu_filename}"/>')
         if (idx + 1) % 6 == 0 or idx == n_frames - 1:
-            print(f"  -> Hotovo: {idx + 1}/{n_frames} snímků ({deg:.0f}°)")
+            print(f"  -> Done: {idx + 1}/{n_frames} frames ({deg:.0f} deg)")
 
-    # Zápis PVD souboru
+    # Write PVD collection file
     pvd_path = os.path.join(out_dir, "phase_animation.pvd")
     with open(pvd_path, "w") as f:
         f.write('<?xml version="1.0"?>\n')
@@ -93,7 +93,7 @@ def generate_phase_series(
         f.write('</VTKFile>\n')
 
     print("==================================================")
-    print(f"PVD animace fáze byla úspěšně vygenerována do:")
+    print("PVD phase animation successfully generated at:")
     print(f"  {pvd_path}")
     print("==================================================")
     return True

@@ -1,7 +1,7 @@
 """
-_env.py - Pomocný inicializátor cest pro skripty ve složce scripts/.
-Zajišťuje, že všechny skripty v této složce mohou přímo importovat
-moduly z projektové knihovny v src/ bez nutnosti opakovat nastavování sys.path.
+_env.py - Helper path initializer for scripts in the scripts/ directory.
+Ensures all scripts in this folder can directly import modules from the project
+library in src/ without repeating sys.path setup.
 """
 
 import os

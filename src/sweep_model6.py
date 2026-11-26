@@ -1,16 +1,16 @@
 """
-sweep_model6.py - Parametrický sweep pro Model 6 (dvouportový model se zakřivenými 100 Ohm větvemi a interními porty).
-Odvozeno z Modelu 4: zakončuje obě 100 Ohm větve přímo na interních lumped portech (Port 1 na y_T - d_t, Port 2 na y_T + d_t).
+sweep_model6.py - Parametric sweep for Model 6 (two-port model with curved 100 Ohm branches and internal ports).
+Derived from Model 4: terminates both 100 Ohm branches directly at internal lumped ports (Port 1 at y_T - d_t, Port 2 at y_T + d_t).
 
-Podporované cíle sweepování (--sweep-target):
-  1. 'patch_l': Sweepování délky vyzařujícího flíčku L pro ladění rezonanční frekvence.
-  2. 'delta_l': Sweepování fázovacího rozdílu délek Delta L.
-  3. 'trans_w' (nebo 'w_t'): Sweepování šířky čtvrtvlnného transformátoru w_T.
-  4. 'trans_l' (nebo 'l_t'): Sweepování délky transformátoru l_T.
-  5. 'inset' (nebo 'y0'): Sweepování mělkého zanoření flíčku (symetrické i asymetrické).
-  6. 'bend_radius': Sweepování poloměru oblouků ohybů.
-  7. 't_fillet_r': Sweepování poloměru zaoblení d_t = w_50/2 + t_fillet_r.
-  8. 'driven_port': Výběr buzeného portu ('1', '2', 'all', 'both').
+Supported sweep targets (--sweep-target):
+  1. 'patch_l': Sweep radiating patch length L for resonant frequency tuning.
+  2. 'delta_l': Sweep phasing path-length difference Delta L.
+  3. 'trans_w' (or 'w_t'): Sweep quarter-wave transformer width w_T.
+  4. 'trans_l' (or 'l_t'): Sweep transformer length l_T.
+  5. 'inset' (or 'y0'): Sweep shallow patch inset (symmetric and asymmetric).
+  6. 'bend_radius': Sweep bend arc radius.
+  7. 't_fillet_r': Sweep fillet radius d_t = w_50/2 + t_fillet_r.
+  8. 'driven_port': Select driven port ('1', '2', 'all', 'both').
 """
 
 import os
@@ -81,7 +81,7 @@ def build_sweep_steps_m6(
     end_straight=None,
     driven_port=None,
 ):
-    """Sestaví kroky parametrického sweepu pro Model 6. Vrací (steps, desc)."""
+    """Build parametric sweep steps for Model 6. Returns (steps, desc)."""
     target = (sweep_target or os.getenv("SWEEP_TARGET") or "patch_l").lower().strip()
     if target in ("bend", "bend_r", "r_bend", "arc_radius"):
         target = "bend_radius"
@@ -142,7 +142,7 @@ def build_sweep_steps_m6(
             step['bend_radius'] = r_val
             step['feed_bend_radius'] = r_val
             steps.append(step)
-        desc = f"Poloměr oblouků (sweep_target=bend_radius): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Arc bend radius (sweep_target=bend_radius): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     if target in ("t_fillet_r", "t_fillet"):
@@ -155,7 +155,7 @@ def build_sweep_steps_m6(
             step['feed_t_fillet_r'] = tf_val
             step['t_fillet_r'] = tf_val
             steps.append(step)
-        desc = f"Poloměr zaoblení T-uzlu (sweep_target=t_fillet_r): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"T-junction fillet radius (sweep_target=t_fillet_r): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     if target in ("driven_port", "port"):
@@ -166,10 +166,10 @@ def build_sweep_steps_m6(
             step['run_name'] = f"m6_port_{p}"
             step['driven_port'] = p
             steps.append(step)
-        desc = f"Buzený port (sweep_target=driven_port): {ports} (celkem {len(steps)} kroků)"
+        desc = f"Driven port (sweep_target=driven_port): {ports} ({len(steps)} steps total)"
         return steps, desc
 
-    # Využijeme generátor z Modelu 3 pro patch_l, delta_l, trans_w, trans_l, inset
+    # Reuse Model 3 generator for patch_l, delta_l, trans_w, trans_l, inset
     steps_m3, desc = build_sweep_steps_m3(
         sweep_target=target,
         mode=mode,
@@ -200,7 +200,7 @@ def build_sweep_steps_m6(
         step['run_name'] = old_rn.replace('m3_', 'm6_') if old_rn.startswith('m3_') else f"m6_{old_rn}"
         steps.append(step)
 
-    desc = desc.replace('Modelu 3', 'Modelu 6').replace('Model 3', 'Model 6')
+    desc = desc.replace('Model 3', 'Model 6')
     return steps, desc
 
 
@@ -245,7 +245,7 @@ def run_sweep_model6(
     skip_simulation=False,
     **kwargs,
 ):
-    """Spustí parametrický sweep pro Model 6."""
+    """Run parametric sweep for Model 6."""
     steps, desc = build_sweep_steps_m6(
         sweep_target=sweep_target,
         mode=mode,
@@ -291,17 +291,17 @@ def run_sweep_model6(
     do_export = _resolve_env_bool(export_each, "EXPORT_EACH", default=True)
 
     print("\n" + "=" * 90)
-    print(f"SPUŠTĚNÍ PARAMETRICKÉHO SWEEPU PRO MODEL 6 (CELKEM {len(steps)} KROKŮ)")
-    print(f"Cíl sweepování: {desc}")
-    print(f"Frekvenční rozsah: {sim_settings.get('freq_min', 2.320):.3f} - {sim_settings.get('freq_max', 2.345):.3f} GHz (krok {sim_settings.get('freq_step', 0.005):.4f} GHz)")
-    print(f"Nastavení AMR iterací: {sim_settings.get('amr_max_its', 2)}, lineární tolerance: {sim_settings.get('linear_tol', 1e-6)}")
-    print(f"Automatický export po každém kroku: {'ANO' if do_export else 'NE'}")
+    print(f"STARTING PARAMETRIC SWEEP FOR MODEL 6 ({len(steps)} STEPS TOTAL)")
+    print(f"Sweep target: {desc}")
+    print(f"Frequency range: {sim_settings.get('freq_min', 2.320):.3f} - {sim_settings.get('freq_max', 2.345):.3f} GHz (step {sim_settings.get('freq_step', 0.005):.4f} GHz)")
+    print(f"AMR iterations setting: {sim_settings.get('amr_max_its', 2)}, linear tolerance: {sim_settings.get('linear_tol', 1e-6)}")
+    print(f"Automatic export after each step: {'YES' if do_export else 'NO'}")
     print("=" * 90 + "\n")
 
     t_start_total = time.time()
     for idx, step_params in enumerate(steps, 1):
         step_name = step_params.get('run_name', f"m6_step_{idx}")
-        print(f"\n>>> [{idx}/{len(steps)}] Spouštím krok sweepu: {step_name} <<<")
+        print(f"\n>>> [{idx}/{len(steps)}] Running sweep step: {step_name} <<<")
 
         full_params = dict(step_params)
         full_params.update(sim_settings)
@@ -315,23 +315,23 @@ def run_sweep_model6(
                 try:
                     export_paraview_package(output_name=step_name, run_name=step_name, model_version=6)
                 except Exception as exp_err:
-                    print(f"Upozornění při exportu balíčku {step_name}: {exp_err}")
+                    print(f"Warning while exporting package {step_name}: {exp_err}")
         except Exception as e:
-            print(f"CHYBA: Krok sweepu {step_name} selhal: {e}")
+            print(f"ERROR: Sweep step {step_name} failed: {e}")
 
         dt_step = time.time() - t_step_start
-        print(f">>> [{idx}/{len(steps)}] Krok {step_name} dokončen za {dt_step:.1f} s <<<\n")
+        print(f">>> [{idx}/{len(steps)}] Step {step_name} completed in {dt_step:.1f} s <<<\n")
 
     total_time = time.time() - t_start_total
     print("\n" + "=" * 90)
-    print(f"PARAMETRICKÝ SWEEP MODELU 6 DOKONČEN ZA {total_time:.1f} s ({total_time / 60.0:.2f} min)")
+    print(f"MODEL 6 PARAMETRIC SWEEP COMPLETED IN {total_time:.1f} s ({total_time / 60.0:.2f} min)")
     print("=" * 90 + "\n")
 
     print_summary_table_model6()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Parametrický sweep Modelu 6 (Dvouportový 100 Ohm model s interními porty)")
+    parser = argparse.ArgumentParser(description="Model 6 parametric sweep (Two-port 100 Ohm model with internal ports)")
     parser.add_argument("--sweep-target", choices=["patch_l", "delta_l", "trans_w", "w_t", "trans_l", "l_t", "inset", "y0", "bend_radius", "t_fillet_r", "driven_port"], default=None)
     parser.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
     parser.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")

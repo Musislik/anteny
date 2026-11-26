@@ -1,16 +1,16 @@
 """
-sweep_model5.py - Parametrický sweep pro Model 5 (dvouportový model se zakřivenými 100 Ohm větvemi).
-Odstraňuje 50 Ohm T-článek a kmen, zakončuje obě 100 Ohm větve na samostatné 100 Ohm porty (Port 1 a Port 2).
+sweep_model5.py - Parametric sweep for Model 5 (two-port model with curved 100 Ohm branches).
+Removes the 50 Ohm T-junction and trunk, terminating both 100 Ohm branches at separate 100 Ohm ports (Port 1 and Port 2).
 
-Podporované cíle sweepování (--sweep-target):
-  1. 'patch_l': Sweepování délky vyzařujícího flíčku L pro ladění rezonanční frekvence.
-  2. 'delta_l': Sweepování fázovacího rozdílu délek Delta L (ladění fáze mezi rameny).
-  3. 'trans_w' (nebo 'w_t'): Sweepování šířky čtvrtvlnného transformátoru w_T.
-  4. 'trans_l' (nebo 'l_t'): Sweepování délky transformátoru l_T.
-  5. 'inset' (nebo 'y0'): Sweepování mělkého zanoření flíčku (vstupní impedance flíčku).
-  6. 'bend_radius': Sweepování poloměru oblouků ohybů.
-  7. 'port_offset': Sweepování rozestupu portů na levé hraně substrátu.
-  8. 'driven_port': Výběr buzeného portu ('1', '2', 'all', 'both').
+Supported sweep targets (--sweep-target):
+  1. 'patch_l': Sweep radiating patch length L for resonant frequency tuning.
+  2. 'delta_l': Sweep phasing path-length difference Delta L (phase tuning between arms).
+  3. 'trans_w' (or 'w_t'): Sweep quarter-wave transformer width w_T.
+  4. 'trans_l' (or 'l_t'): Sweep transformer length l_T.
+  5. 'inset' (or 'y0'): Sweep shallow patch inset (patch input impedance).
+  6. 'bend_radius': Sweep bend arc radius.
+  7. 'port_offset': Sweep port spacing on the left substrate edge.
+  8. 'driven_port': Select driven port ('1', '2', 'all', 'both').
 """
 
 import os
@@ -80,7 +80,7 @@ def build_sweep_steps_m5(
     end_straight=None,
     driven_port=None,
 ):
-    """Sestaví kroky parametrického sweepu pro Model 5. Vrací (steps, desc)."""
+    """Build parametric sweep steps for Model 5. Returns (steps, desc)."""
     target = (sweep_target or os.getenv("SWEEP_TARGET") or "patch_l").lower().strip()
     if target in ("bend", "bend_r", "r_bend", "arc_radius"):
         target = "bend_radius"
@@ -133,7 +133,7 @@ def build_sweep_steps_m5(
             step['bend_radius'] = r_val
             step['feed_bend_radius'] = r_val
             steps.append(step)
-        desc = f"Poloměr oblouků (sweep_target=bend_radius): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Arc bend radius (sweep_target=bend_radius): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     if target in ("port_offset", "d_port"):
@@ -146,7 +146,7 @@ def build_sweep_steps_m5(
             step['port_offset'] = po_val
             step['feed_port_offset'] = po_val
             steps.append(step)
-        desc = f"Rozestup portů (sweep_target=port_offset): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Port spacing (sweep_target=port_offset): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     if target in ("driven_port", "port"):
@@ -157,10 +157,10 @@ def build_sweep_steps_m5(
             step['run_name'] = f"m5_port_{p}"
             step['driven_port'] = p
             steps.append(step)
-        desc = f"Buzený port (sweep_target=driven_port): {ports} (celkem {len(steps)} kroků)"
+        desc = f"Driven port (sweep_target=driven_port): {ports} ({len(steps)} steps total)"
         return steps, desc
 
-    # Standardní cíle z Modelu 3 (patch_l, delta_l, trans_w, trans_l, inset)
+    # Standard targets from Model 3 (patch_l, delta_l, trans_w, trans_l, inset)
     steps_m3, desc = build_sweep_steps_m3(
         sweep_target=target,
         mode=mode,
@@ -237,7 +237,7 @@ def run_sweep_model5(
     skip_simulation=False,
     **kwargs,
 ):
-    """Spustí parametrický sweep pro Model 5."""
+    """Run parametric sweep for Model 5."""
     steps, sweep_desc = build_sweep_steps_m5(
         sweep_target=sweep_target,
         mode=mode,
@@ -283,9 +283,9 @@ def run_sweep_model5(
     total_steps = len(steps)
 
     print("\n" + "=" * 80)
-    print("PARAMETRICKÝ SWEEP - MODEL 5 (DVOU PORTOVÝ 100 OHM MODEL S OBLOUKY)")
-    print(f"Celkem simulačních kroků: {total_steps}")
-    print(f"Cíl: {sweep_desc}")
+    print("PARAMETRIC SWEEP - MODEL 5 (TWO-PORT 100 OHM MODEL WITH CURVED ARCS)")
+    print(f"Total simulation steps: {total_steps}")
+    print(f"Target: {sweep_desc}")
     print("=" * 80 + "\n")
 
     start_time = time.time()
@@ -296,36 +296,36 @@ def run_sweep_model5(
         custom_cfg.update(sim_overrides)
         step_name = custom_cfg.get('run_name', f"m5_step_{idx}")
 
-        print(f"\n>>> [{idx}/{total_steps}] Spouštím krok: {step_name}")
+        print(f"\n>>> [{idx}/{total_steps}] Running step: {step_name}")
         step_start = time.time()
 
         try:
             main(custom_params=custom_cfg, skip_simulation=skip_simulation, clean=True)
             step_duration = time.time() - step_start
-            print(f">>> [{idx}/{total_steps}] Dokončen krok: {step_name} (čas: {step_duration:.1f} s)")
+            print(f">>> [{idx}/{total_steps}] Completed step: {step_name} (time: {step_duration:.1f} s)")
             successful_runs += 1
 
             if export_each and export_paraview_package is not None and not skip_simulation:
                 try:
                     export_paraview_package(run_name=step_name, model_version=5)
                 except Exception as ex_err:
-                    print(f"Upozornění: Export balíčku pro {step_name} selhal: {ex_err}")
+                    print(f"Warning: Export of package for {step_name} failed: {ex_err}")
 
         except Exception as err:
-            print(f"CHYBA v kroku {step_name}: {err}")
+            print(f"ERROR in step {step_name}: {err}")
             import traceback
             traceback.print_exc()
 
     total_duration = time.time() - start_time
     print("\n" + "=" * 80)
-    print(f"SWEEP MODELU 5 DOKONČEN! Úspěšných: {successful_runs}/{total_steps} za {total_duration / 60.0:.2f} minut.")
+    print(f"MODEL 5 SWEEP COMPLETED! Successful: {successful_runs}/{total_steps} in {total_duration / 60.0:.2f} minutes.")
     print("=" * 80 + "\n")
 
     print_summary_table_model5()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Parametrický sweep Modelu 5 (Dvouportový 100 Ohm model s oblouky)")
+    parser = argparse.ArgumentParser(description="Model 5 parametric sweep (Two-port 100 Ohm model with curved arcs)")
     parser.add_argument("--sweep-target", choices=["patch_l", "delta_l", "trans_w", "w_t", "trans_l", "l_t", "inset", "y0", "bend_radius", "port_offset", "driven_port"], default=None)
     parser.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
     parser.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")

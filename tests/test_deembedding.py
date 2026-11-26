@@ -1,11 +1,11 @@
 """
-test_deembedding.py - Jednotkové testy pro analytický de-embedding impedančních skoků (Model 1, 2 i 3).
-Ověřuje:
-  1. Vlnové parametry mikropáskového vedení (calc_microstrip_propagation).
-  2. Invertibilitu a přesnost de-embeddingu úseku přenosového vedení (deembed_transmission_line).
-  3. Dvoustupňový kaskádní de-embedding Modelu 3 (calculate_deembedding_model3).
-  4. Fallback chování pro Model 2 a Model 1.
-  5. Vykreslení 2x2 diagnostického grafu (plot_impedance_deembedding).
+test_deembedding.py - Unit tests for analytical impedance-step de-embedding (Models 1, 2, and 3).
+Verifies:
+  1. Microstrip wave propagation parameters (calc_microstrip_propagation).
+  2. Invertibility and accuracy of transmission line section de-embedding (deembed_transmission_line).
+  3. Two-stage cascaded de-embedding for Model 3 (calculate_deembedding_model3).
+  4. Fallback behavior for Model 2 and Model 1.
+  5. 2x2 diagnostic plot generation (plot_impedance_deembedding).
 """
 
 import os
@@ -18,7 +18,7 @@ import pytest
 import numpy as np
 import pandas as pd
 
-# Cesty k modulům projektu
+# Project module paths
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(TESTS_DIR, ".."))
 SRC_DIR = os.path.join(PROJECT_ROOT, "src")
@@ -48,38 +48,38 @@ import export_package
 
 
 def test_microstrip_propagation_parameters():
-    """Test vlnových parametrů pro 100 Ohm vedení a transformátor."""
+    """Test wave propagation parameters for 100 Ohm line and transformer."""
     h = 1.52
     eps_r = 4.3
     tan_delta = 0.02
 
-    # 1. Vnější 100 Ohm vedení (w ≈ 0.694 mm)
+    # 1. Outer 100 Ohm line (w ~ 0.694 mm)
     w_100 = synth_microstrip_w(100.0, h, eps_r)
     z0, eps_eff, beta, alpha, gamma = calc_microstrip_propagation(w_100, h, eps_r, tan_delta, DESIGN_FREQ_GHZ)
 
-    assert 98.0 <= z0 <= 102.0, f"Z0 by mělo být ~100 Ohm, je {z0:.2f}"
-    assert 2.90 <= eps_eff <= 3.05, f"eps_eff by mělo být ~2.97, je {eps_eff:.3f}"
-    assert beta > 0.08, f"beta by mělo být > 0.08 rad/mm, je {beta:.4f}"
-    assert alpha > 0.0, f"alpha by mělo být kladné, je {alpha:.6f}"
+    assert 98.0 <= z0 <= 102.0, f"Z0 should be ~100 Ohm, got {z0:.2f}"
+    assert 2.90 <= eps_eff <= 3.05, f"eps_eff should be ~2.97, got {eps_eff:.3f}"
+    assert beta > 0.08, f"beta should be > 0.08 rad/mm, got {beta:.4f}"
+    assert alpha > 0.0, f"alpha should be positive, got {alpha:.6f}"
     assert np.isclose(gamma.real, alpha)
     assert np.isclose(gamma.imag, beta)
 
-    # 2. Vnitřní transformátor w_T = 0.42 mm
+    # 2. Inner transformer w_T = 0.42 mm
     w_T = 0.42
     z0_T, eps_eff_T, beta_T, alpha_T, gamma_T = calc_microstrip_propagation(w_T, h, eps_r, tan_delta, DESIGN_FREQ_GHZ)
-    assert 115.0 <= z0_T <= 122.0, f"Z0_T by mělo být ~118.7 Ohm, je {z0_T:.2f}"
-    assert 2.80 <= eps_eff_T <= 2.95, f"eps_eff_T by mělo být ~2.89, je {eps_eff_T:.3f}"
+    assert 115.0 <= z0_T <= 122.0, f"Z0_T should be ~118.7 Ohm, got {z0_T:.2f}"
+    assert 2.80 <= eps_eff_T <= 2.95, f"eps_eff_T should be ~2.89, got {eps_eff_T:.3f}"
 
-    # 3. Vektorový vstup frekvencí
+    # 3. Vector frequency input
     freqs = np.linspace(2.32, 2.345, 11)
     z0_arr, eps_eff_arr, beta_arr, alpha_arr, gamma_arr = calc_microstrip_propagation(w_100, h, eps_r, tan_delta, freqs)
     assert len(beta_arr) == 11
     assert len(gamma_arr) == 11
-    assert np.all(np.diff(beta_arr) > 0), "Fázová konstanta beta musí monotónně růst s frekvencí"
+    assert np.all(np.diff(beta_arr) > 0), "Phase constant beta must increase monotonically with frequency"
 
 
 def test_transmission_line_deembedding_invertibility():
-    """Test dokonalé invertibility de-embeddingu napříč úsekem vedení."""
+    """Test exact invertibility of de-embedding across a transmission line section."""
     h = 1.52
     eps_r = 4.3
     tan_delta = 0.02
@@ -88,59 +88,59 @@ def test_transmission_line_deembedding_invertibility():
 
     z0, _, _, _, gamma = calc_microstrip_propagation(w_100, h, eps_r, tan_delta, DESIGN_FREQ_GHZ)
 
-    # Komplexní zátěž flíčku
+    # Complex patch load
     z_load = 140.0 + 25.0j
 
-    # Dopředná transformace k portu
+    # Forward transformation to the port
     tanh_gl = np.tanh(gamma * length)
     z_in = z0 * (z_load + z0 * tanh_gl) / (z0 + z_load * tanh_gl)
 
-    # Zpětný de-embedding (odečtení délky vedení)
+    # Reverse de-embedding (subtract line length)
     z_load_recovered = deembed_transmission_line(z_in, z0, gamma, length)
 
     diff = abs(z_load_recovered - z_load)
-    assert diff < 1e-10, f"De-embedding musí zrekonstruovat zátěž s vysokou přesností (chyba = {diff:.2e})"
+    assert diff < 1e-10, f"De-embedding must reconstruct load with high accuracy (error = {diff:.2e})"
 
-    # Test nulové délky (musí vrátit identickou hodnotu)
+    # Zero-length test (must return identical value)
     z_same = deembed_transmission_line(z_in, z0, gamma, 0.0)
     assert np.isclose(z_same, z_in)
 
-    # Test přizpůsobené zátěže (Z_L = Z0 -> Z_in = Z0 pro libovolnou délku)
+    # Matched load test (Z_L = Z0 -> Z_in = Z0 for arbitrary length)
     z_matched = deembed_transmission_line(z0, z0, gamma, 50.0)
     assert np.isclose(z_matched, z0)
 
 
 def test_quarter_wave_transformer_cascade_model3():
-    """Test kompletní kaskády dvoustupňového přizpůsobení Modelu 3 (RP1 -> RP2 -> RP3)."""
+    """Test full two-stage matching cascade for Model 3 (RP1 -> RP2 -> RP3)."""
     h = 1.52
     eps_r = 4.3
-    tan_delta = 0.00  # Pro ideální test bezztrátového čtvrtvlnného přenosu
+    tan_delta = 0.00  # For ideal lossless quarter-wave transmission test
     f_c = DESIGN_FREQ_GHZ
 
-    # Cílová impedance na vstupu flíčku v zářezu
+    # Target impedance at the patch inset input
     r_patch = 140.0
 
-    # Čtvrtvlnný transformátor
+    # Quarter-wave transformer
     z_T = np.sqrt(100.0 * r_patch)  # ~118.32 Ohm
     w_T = synth_microstrip_w(z_T, h, eps_r)
     z0_T, eps_eff_T, beta_T, _, gamma_T = calc_microstrip_propagation(w_T, h, eps_r, tan_delta, f_c)
     l_T = calc_quarter_wave_length(f_c, eps_eff_T)
 
-    # Vnější 100 Ohm mikropásek
+    # Outer 100 Ohm microstrip
     w_100 = synth_microstrip_w(100.0, h, eps_r)
     z0_feed, eps_eff_feed, beta_feed, _, gamma_feed = calc_microstrip_propagation(w_100, h, eps_r, tan_delta, f_c)
     l_100 = 20.0
 
-    # Na RP3 (flíček): Z = 140 Ohm
-    # Na RP2 (svorka transformátoru): Z = Z_T^2 / 140 ≈ 100 Ohm (s přesností reálného mikropásku)
+    # At RP3 (patch): Z = 140 Ohm
+    # At RP2 (transformer terminal): Z = Z_T^2 / 140 ~ 100 Ohm (within real microstrip precision)
     t_T = np.tanh(gamma_T * l_T)
     z_rp2 = z0_T * (r_patch + z0_T * t_T) / (z0_T + r_patch * t_T)
-    assert abs(z_rp2.real - 100.0) < 0.5, f"Z_RP2 by mělo být ~100 Ohm, je {z_rp2.real:.3f}"
+    assert abs(z_rp2.real - 100.0) < 0.5, f"Z_RP2 should be ~100 Ohm, got {z_rp2.real:.3f}"
 
-    # Na RP1 (port): po 100 Ohm vedení je Z stále ~100 Ohm
+    # At RP1 (port): after 100 Ohm line, Z remains ~100 Ohm
     t_100 = np.tanh(gamma_feed * l_100)
     z_rp1 = z0_feed * (z_rp2 + z0_feed * t_100) / (z0_feed + z_rp2 * t_100)
-    assert abs(z_rp1.real - 100.0) < 0.5, f"Z_RP1 by mělo být ~100 Ohm, je {z_rp1.real:.3f}"
+    assert abs(z_rp1.real - 100.0) < 0.5, f"Z_RP1 should be ~100 Ohm, got {z_rp1.real:.3f}"
 
     # De-embedding RP1 -> RP2
     z_deembed_rp2 = deembed_transmission_line(z_rp1, z0_feed, gamma_feed, l_100)
@@ -148,13 +148,13 @@ def test_quarter_wave_transformer_cascade_model3():
 
     # De-embedding RP2 -> RP3
     z_deembed_rp3 = deembed_transmission_line(z_deembed_rp2, z0_T, gamma_T, l_T)
-    assert abs(z_deembed_rp3.real - 140.0) < 1e-6, f"Z_RP3 po de-embeddingu by mělo být 140 Ohm, je {z_deembed_rp3.real:.3f}"
+    assert abs(z_deembed_rp3.real - 140.0) < 1e-6, f"Z_RP3 after de-embedding should be 140 Ohm, got {z_deembed_rp3.real:.3f}"
 
 
 def test_calculate_deembedding_model3_interface():
-    """Test funkce calculate_deembedding_model3 pro Model 3, Model 2 i Model 1."""
+    """Test calculate_deembedding_model3 function for Model 3, Model 2, and Model 1."""
     freqs = np.linspace(2.32, 2.345, 6)
-    # Syntetické S11 a S22 s rezonancí kolem 2.333 GHz
+    # Synthetic S11 and S22 with resonance around 2.333 GHz
     s11 = 0.05 * np.ones_like(freqs, dtype=complex)
     s22 = 0.04 * np.ones_like(freqs, dtype=complex)
 
@@ -177,9 +177,9 @@ def test_calculate_deembedding_model3_interface():
     assert len(res_m3['rp1']['z1']) == 6
     assert len(res_m3['rp3']['z1']) == 6
     assert res_m3['rp1']['z2'] is not None
-    assert res_m3['rp3']['z0_ref'] > 130.0  # Cíl kolem 140 Ohm
+    assert res_m3['rp3']['z0_ref'] > 130.0  # Target around 140 Ohm
 
-    # Test pro Model 2 (kde l_T = 0 a RP2 == RP3)
+    # Test for Model 2 (where l_T = 0 and RP2 == RP3)
     params_m2 = {
         'antenna_model': 2,
         'patch_L': 28.8,
@@ -192,10 +192,10 @@ def test_calculate_deembedding_model3_interface():
     }
     res_m2 = calculate_deembedding_model3(freqs, s11, s22, params=params_m2)
     assert res_m2['model'] == 2
-    assert np.allclose(res_m2['rp2']['z1'], res_m2['rp3']['z1']), "U Modelu 2 musí RP2 splývat s RP3"
+    assert np.allclose(res_m2['rp2']['z1'], res_m2['rp3']['z1']), "For Model 2, RP2 must coincide with RP3"
     assert res_m2['rp3']['z0_ref'] == 100.0
 
-    # Test pro Model 1 (bezpečný průchod)
+    # Test for Model 1 (safe passthrough)
     params_m1 = {
         'antenna_model': 1,
         'port_impedance': 50.0,
@@ -206,22 +206,22 @@ def test_calculate_deembedding_model3_interface():
 
 
 def test_plot_impedance_deembedding_synthetic(tmp_path):
-    """Test generování 2x2 grafu de-embeddingu na syntetických datech."""
+    """Test generation of 2x2 de-embedding plot on synthetic data."""
     test_dir = str(tmp_path / "test_sim")
     os.makedirs(test_dir, exist_ok=True)
 
-    # Vytvoření syntetického port-S.csv
+    # Create synthetic port-S.csv
     freqs = np.linspace(2.320, 2.345, 11)
     s_csv_path = os.path.join(test_dir, "port-S.csv")
     with open(s_csv_path, "w", encoding="utf-8") as f:
         f.write("f (GHz),|S[1][1]| (dB),argbit(S[1][1]) (deg.),|S[2][2]| (dB),arg(S[2][2]) (deg.)\n")
         for fq in freqs:
-            # Simulace rezonance
+            # Resonance simulation
             s11_val = -25.0 + 10.0 * (fq - 2.3325)**2 * 1000
             s22_val = -24.0 + 10.0 * (fq - 2.3325)**2 * 1000
             f.write(f"{fq:.6e},{s11_val:.4e},-145.0,{s22_val:.4e},-140.0\n")
 
-    # Vytvoření params.json
+    # Create params.json
     params = {
         'antenna_model': 3,
         'patch_L': 28.8,
@@ -236,20 +236,20 @@ def test_plot_impedance_deembedding_synthetic(tmp_path):
     with open(os.path.join(test_dir, "params.json"), "w", encoding="utf-8") as f:
         json.dump(params, f)
 
-    out_png = os.path.join(test_dir, "graf_impedance_skoky.png")
+    out_png = os.path.join(test_dir, "plot_deembedding.png")
     result_path = plot_impedance_deembedding(test_dir, params=params, output_png=out_png)
 
     assert result_path is not None
     assert os.path.exists(out_png)
-    assert os.path.getsize(out_png) > 10000, "Vygenerovaný graf musí mít validní velikost"
+    assert os.path.getsize(out_png) > 10000, "Generated plot must have a valid file size"
 
 
 def test_plot_impedance_deembedding_two_port_split_layout(tmp_path):
-    """Test generování 2-portového de-embedding grafu v rozložení split a dílčích RP grafů."""
+    """Test generation of 2-port de-embedding plot in split layout and individual RP plots."""
     test_dir = str(tmp_path / "sim_2port")
     os.makedirs(test_dir, exist_ok=True)
 
-    # Syntetický 2-portový port-S.csv (S11, S21, S12, S22 včetně fází)
+    # Synthetic 2-port port-S.csv (S11, S21, S12, S22 including phases)
     freqs = np.linspace(2.320, 2.345, 11)
     s_csv_path = os.path.join(test_dir, "port-S.csv")
     with open(s_csv_path, "w", encoding="utf-8") as f:
@@ -298,20 +298,20 @@ def test_plot_impedance_deembedding_two_port_split_layout(tmp_path):
 
     result_path = plot_impedance_deembedding(test_dir, params=params, layout="split")
 
-    out_png = os.path.join(test_dir, "graf_impedance_skoky.png")
+    out_png = os.path.join(test_dir, "plot_deembedding.png")
     assert result_path is not None
     assert os.path.abspath(result_path) == os.path.abspath(out_png)
     assert os.path.exists(out_png)
     assert os.path.getsize(out_png) > 10000
 
-    for rp_name in ("graf_impedance_RP1.png", "graf_impedance_RP2.png", "graf_impedance_RP3.png"):
-        rp_png = os.path.join(test_dir, "grafy", rp_name)
-        assert os.path.exists(rp_png), f"Dílčí graf {rp_name} musí existovat"
-        assert os.path.getsize(rp_png) > 10000, f"Dílčí graf {rp_name} musí mít nenulovou velikost"
+    for rp_name in ("plot_impedance_rp1.png", "plot_impedance_rp2.png", "plot_impedance_rp3.png"):
+        rp_png = os.path.join(test_dir, "plots", rp_name)
+        assert os.path.exists(rp_png), f"Sub-plot {rp_name} must exist"
+        assert os.path.getsize(rp_png) > 10000, f"Sub-plot {rp_name} must have nonzero size"
 
 
 def test_plot_impedance_deembedding_single_port_rules(tmp_path):
-    """Test pravidel 1 a 2 pro buzení pouze jednoho portu (Port 1 a Port 2)."""
+    """Test rules 1 and 2 for single-port excitation (Port 1 and Port 2)."""
     test_dir_p1 = str(tmp_path / "sim_p1")
     os.makedirs(test_dir_p1, exist_ok=True)
 
@@ -326,13 +326,13 @@ def test_plot_impedance_deembedding_single_port_rules(tmp_path):
     with open(os.path.join(test_dir_p1, "params.json"), "w", encoding="utf-8") as f:
         json.dump(p1_params, f)
 
-    out_p1 = os.path.join(test_dir_p1, "graf_impedance_skoky.png")
+    out_p1 = os.path.join(test_dir_p1, "plot_deembedding.png")
     res_p1 = plot_impedance_deembedding(test_dir_p1, params=p1_params, output_png=out_p1)
     assert res_p1 is not None
     assert os.path.exists(out_p1)
     assert os.path.getsize(out_p1) > 10000
 
-    # Port 2 buzení
+    # Port 2 excitation
     test_dir_p2 = str(tmp_path / "sim_p2")
     os.makedirs(test_dir_p2, exist_ok=True)
     s_csv_p2 = os.path.join(test_dir_p2, "port-S.csv")
@@ -345,7 +345,7 @@ def test_plot_impedance_deembedding_single_port_rules(tmp_path):
     with open(os.path.join(test_dir_p2, "params.json"), "w", encoding="utf-8") as f:
         json.dump(p2_params, f)
 
-    out_p2 = os.path.join(test_dir_p2, "graf_impedance_skoky.png")
+    out_p2 = os.path.join(test_dir_p2, "plot_deembedding.png")
     res_p2 = plot_impedance_deembedding(test_dir_p2, params=p2_params, output_png=out_p2)
     assert res_p2 is not None
     assert os.path.exists(out_p2)
@@ -353,7 +353,7 @@ def test_plot_impedance_deembedding_single_port_rules(tmp_path):
 
 
 def test_plot_s_parameters_rules(tmp_path):
-    """Test generování graf_S_parametry.png pro buzení 1 portem i oběma porty."""
+    """Test generation of plot_s_parameters.png for single-port and dual-port excitation."""
     test_dir = str(tmp_path / "sim_sparams")
     os.makedirs(test_dir, exist_ok=True)
 
@@ -364,7 +364,7 @@ def test_plot_s_parameters_rules(tmp_path):
         for fq in freqs:
             f.write(f"{fq:.6e},-20.0,-140.0,-18.0,-135.0,-16.5\n")
 
-    out_png = os.path.join(test_dir, "graf_S_parametry.png")
+    out_png = os.path.join(test_dir, "plot_s_parameters.png")
     res = plot_s_parameters(test_dir, output_png=out_png)
     assert res is not None
     assert os.path.exists(out_png)
@@ -372,12 +372,12 @@ def test_plot_s_parameters_rules(tmp_path):
 
 
 def test_port_v_header_order_and_plots(tmp_path):
-    """Test načtení port-V.csv v pořadí [f, V_inc[1], Re{V[1]}, Im{V[1]}, V_inc[2], Re{V[2]}, Im{V[2]}] a vykreslení grafů."""
+    """Test reading port-V.csv in [f, V_inc[1], Re{V[1]}, Im{V[1]}, V_inc[2], Re{V[2]}, Im{V[2]}] order and plotting."""
     sim_2p = tmp_path / "portv_2p"
     sim_2p.mkdir()
     freqs = np.linspace(2.320, 2.345, 7)
 
-    # 1. Obouportové buzení (V_inc[1]=10, V_inc[2]=10)
+    # 1. Dual-port excitation (V_inc[1]=10, V_inc[2]=10)
     v_2p_path = sim_2p / "port-V.csv"
     expected_s11 = 0.10 - 0.05j
     expected_s22 = -0.08 + 0.04j
@@ -394,7 +394,7 @@ def test_port_v_header_order_and_plots(tmp_path):
     assert s22_c is not None and np.allclose(s22_c, expected_s22, atol=1e-6)
     assert s21_c is None and s12_c is None
 
-    # Vykreslení grafů čistě z port-V.csv (bez port-S.csv)
+    # Plotting purely from port-V.csv (without port-S.csv)
     params_m3 = {
         'antenna_model': 3,
         'patch_L': 28.8,
@@ -409,15 +409,15 @@ def test_port_v_header_order_and_plots(tmp_path):
     with open(sim_2p / "params.json", "w", encoding="utf-8") as f:
         json.dump(params_m3, f)
 
-    out_s = sim_2p / "graf_S_parametry.png"
+    out_s = sim_2p / "plot_s_parameters.png"
     res_s = plot_s_parameters(str(sim_2p), output_png=str(out_s), params=params_m3)
     assert res_s is not None and out_s.exists() and out_s.stat().st_size > 10000
 
-    out_deemb = sim_2p / "graf_impedance_skoky.png"
+    out_deemb = sim_2p / "plot_deembedding.png"
     res_d = plot_impedance_deembedding(str(sim_2p), params=params_m3, output_png=str(out_deemb))
     assert res_d is not None and out_deemb.exists() and out_deemb.stat().st_size > 10000
 
-    # 2. Jednoportové buzení Port 1 (V_inc[2] == 0) ve stejném 7-sloupcovém rozložení
+    # 2. Single-port excitation Port 1 (V_inc[2] == 0) in the same 7-column layout
     sim_1p = tmp_path / "portv_1p"
     sim_1p.mkdir()
     v_1p_path = sim_1p / "port-V.csv"
@@ -436,7 +436,7 @@ def test_port_v_header_order_and_plots(tmp_path):
 
 
 def test_plot_impedance_deembedding_model1_50ohm(tmp_path):
-    """Test de-embedding grafu pro Model 1 (1 port, 50 Ohm)."""
+    """Test de-embedding plot for Model 1 (1 port, 50 Ohm)."""
     sim_m1 = tmp_path / "sim_model1"
     sim_m1.mkdir()
 
@@ -456,16 +456,16 @@ def test_plot_impedance_deembedding_model1_50ohm(tmp_path):
     with open(sim_m1 / "params.json", "w", encoding="utf-8") as f:
         json.dump(params_m1, f)
 
-    out_png = sim_m1 / "graf_impedance_skoky.png"
+    out_png = sim_m1 / "plot_deembedding.png"
     res = plot_impedance_deembedding(str(sim_m1), output_png=str(out_png))
     assert res is not None and out_png.exists() and out_png.stat().st_size > 10000
-    for rp_name in ("graf_impedance_RP1.png", "graf_impedance_RP2.png", "graf_impedance_RP3.png"):
-        rp_png = sim_m1 / "grafy" / rp_name
+    for rp_name in ("plot_impedance_rp1.png", "plot_impedance_rp2.png", "plot_impedance_rp3.png"):
+        rp_png = sim_m1 / "plots" / rp_name
         assert rp_png.exists() and rp_png.stat().st_size > 10000
 
 
 def test_plot_radiation_pattern_multi_exc(tmp_path):
-    """Test 2D a 3D vyzařovacího diagramu na syntetickém multi-excitačním farfield-rE.csv (exc=1 a exc=2)."""
+    """Test 2D and 3D radiation pattern on synthetic multi-excitation farfield-rE.csv (exc=1 and exc=2)."""
     ff_dir = tmp_path / "sim_farfield"
     ff_dir.mkdir()
     ff_csv = ff_dir / "farfield-rE.csv"
@@ -499,20 +499,20 @@ def test_plot_radiation_pattern_multi_exc(tmp_path):
     zenith_mask = np.isclose(metrics['th_deg'], 0.0)
     assert np.all(metrics['ar_db'][zenith_mask] < 0.1)
 
-    out_2d = ff_dir / "vyzarovaci_diagram_2d.png"
-    out_3d = ff_dir / "vyzarovaci_diagram_3d.png"
+    out_2d = ff_dir / "radiation_pattern_2d.png"
+    out_3d = ff_dir / "radiation_pattern_3d.png"
     plot_radiation_pattern_2d(str(ff_dir), freq_target=f_val, output_png=str(out_2d))
     plot_radiation_pattern_3d(str(ff_dir), freq_target=f_val, output_png=str(out_3d))
 
     assert out_2d.exists() and out_2d.stat().st_size > 10000
     assert out_3d.exists() and out_3d.stat().st_size > 10000
-    for sub_png in ("vyzarovaci_diagram_rez_XZ.png", "vyzarovaci_diagram_rez_YZ.png", "graf_osovy_pomer_AR.png"):
-        p = ff_dir / "grafy" / sub_png
+    for sub_png in ("radiation_pattern_cut_xz.png", "radiation_pattern_cut_yz.png", "plot_axial_ratio.png"):
+        p = ff_dir / "plots" / sub_png
         assert p.exists() and p.stat().st_size > 10000
 
 
 def test_export_paraview_package_cwd_and_rf_calc(tmp_path):
-    """Test export_paraview_package: obnovení CWD při prázdném i platném běhu a přítomnost rf_calc.py v ZIPu."""
+    """Test export_paraview_package: CWD restoration on empty/valid runs and presence of rf_calc.py in ZIP."""
     fake_root = tmp_path / "proj"
     fake_src = fake_root / "src"
     fake_data = tmp_path / "data"
@@ -533,12 +533,12 @@ def test_export_paraview_package_cwd_and_rf_calc(tmp_path):
         with patch.object(export_package, "load_env", return_value=(str(fake_root), str(fake_data))), \
              patch.object(export_package, "get_export_dir", return_value=str(fake_export)), \
              patch.object(export_package, "ensure_paraview_linked", return_value=None):
-            # 1. Prázdná data -> vrací False a obnoví CWD
+            # 1. Empty data -> returns False and restores CWD
             res_empty = export_package.export_paraview_package(output_name="empty_pkg")
             assert res_empty is False
             assert os.path.realpath(os.getcwd()) == os.path.realpath(str(caller_cwd))
 
-            # 2. Platný běh -> vrací True, obnoví CWD a ZIP obsahuje rf_calc.py
+            # 2. Valid run -> returns True, restores CWD, and ZIP contains rf_calc.py
             postpro_dir = fake_data / "postpro"
             postpro_dir.mkdir()
             with open(postpro_dir / "port-S.csv", "w", encoding="utf-8") as f:
@@ -563,7 +563,7 @@ def test_export_paraview_package_cwd_and_rf_calc(tmp_path):
 
 
 def test_plot_efield_mocked_pyvista(tmp_path):
-    """Test plot_efield.plot_e_field s mockovaným pyvista: prostřední Cycle*/data.pvtu, rodičovský adresář a close()."""
+    """Test plot_efield.plot_e_field with mocked pyvista: middle Cycle*/data.pvtu, parent dir creation, and close()."""
     data_dir = tmp_path / "data"
     driven_dir = data_dir / "postpro" / "paraview" / "driven_boundary"
     for cname in ("Cycle000001", "Cycle000002", "Cycle000003"):
@@ -596,12 +596,12 @@ def test_plot_efield_mocked_pyvista(tmp_path):
                 fake_plotter.screenshot.assert_called_once_with(str(output_img))
                 fake_plotter.close.assert_called_once()
 
-                # Ověření close() i při chybě screenshot()
+                # Verify close() even when screenshot() raises an error
                 fake_plotter.reset_mock()
                 fake_plotter.screenshot.side_effect = RuntimeError("render error")
                 try:
                     plot_efield.plot_e_field(vtu_file=None, output_image=str(output_img))
-                    assert False, "Měla být vyvolána výjimka RuntimeError"
+                    assert False, "RuntimeError should have been raised"
                 except RuntimeError:
                     pass
                 fake_plotter.close.assert_called_once()

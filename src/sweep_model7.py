@@ -1,15 +1,15 @@
 """
-sweep_model7.py - Parametrický sweep pro Model 7 (zrcadlený Model 4 pro RHCP s 50 Ohm T-článkem vpravo).
-Přebírá výchozí hodnoty z Modelu 4 a umožňuje ladění parametrů T-článku a oblouků.
+sweep_model7.py - Parametric sweep for Model 7 (mirrored Model 4 for RHCP with 50 Ohm T-junction on the right).
+Inherits defaults from Model 4 and enables tuning of T-junction and arc parameters.
 
-Podporované cíle sweepování (--sweep-target):
-  1. 'patch_l': Sweepování délky vyzařujícího flíčku L.
-  2. 'delta_l': Sweepování fázovacího rozdílu délek Delta L (ladění AR finálního RHCP modelu).
-  3. 'trans_w' (nebo 'w_t'): Sweepování šířky čtvrtvlnného transformátoru w_T.
-  4. 'trans_l' (nebo 'l_t'): Sweepování délky transformátoru l_T.
-  5. 'inset' (nebo 'y0'): Sweepování mělkého zanoření flíčku.
-  6. 'bend_radius': Sweepování poloměru oblouků ohybů.
-  7. 'feed_50_len': Sweepování délky 50 Ohm vstupního přívodu k T-článku.
+Supported sweep targets (--sweep-target):
+  1. 'patch_l': Sweep radiating patch length L.
+  2. 'delta_l': Sweep phasing path-length difference Delta L (AR tuning of final RHCP model).
+  3. 'trans_w' (or 'w_t'): Sweep quarter-wave transformer width w_T.
+  4. 'trans_l' (or 'l_t'): Sweep transformer length l_T.
+  5. 'inset' (or 'y0'): Sweep shallow patch inset.
+  6. 'bend_radius': Sweep bend arc radius.
+  7. 'feed_50_len': Sweep length of the 50 Ohm input feed to the T-junction.
 """
 
 import os
@@ -76,7 +76,7 @@ def build_sweep_steps_m7(
     arm_offset=None,
     end_straight=None,
 ):
-    """Sestaví kroky parametrického sweepu pro Model 7 (RHCP)."""
+    """Build parametric sweep steps for Model 7 (RHCP)."""
     target = (sweep_target or os.getenv("SWEEP_TARGET") or "patch_l").lower().strip()
     if target in ("bend", "bend_r", "r_bend", "arc_radius"):
         target = "bend_radius"
@@ -134,7 +134,7 @@ def build_sweep_steps_m7(
             step['run_name'] = f"m7_rbend{br_val:.2f}mm"
             step['feed_bend_radius'] = br_val
             steps.append(step)
-        desc = f"Poloměr oblouků (sweep_target=bend_radius): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Arc bend radius (sweep_target=bend_radius): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     if target == "feed_50_len":
@@ -146,7 +146,7 @@ def build_sweep_steps_m7(
             step['run_name'] = f"m7_l50_{l50_val:.2f}mm"
             step['feed_50_len'] = l50_val
             steps.append(step)
-        desc = f"Délka 50 Ohm přívodu (sweep_target=feed_50_len): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"50 Ohm feed length (sweep_target=feed_50_len): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     steps_m3, desc = build_sweep_steps_m3(
@@ -223,7 +223,7 @@ def run_sweep_model7(
     save_step=None,
     end_straight=None,
 ):
-    """Hlavní prováděcí funkce pro parametrický sweep Modelu 7 (RHCP)."""
+    """Main execution function for Model 7 parametric sweep (RHCP)."""
     load_env()
 
     steps, sweep_desc = build_sweep_steps_m7(
@@ -274,12 +274,12 @@ def run_sweep_model7(
     sweep_profile = sim_cfg['sweep_profile']
 
     print("\n" + "=" * 105)
-    print(f"SPUŠTĚNÍ PARAMETRICKÉHO SWEEPU MODELU 7 (RHCP, PROFIL: {sweep_profile.upper()}):")
-    print(f"Cíl sweepování: {sweep_desc}")
-    print(f"Frekvence: {sim_cfg['freq_min']:.3f} až {sim_cfg['freq_max']:.3f} GHz (krok {sim_cfg['freq_step']:.4f} GHz)")
+    print(f"STARTING MODEL 7 PARAMETRIC SWEEP (RHCP, PROFILE: {sweep_profile.upper()}):")
+    print(f"Sweep target: {sweep_desc}")
+    print(f"Frequency: {sim_cfg['freq_min']:.3f} to {sim_cfg['freq_max']:.3f} GHz (step {sim_cfg['freq_step']:.4f} GHz)")
     print(
-        f"Síť Gmsh: h_min = {sim_cfg['mesh_size_min']:.2f} mm, h_max = {sim_cfg['mesh_size_max']:.2f} mm | "
-        f"AMR: max {sim_cfg['amr_max_its']} it. (Tol {sim_cfg['amr_threshold']}) | Lineární řešič Tol: {sim_cfg['linear_tol']}"
+        f"Gmsh mesh: h_min = {sim_cfg['mesh_size_min']:.2f} mm, h_max = {sim_cfg['mesh_size_max']:.2f} mm | "
+        f"AMR: max {sim_cfg['amr_max_its']} it. (Tol {sim_cfg['amr_threshold']}) | Linear solver Tol: {sim_cfg['linear_tol']}"
     )
     print("=" * 105 + "\n")
 
@@ -288,7 +288,7 @@ def run_sweep_model7(
 
     for i, step_params in enumerate(steps, start=1):
         step_name = step_params['run_name']
-        print(f"\n>>> [Krok {i}/{len(steps)}] Spouštím: {step_name} <<<")
+        print(f"\n>>> [Step {i}/{len(steps)}] Running: {step_name} <<<")
 
         custom_cfg = {
             'antenna_model': 7,
@@ -322,21 +322,21 @@ def run_sweep_model7(
                     zip_out = os.path.join(export_dir, f"{step_name}.zip")
                     export_paraview_package(output_name=step_name, output_zip=zip_out, model_version=7)
                 except Exception as exp_err:
-                    print(f"Upozornění při exportu balíčku {step_name}: {exp_err}")
+                    print(f"Warning while exporting package {step_name}: {exp_err}")
 
         except Exception as e:
-            print(f"CHYBA v kroku {step_name}: {e}")
+            print(f"ERROR in step {step_name}: {e}")
 
     t_total = time.time() - t_start
     print("\n" + "=" * 105)
-    print(f"SWEEP MODELU 7 DOKONČEN! Úspěšných běhů: {successful_runs}/{len(steps)} za {t_total:.1f} s")
+    print(f"MODEL 7 SWEEP COMPLETED! Successful runs: {successful_runs}/{len(steps)} in {t_total:.1f} s")
     print("=" * 105 + "\n")
 
     print_summary_table_model7()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Parametrický sweep Modelu 7 (Zrcadlený Model 4 pro RHCP)")
+    parser = argparse.ArgumentParser(description="Model 7 parametric sweep (Mirrored Model 4 for RHCP)")
     parser.add_argument("--sweep-target", choices=["patch_l", "delta_l", "trans_w", "w_t", "trans_l", "l_t", "inset", "y0", "bend_radius", "feed_50_len"], default=None)
     parser.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
     parser.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")

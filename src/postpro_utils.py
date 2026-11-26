@@ -1,6 +1,6 @@
 """
-postpro_utils.py - Sdílené pomocné funkce pro správu cest, .env konfiguraci
-a automatické propojování výstupů adaptivního zjemnění (AMR) pro ParaView.
+postpro_utils.py - Shared helper utilities for path management, .env configuration,
+and automatic linking of adaptive mesh refinement (AMR) outputs for ParaView.
 """
 
 import os
@@ -9,7 +9,7 @@ import sys
 import glob
 import subprocess
 
-# Automatické přidání kořene projektu a složek src a scripts do sys.path
+# Automatically add project root, src, and scripts directories to sys.path
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR = os.path.abspath(os.path.join(_SCRIPT_DIR, ".."))
 _SRC_DIR = os.path.join(_ROOT_DIR, "src")
@@ -24,18 +24,18 @@ if _ROOT_DIR not in sys.path and os.path.exists(_ROOT_DIR):
 
 
 def get_project_root():
-    """Vrátí absolutní cestu ke kořenovému adresáři projektu."""
+    """Return absolute path to the project root directory."""
     current_file = os.path.abspath(__file__)
     parent = os.path.dirname(current_file)
-    if os.path.basename(parent) in ("src", "scripts", "export", "antena_paraview") or os.path.basename(parent).startswith("antena_export"):
+    if os.path.basename(parent) in ("src", "scripts", "export", "antenna_paraview") or os.path.basename(parent).startswith("antenna_export"):
         return os.path.abspath(os.path.join(parent, ".."))
     return os.path.abspath(parent)
 
 
 def _resolve_env_dir(env_dir, root_dir, default_subdir):
     """
-    Vyhodnotí cestu ke složce z proměnné prostředí s bezpečným fallbackem
-    do <root_dir>/<default_subdir> (např. pro kontejner nebo Unixovou cestu na Windows).
+    Resolve directory path from an environment variable with a safe fallback
+    to <root_dir>/<default_subdir> (e.g., for containers or Unix paths on Windows).
     """
     default_dir = os.path.abspath(os.path.join(root_dir, default_subdir))
     if not env_dir:
@@ -66,26 +66,26 @@ _ENV_FILE_APPLIED = {}
 
 
 def _validate_safe_profile_name(profile_name):
-    """Validuje bezpečný název profilu (bez path traversal a oddělovačů cest)."""
+    """Validate a safe profile name (no path traversal or path separators)."""
     if not isinstance(profile_name, str):
-        raise ValueError(f"Neplatný název profilu: {profile_name!r}")
+        raise ValueError(f"Invalid profile name: {profile_name!r}")
     name = profile_name.strip()
     if not name:
-        raise ValueError("Název profilu nesmí být prázdný.")
+        raise ValueError("Profile name must not be empty.")
     if ".." in name or "/" in name or "\\" in name or "\x00" in name:
         raise ValueError(
-            f"Neplatný název profilu (path traversal / oddělovače cest nejsou povoleny): {profile_name!r}"
+            f"Invalid profile name (path traversal / path separators are not allowed): {profile_name!r}"
         )
     if not _SAFE_PROFILE_RE.match(name):
         raise ValueError(
-            f"Neplatný název profilu {profile_name!r}: povoleny jsou pouze znaky [A-Za-z0-9._-] "
-            f"a název musí začínat alfanumerickým znakem."
+            f"Invalid profile name {profile_name!r}: only characters [A-Za-z0-9._-] are allowed "
+            f"and the name must start with an alphanumeric character."
         )
     return name
 
 
 def _parse_env_file(path):
-    """Načte dvojice klíč=hodnota ze souboru ve formátu .env."""
+    """Load key=value pairs from a .env format file."""
     parsed = {}
     if not path or not os.path.exists(path):
         return parsed
@@ -102,10 +102,10 @@ def _parse_env_file(path):
 
 def get_profile_env_path(profile_name, root_dir=None):
     """
-    Vrátí absolutní cestu ke konfiguračnímu souboru profilu:
+    Return the absolute path to the profile configuration file:
       <root_dir>/results/<profile_name>/<profile_name>.env
-    Podporuje také přímou cestu na existující .env soubor (bez path traversal '..').
-    Pokud soubor neexistuje, vyhodí FileNotFoundError.
+    Also supports a direct path to an existing .env file (without '..' path traversal).
+    Raises FileNotFoundError if the file does not exist.
     """
     if root_dir is None:
         root_dir = get_project_root()
@@ -113,34 +113,34 @@ def get_profile_env_path(profile_name, root_dir=None):
         root_dir = os.path.abspath(root_dir)
 
     if not isinstance(profile_name, str) or not profile_name.strip():
-        raise ValueError(f"Neplatný název profilu: {profile_name!r}")
+        raise ValueError(f"Invalid profile name: {profile_name!r}")
 
     raw = profile_name.strip()
     if "\x00" in raw or ".." in raw:
-        raise ValueError(f"Neplatný název profilu (path traversal není povolen): {profile_name!r}")
+        raise ValueError(f"Invalid profile name (path traversal is not allowed): {profile_name!r}")
 
     if raw.endswith(".env"):
         candidate = os.path.abspath(raw) if os.path.isabs(raw) else os.path.abspath(os.path.join(root_dir, raw))
         if os.path.isfile(candidate):
             return candidate
-        raise FileNotFoundError(f"Konfigurační soubor profilu nebyl nalezen: {candidate}")
+        raise FileNotFoundError(f"Profile configuration file not found: {candidate}")
 
     safe_name = _validate_safe_profile_name(raw)
     results_dir = os.path.abspath(os.path.join(root_dir, "results"))
     env_file = os.path.abspath(os.path.join(results_dir, safe_name, f"{safe_name}.env"))
     if os.path.commonpath([results_dir, env_file]) != results_dir:
-        raise ValueError(f"Neplatný název profilu (cesta mimo results/): {profile_name!r}")
+        raise ValueError(f"Invalid profile name (path outside results/): {profile_name!r}")
 
     if not os.path.isfile(env_file):
         raise FileNotFoundError(
-            f"Profil varianty '{safe_name}' nebyl nalezen: očekávaný soubor {env_file} neexistuje."
+            f"Variant profile '{safe_name}' not found: expected file {env_file} does not exist."
         )
     return env_file
 
 
 def get_profile_kicad_dir(profile_name, root_dir=None):
     """
-    Vrátí absolutní cestu k výstupní složce KiCad pro zadaný profil:
+    Return the absolute path to the KiCad output directory for the given profile:
       <root_dir>/results/<profile_name>/kicad
     """
     if root_dir is None:
@@ -149,11 +149,11 @@ def get_profile_kicad_dir(profile_name, root_dir=None):
         root_dir = os.path.abspath(root_dir)
 
     if not isinstance(profile_name, str) or not profile_name.strip():
-        raise ValueError(f"Neplatný název profilu: {profile_name!r}")
+        raise ValueError(f"Invalid profile name: {profile_name!r}")
 
     raw = profile_name.strip()
     if "\x00" in raw or ".." in raw:
-        raise ValueError(f"Neplatný název profilu (path traversal není povolen): {profile_name!r}")
+        raise ValueError(f"Invalid profile name (path traversal is not allowed): {profile_name!r}")
 
     if raw.endswith(".env"):
         candidate = os.path.abspath(raw) if os.path.isabs(raw) else os.path.abspath(os.path.join(root_dir, raw))
@@ -163,18 +163,18 @@ def get_profile_kicad_dir(profile_name, root_dir=None):
     results_dir = os.path.abspath(os.path.join(root_dir, "results"))
     kicad_dir = os.path.abspath(os.path.join(results_dir, safe_name, "kicad"))
     if os.path.commonpath([results_dir, kicad_dir]) != results_dir:
-        raise ValueError(f"Neplatný název profilu (cesta mimo results/): {profile_name!r}")
+        raise ValueError(f"Invalid profile name (path outside results/): {profile_name!r}")
     return kicad_dir
 
 
 def load_env(env_path=None, profile=None):
     """
-    Načte proměnné prostředí ze souboru .env v kořeni projektu a volitelně
-    aplikuje výrobní profil varianty z results/<profile>/<profile>.env.
+    Load environment variables from the .env file in the project root and optionally
+    apply a manufacturing variant profile from results/<profile>/<profile>.env.
 
-    Priorita výběru profilu: explicitní argument `profile` > `os.getenv("ANTENNA_PROFILE")`.
-    Hodnoty z profilu přepisují hodnoty načtené z kořenového .env (i při opakovaném volání).
-    Vrací tuple (root_dir, data_dir).
+    Profile selection priority: explicit `profile` argument > `os.getenv("ANTENNA_PROFILE")`.
+    Values from the profile override values loaded from root .env (even on repeated calls).
+    Returns tuple (root_dir, data_dir).
     """
     if env_path is None:
         root_dir = get_project_root()
@@ -192,7 +192,7 @@ def load_env(env_path=None, profile=None):
                     os.environ[k] = v
                     _ENV_FILE_APPLIED[k] = v
         except Exception as e:
-            print(f"Upozornění při čtení .env: {e}")
+            print(f"Warning while reading .env: {e}")
 
     explicit_profile = profile is not None and str(profile).strip() != ""
     if explicit_profile:
@@ -242,9 +242,9 @@ def load_env(env_path=None, profile=None):
             os.environ["PROFILE_NAME"] = desired_profile_name
             _ENV_FILE_APPLIED["PROFILE_NAME"] = desired_profile_name
 
-    # Pokud zadaná cesta existuje v aktuálním souborovém systému, použijeme ji.
-    # Pokud neexistuje (např. hostitelská cesta jako /host/cesta/k/datum spuštěná uvnitř Docker kontejneru
-    # nebo Unixová cesta na Windows), použijeme lokální složku projektu data/ (v kontejneru /workspace/data).
+    # If the specified path exists in the current filesystem, use it.
+    # If it does not exist (e.g., a host path such as /host/path/to/data inside a Docker container
+    # or a Unix path on Windows), fall back to the local project directory data/ (in container /workspace/data).
     data_dir = _resolve_env_dir(os.getenv("DATA_DIR"), root_dir, "data")
 
     return root_dir, data_dir
@@ -252,9 +252,9 @@ def load_env(env_path=None, profile=None):
 
 def get_export_dir(root_dir=None):
     """
-    Vrátí platnou lokální cestu k exportní složce pro aktuální běhové prostředí podle EXPORT_DIR v .env.
-    Pokud EXPORT_DIR z .env ukazuje na hostitelskou cestu, která v kontejneru neexistuje
-    (např. /host/cesta/k/exportu), automaticky použije /workspace/export (připojený svazek).
+    Return a valid local path to the export directory for the current runtime environment per EXPORT_DIR in .env.
+    If EXPORT_DIR from .env points to a host path that does not exist inside a container
+    (e.g., /host/path/to/export), automatically fall back to /workspace/export (mounted volume).
     """
     if root_dir is None:
         root_dir = get_project_root()
@@ -267,7 +267,7 @@ def get_export_dir(root_dir=None):
 
 def load_env_paths(env_path=None, profile=None):
     """
-    Načte .env (a případně profil) a vrátí tuple (root_dir, data_dir, export_dir).
+    Load .env (and optionally a profile) and return tuple (root_dir, data_dir, export_dir).
     """
     root_dir, data_dir = load_env(env_path, profile=profile)
     export_dir = get_export_dir(root_dir)
@@ -276,8 +276,8 @@ def load_env_paths(env_path=None, profile=None):
 
 def get_latest_iteration_dir(data_dir=None):
     """
-    Najde podsložku s nejnovější dokončenou AMR iterací (např. 'data/postpro/iteration1').
-    Vrací cestu k ní nebo None, pokud žádné složky iteration* neexistují.
+    Find the subdirectory with the latest completed AMR iteration (e.g., 'data/postpro/iteration1').
+    Returns its path or None if no iteration* directories exist.
     """
     if data_dir is None:
         _, data_dir = load_env()
@@ -298,10 +298,10 @@ def get_latest_iteration_dir(data_dir=None):
 
 def ensure_paraview_linked(data_dir=None):
     """
-    Zajistí, že 'data/postpro/paraview' odkazuje na složku paraview v nejnovější AMR iteraci.
-    Pokud složka paraview již existuje jako normální adresář a neexistují iteration*, nic nemění.
-    Pokud existují iteration*, vytvoří/aktualizuje junction (Windows) nebo symlink (Linux).
-    Vrací cestu k aktivní složce paraview.
+    Ensure 'data/postpro/paraview' points to the paraview folder in the latest AMR iteration.
+    If paraview already exists as a regular directory and no iteration* exist, leaves it untouched.
+    If iteration* exist, creates/updates a junction (Windows) or symlink (Linux).
+    Returns path to the active paraview directory.
     """
     if data_dir is None:
         _, data_dir = load_env()
@@ -354,18 +354,18 @@ def ensure_paraview_linked(data_dir=None):
                 )
             else:
                 os.symlink(latest_pv, target_link)
-            print(f"[postpro_utils] Propojeno: {target_link} -> {latest_pv}")
+            print(f"[postpro_utils] Linked: {target_link} -> {latest_pv}")
         except Exception as e:
-            print(f"[postpro_utils] Upozornění: Nepodařilo se vytvořit odkaz pro paraview: {e}")
+            print(f"[postpro_utils] Warning: Failed to create paraview link: {e}")
 
     return target_link
 
 
 def get_driven_boundary_pvd(data_dir=None, caller_file=None):
     """
-    Vrátí cestu k driven_boundary.pvd.
-    Nejprve zajistí propojení paraview na poslední iteraci.
-    Pokud existuje lokální fallback (rozbalený přenosný balíček), použije ten.
+    Return path to driven_boundary.pvd.
+    First ensures paraview is linked to the latest iteration.
+    If a local fallback exists (unpacked portable package), uses that.
     """
     if data_dir is None:
         _, data_dir = load_env()
@@ -390,7 +390,7 @@ def get_driven_boundary_pvd(data_dir=None, caller_file=None):
 
 def copy_postpro_directory(src_dir, dst_dir):
     """
-    Bezpečně zkopíruje obsah výstupní složky simulace (včetně symlinků/junctions a CSV souborů).
+    Safely copy contents of the simulation output directory (including symlinks/junctions and CSV files).
     """
     import shutil
     if not os.path.exists(src_dir):
@@ -416,23 +416,23 @@ def copy_postpro_directory(src_dir, dst_dir):
             elif os.path.isfile(s):
                 shutil.copy2(s, d)
         except Exception as e:
-            print(f"[postpro_utils] Upozornění při kopírování {s} -> {d}: {e}")
+            print(f"[postpro_utils] Warning while copying {s} -> {d}: {e}")
 
 
 def merge_two_port_simulations(p1_dir, p2_dir, output_dir):
     """
-    Sloučí výstupy ze dvou dílčích simulací Palace pro Model 2:
-      - p1_dir: běh s buzeným Portem 1 (spodní, Ey) a pasivně zakončeným Portem 2 (100 Ohm)
-      - p2_dir: běh s buzeným Portem 2 (levý, Ex) a pasivně zakončeným Portem 1 (100 Ohm)
-    do kompletní 2-portové S-matice v output_dir/port-S.csv a superponovaného
-    dálkového pole v output_dir/farfield-rE.csv.
+    Merge outputs from two partial Palace simulations for Model 2:
+      - p1_dir: run with excited Port 1 (bottom, Ey) and passively terminated Port 2 (100 Ohm)
+      - p2_dir: run with excited Port 2 (left, Ex) and passively terminated Port 1 (100 Ohm)
+    into a complete 2-port S-matrix in output_dir/port-S.csv and superposed
+    far-field in output_dir/farfield-rE.csv.
     """
     import numpy as np
     import shutil
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # 1. SLOUČENÍ S-PARAMETRŮ (port-S.csv)
+    # 1. MERGING S-PARAMETERS (port-S.csv)
     s1_path = os.path.join(p1_dir, "port-S.csv")
     s2_path = os.path.join(p2_dir, "port-S.csv")
     s_out = os.path.join(output_dir, "port-S.csv")
@@ -458,7 +458,7 @@ def merge_two_port_simulations(p1_dir, p2_dir, output_dir):
                             return idx
                 return None
 
-            # Z p1_dir hledáme S11 a S21
+            # From p1_dir, look for S11 and S21
             s11_idx = get_col(h1, ["|s[1][1]|", "s[1][1]", "s11"])
             if s11_idx is None:
                 s11_idx = 1
@@ -473,7 +473,7 @@ def merge_two_port_simulations(p1_dir, p2_dir, output_dir):
             if s21_deg_idx is None and d1.shape[1] > 4:
                 s21_deg_idx = 4
 
-            # Z p2_dir hledáme S12 a S22
+            # From p2_dir, look for S12 and S22
             s12_idx = get_col(h2, ["|s[1][2]|", "s[1][2]", "s12"])
             if s12_idx is None and d2.shape[1] > 1:
                 s12_idx = 1
@@ -522,16 +522,16 @@ def merge_two_port_simulations(p1_dir, p2_dir, output_dir):
 
             shutil.copy2(s1_path, os.path.join(output_dir, "port-S_port1.csv"))
             shutil.copy2(s2_path, os.path.join(output_dir, "port-S_port2.csv"))
-            print(f"[postpro_utils] S-matice úspěšně sloučena: {s_out} (Port 1 + Port 2)")
+            print(f"[postpro_utils] S-matrix merged successfully: {s_out} (Port 1 + Port 2)")
 
         except Exception as e:
-            print(f"[postpro_utils] Chyba při slučování port-S.csv: {e}")
+            print(f"[postpro_utils] Error merging port-S.csv: {e}")
     elif os.path.exists(s1_path):
         shutil.copy2(s1_path, s_out)
     elif os.path.exists(s2_path):
         shutil.copy2(s2_path, s_out)
 
-    # 2. SLOUČENÍ DÁLKOVÉHO POLE (farfield-rE.csv)
+    # 2. MERGING FAR-FIELD (farfield-rE.csv)
     ff1_path = os.path.join(p1_dir, "farfield-rE.csv")
     ff2_path = os.path.join(p2_dir, "farfield-rE.csv")
     ff_out = os.path.join(output_dir, "farfield-rE.csv")
@@ -548,7 +548,7 @@ def merge_two_port_simulations(p1_dir, p2_dir, output_dir):
             if d_ff1.shape == d_ff2.shape and d_ff1.shape[1] >= 10:
                 merged_ff = d_ff1.copy()
                 merged_ff[:, 1] = 1  # exc
-                # Sloupce 4:10 obsahují r*Re/Im složek pole Ex, Ey, Ez
+                # Columns 4:10 contain r*Re/Im of Ex, Ey, Ez field components
                 merged_ff[:, 4:10] = d_ff1[:, 4:10] + d_ff2[:, 4:10]
 
                 ff_header = (
@@ -563,17 +563,17 @@ def merge_two_port_simulations(p1_dir, p2_dir, output_dir):
 
                 shutil.copy2(ff1_path, os.path.join(output_dir, "farfield_p1-rE.csv"))
                 shutil.copy2(ff2_path, os.path.join(output_dir, "farfield_p2-rE.csv"))
-                print(f"[postpro_utils] Dálkové pole úspěšně superponováno do: {ff_out}")
+                print(f"[postpro_utils] Far-field superposed successfully into: {ff_out}")
             else:
                 shutil.copy2(ff1_path, ff_out)
         except Exception as e:
-            print(f"[postpro_utils] Chyba při slučování farfield-rE.csv: {e}")
+            print(f"[postpro_utils] Error merging farfield-rE.csv: {e}")
     elif os.path.exists(ff1_path):
         shutil.copy2(ff1_path, ff_out)
     elif os.path.exists(ff2_path):
         shutil.copy2(ff2_path, ff_out)
 
-    # 3. ZÁLOHA A PROPOJENÍ DALŠÍCH SOUBORŮ
+    # 3. BACKUP AND LINKING OF ADDITIONAL FILES
     for f_name in ["port-V.csv", "port-I.csv", "terminal-V.csv", "terminal-I.csv"]:
         f1 = os.path.join(p1_dir, f_name)
         f2 = os.path.join(p2_dir, f_name)
@@ -593,7 +593,7 @@ def merge_two_port_simulations(p1_dir, p2_dir, output_dir):
 
 
 def find_col_idx(header, patterns, exclude_patterns=None):
-    """Vyhledá index prvního sloupce v záhlaví odpovídajícího vzorům (s volitelným vyloučením)."""
+    """Find the index of the first column in header matching any pattern (with optional exclusions)."""
     for idx, col in enumerate(header):
         col_low = col.lower()
         if exclude_patterns and any(ep.lower() in col_low for ep in exclude_patterns):
@@ -606,10 +606,10 @@ def find_col_idx(header, patterns, exclude_patterns=None):
 
 def load_port_v_voltages(v_path):
     """
-    Načte port-V.csv pomocí párování názvů sloupců (s pozičním fallbackem) a spočte
-    komplexní S-parametry pro jeden nebo dva porty.
+    Load port-V.csv using column-name matching (with positional fallback) and compute
+    complex S-parameters for one or two ports.
 
-    Vrací: (freqs, s11_complex, s22_complex, s21_complex, s12_complex)
+    Returns: (freqs, s11_complex, s22_complex, s21_complex, s12_complex)
     """
     import numpy as np
 
@@ -656,7 +656,7 @@ def load_port_v_voltages(v_path):
         exclude_patterns=["inc"],
     )
 
-    # Poziční fallback pouze tehdy, pokud hlavičky nebylo možné spárovat
+    # Positional fallback only when headers could not be matched
     if v1_inc_idx is None and v2_inc_idx is None and v1_re_idx is None and v2_re_idx is None:
         if ncols >= 7:
             v1_inc_idx, v1_re_idx, v1_im_idx, v2_inc_idx, v2_re_idx, v2_im_idx = 1, 2, 3, 4, 5, 6

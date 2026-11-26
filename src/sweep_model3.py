@@ -1,16 +1,16 @@
 """
-sweep_model3.py - Samostatný parametrický sweep pro Model 3 (Hybridní dvoustupňové přizpůsobení).
-Cesta B:
-  - Mělký zářez y0 (výchozí 2.5 mm).
-  - Vnitřní čtvrtvlnný transformátor (w_T ≈ 0.42 mm, l_T ≈ 18.9 mm).
-  - Vnější 100 Ohm napaječ s fázovacím úsekem Delta L (≈ 18.66 mm).
+sweep_model3.py - Standalone parametric sweep for Model 3 (Hybrid two-stage matching).
+Path B:
+  - Shallow inset notch y0 (default 2.5 mm).
+  - Inner quarter-wave transformer (w_T ≈ 0.42 mm, l_T ≈ 18.9 mm).
+  - Outer 100 Ohm feed with phasing section Delta L (≈ 18.66 mm).
 
-Podporované cíle sweepování (--sweep-target):
-  1. 'inset' (nebo 'y0'): Sweepování mělkého zanoření flíčku (reálná složka impedance flíčku).
-  2. 'trans_w' (nebo 'w_t'): Sweepování šířky čtvrtvlnného transformátoru w_T.
-  3. 'trans_l' (nebo 'l_t'): Sweepování délky transformátoru l_T.
-  4. 'delta_l': Sweepování délky fázovacího úseku Delta L pro minimalizaci osového poměru (AR).
-  5. 'patch_l': Sweepování délky vyzařujícího flíčku L pro přesné vycentrování rezonance.
+Supported sweep targets (--sweep-target):
+  1. 'inset' (or 'y0'): Sweep shallow patch inset (real part of patch impedance).
+  2. 'trans_w' (or 'w_t'): Sweep quarter-wave transformer width w_T.
+  3. 'trans_l' (or 'l_t'): Sweep transformer length l_T.
+  4. 'delta_l': Sweep phasing section length Delta L to minimize axial ratio (AR).
+  5. 'patch_l': Sweep radiating patch length L for precise resonance centering.
 """
 
 import os
@@ -54,7 +54,7 @@ def resolve_sweep_sim_settings(
     linear_max_its=None,
     save_step=None,
 ):
-    """Vyhodnotí simulační profil sweepu ('precise' vs 'fast') a přepisy parametrů."""
+    """Resolve sweep simulation profile ('precise' vs 'fast') and parameter overrides."""
     sweep_profile = os.getenv("SWEEP_PROFILE", "precise").lower().strip()
     prefix = "SWEEP_FAST_" if sweep_profile == "fast" else "SWEEP_PRECISE_"
 
@@ -191,7 +191,7 @@ def build_sweep_steps_m3(
     patch_w=None,
 ):
     """
-    Sestaví seznam konfiguračních kroků (slovníků parametrů) pro parametrický sweep Modelu 3.
+    Build the list of configuration steps (parameter dictionaries) for Model 3 parametric sweep.
     """
     target = (sweep_target or os.getenv("SWEEP_TARGET") or "inset").lower().strip()
     if target in ("y0", "insets"):
@@ -236,7 +236,7 @@ def build_sweep_steps_m3(
             if fixed_dl is not None:
                 step['feed_delta_l'] = fixed_dl
             steps.append(step)
-        desc = f"Šířka transformátoru w_T (sweep_target=trans_w): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Transformer width w_T (sweep_target=trans_w): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     elif target == "trans_l":
@@ -261,7 +261,7 @@ def build_sweep_steps_m3(
             if fixed_dl is not None:
                 step['feed_delta_l'] = fixed_dl
             steps.append(step)
-        desc = f"Délka transformátoru l_T (sweep_target=trans_l): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Transformer length l_T (sweep_target=trans_l): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     elif target == "delta_l":
@@ -284,7 +284,7 @@ def build_sweep_steps_m3(
             if fixed_tl is not None:
                 step['trans_l'] = fixed_tl
             steps.append(step)
-        desc = f"Fázovací úsek Delta L v 100 Ohm vedení (sweep_target=delta_l): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Phasing section Delta L in 100 Ohm line (sweep_target=delta_l): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     elif target == "patch_l":
@@ -309,11 +309,11 @@ def build_sweep_steps_m3(
             if fixed_dl is not None:
                 step['feed_delta_l'] = fixed_dl
             steps.append(step)
-        desc = f"Délka vyzařujícího flíčku L (sweep_target=patch_l): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Radiating patch length L (sweep_target=patch_l): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     else:
-        # Výchozí cíl: sweepování mělkého zářezu (target = 'inset')
+        # Default target: shallow inset notch sweep (target = 'inset')
         m = (mode or os.getenv("SWEEP_MODE") or "symmetric").lower().strip()
         if m == "manual":
             pairs = _parse_manual_pairs(manual_pairs) or _parse_manual_pairs(os.getenv("SWEEP_MANUAL_PAIRS"))
@@ -323,27 +323,27 @@ def build_sweep_steps_m3(
                 pairs = [(float(b), float(l)) for b, l in zip(vb, vl)]
             if not pairs:
                 pairs = [(2.5, 2.5)]
-            mode_desc = f"Manuálně zadané body: {len(pairs)} bodů -> {pairs}"
+            mode_desc = f"Manual points: {len(pairs)} points -> {pairs}"
         elif m == "grid":
             vb = insets_b or _parse_float_list(os.getenv("SWEEP_INSETS_B")) or [2.0, 2.5, 3.0]
             vl = insets_l or _parse_float_list(os.getenv("SWEEP_INSETS_L")) or [2.0, 2.5, 3.0]
             pairs = [(float(b), float(l)) for b in vb for l in vl]
-            mode_desc = f"2D kartézská mřížka: {len(vb)} x {len(vl)} = {len(pairs)} bodů"
+            mode_desc = f"2D Cartesian Grid: {len(vb)} x {len(vl)} = {len(pairs)} points"
         elif m == "single_fixed":
             fname = fixed_name or os.getenv("SWEEP_FIXED_INSET_NAME", "inset_l").lower().strip()
             fval = float(fixed_val if fixed_val is not None else os.getenv("SWEEP_FIXED_INSET_VAL", "2.5"))
             s_vals = insets or _parse_float_list(os.getenv("SWEEP_INSETS")) or DEFAULT_INSET_VALUES_M3
             if "b" in fname:
                 pairs = [(fval, float(v)) for v in s_vals]
-                mode_desc = f"Fixní spodní y0b = {fval:.2f} mm, sweep levý y0l: {s_vals} mm"
+                mode_desc = f"Fixed bottom y0b = {fval:.2f} mm, sweep left y0l: {s_vals} mm"
             else:
                 pairs = [(float(v), fval) for v in s_vals]
-                mode_desc = f"Fixní levý y0l = {fval:.2f} mm, sweep spodní y0b: {s_vals} mm"
+                mode_desc = f"Fixed left y0l = {fval:.2f} mm, sweep bottom y0b: {s_vals} mm"
         else:
             # symmetric
             s_vals = insets or _parse_float_list(os.getenv("SWEEP_INSETS")) or DEFAULT_INSET_VALUES_M3
             pairs = [(float(v), float(v)) for v in s_vals]
-            mode_desc = f"Symetrický sweep mělkého zářezu (y0b = y0l): {s_vals} mm"
+            mode_desc = f"Symmetric shallow inset sweep (y0b = y0l): {s_vals} mm"
 
         for ib, il in pairs:
             ib_val = float(np.round(ib, 2))
@@ -366,7 +366,7 @@ def build_sweep_steps_m3(
                 step['feed_delta_l'] = fixed_dl
             steps.append(step)
 
-        desc = f"Zanoření mělkého zářezu (sweep_target=inset) | {mode_desc} (celkem {len(steps)} kroků)"
+        desc = f"Shallow inset notch depth (sweep_target=inset) | {mode_desc} ({len(steps)} steps total)"
         return steps, desc
 
 
@@ -403,10 +403,10 @@ def run_sweep_model3(
     amr_threshold=None,
     save_step=None,
 ):
-    """Hlavní prováděcí funkce pro parametrický sweep Modelu 3."""
+    """Main execution function for Model 3 parametric sweep."""
     load_env()
 
-    # Sestavení simulačních kroků
+    # Build simulation steps
     steps, sweep_desc = build_sweep_steps_m3(
         sweep_target=sweep_target,
         mode=mode,
@@ -460,10 +460,10 @@ def run_sweep_model3(
     s_driven_port = str(driven_port if driven_port is not None else os.getenv("SWEEP_DRIVEN_PORT", os.getenv("DRIVEN_PORT", "all"))).lower().strip()
 
     print("\n" + "=" * 105)
-    print(f"SPUŠTĚNÍ PARAMETRICKÉHO SWEEPU MODELU 3 (PROFIL: {sweep_profile.upper()}):")
-    print(f"Cíl sweepování: {sweep_desc}")
-    print(f"Frekvence: {s_fmin:.3f} až {s_fmax:.3f} GHz (krok {s_fstep:.4f} GHz)")
-    print(f"Síť Gmsh: h_min = {s_mesh_size_min:.2f} mm, h_max = {s_mesh_size_max:.2f} mm | AMR: max {s_amr} it. (Tol {s_amr_tol}) | Lineární řešič Tol: {s_linear_tol}")
+    print(f"STARTING MODEL 3 PARAMETRIC SWEEP (PROFILE: {sweep_profile.upper()}):")
+    print(f"Sweep target: {sweep_desc}")
+    print(f"Frequency: {s_fmin:.3f} to {s_fmax:.3f} GHz (step {s_fstep:.4f} GHz)")
+    print(f"Gmsh mesh: h_min = {s_mesh_size_min:.2f} mm, h_max = {s_mesh_size_max:.2f} mm | AMR: max {s_amr} it. (Tol {s_amr_tol}) | Linear solver Tol: {s_linear_tol}")
     print("=" * 105 + "\n")
 
     t_start = time.time()
@@ -471,7 +471,7 @@ def run_sweep_model3(
 
     for i, step_params in enumerate(steps, start=1):
         step_name = step_params['run_name']
-        print(f"\n>>> [Krok {i}/{len(steps)}] Spouštím: {step_name} <<<")
+        print(f"\n>>> [Step {i}/{len(steps)}] Running: {step_name} <<<")
 
         custom_cfg = {
             'antenna_model': 3,
@@ -497,30 +497,30 @@ def run_sweep_model3(
             main(custom_params=custom_cfg, skip_simulation=skip_simulation, clean=True)
             successful_runs += 1
 
-            # Export balíčku pro daný krok
+            # Export package for this step
             if export_each and not skip_simulation and export_paraview_package:
                 try:
                     export_dir = get_export_dir()
                     zip_out = os.path.join(export_dir, f"{step_name}.zip")
                     export_paraview_package(output_name=step_name, output_zip=zip_out)
                 except Exception as ex:
-                    print(f"Upozornění při exportu balíčku pro {step_name}: {ex}")
+                    print(f"Warning while exporting package for {step_name}: {ex}")
 
         except Exception as e:
-            print(f"CHYBA v kroku {i} ({step_name}): {e}")
+            print(f"ERROR in step {i} ({step_name}): {e}")
 
     total_time = time.time() - t_start
     print("\n" + "=" * 105)
-    print(f"PARAMETRICKÝ SWEEP MODELU 3 DOKONČEN! Úspěšných běhů: {successful_runs}/{len(steps)}. Celkový čas: {total_time:.1f} s")
+    print(f"MODEL 3 PARAMETRIC SWEEP COMPLETED! Successful runs: {successful_runs}/{len(steps)}. Total time: {total_time:.1f} s")
     print("=" * 105 + "\n")
 
     print_summary_table_model3()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Parametrický sweep Modelu 3 (Hybridní dvoustupňové přizpůsobení)")
+    parser = argparse.ArgumentParser(description="Model 3 parametric sweep (Hybrid two-stage matching)")
     parser.add_argument("--sweep-target", choices=["inset", "y0", "trans_w", "w_t", "trans_l", "l_t", "delta_l", "patch_l"], default=None,
-                        help="Cíl sweepování: 'inset' (y0, výchozí), 'trans_w' (w_T), 'trans_l' (l_T), 'delta_l', 'patch_l'")
+                        help="Sweep target: 'inset' (y0, default), 'trans_w' (w_T), 'trans_l' (l_T), 'delta_l', 'patch_l'")
     parser.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
     parser.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")
     parser.add_argument("--insets", type=float, nargs="+", default=None)

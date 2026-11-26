@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-export_kicad.py - Uživatelský CLI nástroj pro export výrobních a knihovních podkladů KiCad 10.
-Načítá konfiguraci z .env souboru (pomocí postpro_utils.load_env()) a umožňuje
-jednoduché přepsání parametrů přes argumenty příkazové řádky.
+export_kicad.py - User CLI tool for exporting KiCad 10 manufacturing and library files.
+Loads configuration from the .env file (via postpro_utils.load_env()) and allows
+overriding parameters through command-line arguments.
 
-Výchozí výstupní složka: export/kicad/
-Generované soubory:
-  - antenna_model4.kicad_pcb  (Kompletní výrobní DPS se stackupem, sítěmi RF_IN a GND, SMA rozhraním)
-  - Antenna_Model4_LHCP.kicad_mod (Knihovní pouzdro s kotevním bodem uprostřed flíčku pro vložení do jiných projektů)
+Default output directory: export/kicad/
+Generated files:
+  - antenna_model4.kicad_pcb  (Complete manufacturing PCB with stackup, RF_IN and GND nets, SMA interface)
+  - Antenna_Model4_LHCP.kicad_mod (Library footprint with anchor at patch center for reuse in other projects)
 """
 
 import argparse
@@ -15,7 +15,7 @@ import os
 import sys
 from typing import Any, Dict, Tuple
 
-# Automatické nastavení sys.path pro import z src/
+# Automatic sys.path setup for imports from src/
 try:
     import _env  # noqa: F401
 except ImportError:
@@ -29,7 +29,7 @@ from kicad_generator import generate_kicad_footprint, generate_kicad_pcb
 
 
 def _env_float(env_keys: Tuple[str, ...], default: float) -> float:
-    """Načte první platnou float hodnotu z posloupnosti proměnných prostředí."""
+    """Read the first valid float value from a sequence of environment variable names."""
     for env_key in env_keys:
         val = os.getenv(env_key)
         if val is not None and val.strip() != "":
@@ -41,7 +41,7 @@ def _env_float(env_keys: Tuple[str, ...], default: float) -> float:
 
 
 def load_model4_params_from_env() -> Dict[str, Any]:
-    """Načte výchozí konfiguraci Modelu 4 z proměnných prostředí / .env."""
+    """Load default Model 4 configuration from environment variables / .env."""
     patch_l = _env_float(("PATCH_L",), 28.8)
     default_inset = _env_float(("FEED_INSET", "INSET"), 2.5)
     default_inset_gap = _env_float(("FEED_INSET_GAP", "INSET_GAP"), 0.5)
@@ -66,7 +66,7 @@ def load_model4_params_from_env() -> Dict[str, Any]:
         'mask_clearance': _env_float(("MASK_CLEARANCE",), 0.30),
     }
 
-    # Volitelné explicitní parametry
+    # Optional explicit parameters
     opt_env_map = {
         'TRANS_W_B': 'trans_w_b',
         'TRANS_W_L': 'trans_w_l',
@@ -112,127 +112,127 @@ def load_model4_params_from_env() -> Dict[str, Any]:
 
 
 def main() -> int:
-    # 1. Argumenty příkazové řádky (parsujeme před load_env kvůli --profile)
+    # 1. Command-line arguments (parsed before load_env due to --profile)
     parser = argparse.ArgumentParser(
-        description="Generátor výrobních a knihovních podkladů KiCad 10 pro Model 4 (LHCP SDARS anténa)."
+        description="KiCad 10 manufacturing and footprint generator for Model 4 (LHCP SDARS antenna)."
     )
     parser.add_argument(
         "--profile",
         type=str,
         default=None,
-        help="Název výrobního profilu varianty v results/<profile>/<profile>.env "
-             "(přepíše kořenový .env; výchozí: ANTENNA_PROFILE nebo žádný)",
+        help="Manufacturing variant profile name in results/<profile>/<profile>.env "
+             "(overrides root .env; default: ANTENNA_PROFILE or none)",
     )
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Cílová složka pro uložení exportovaných souborů "
-             "(výchozí: results/<profile>/kicad/ při aktivním profilu, jinak export/kicad/)",
+        help="Target directory for exported files "
+             "(default: results/<profile>/kicad/ when a profile is active, otherwise export/kicad/)",
     )
     group_mode = parser.add_mutually_exclusive_group()
     group_mode.add_argument(
         "--pcb",
         action="store_true",
-        help="Vygenerovat pouze výrobní desku plošných spojů (.kicad_pcb)",
+        help="Generate only the manufacturing PCB layout (.kicad_pcb)",
     )
     group_mode.add_argument(
         "--footprint",
         action="store_true",
-        help="Vygenerovat pouze knihovní pouzdro součástky (.kicad_mod)",
+        help="Generate only the library footprint (.kicad_mod)",
     )
     group_mode.add_argument(
         "--all",
         action="store_true",
         default=True,
-        help="Vygenerovat desku i footprint (výchozí chování)",
+        help="Generate both PCB layout and footprint (default)",
     )
 
-    # Řízení ořezu desky (PCB crop)
+    # PCB outline crop control
     parser.add_argument(
         "--tight-pcb",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Exportovat kompaktní/oříznutý obrys DPS dle VF struktury (výchozí: zapnuto). "
-             "Použijte --no-tight-pcb pro plný symetrický rozměr substrátu.",
+        help="Export compact/trimmed PCB outline fitted to the RF structure (default: enabled). "
+             "Use --no-tight-pcb for the full symmetric substrate size.",
     )
     parser.add_argument(
         "--crop-pcb",
         dest="crop_pcb_alias",
         action="store_true",
         default=None,
-        help="Alias pro --tight-pcb.",
+        help="Alias for --tight-pcb.",
     )
     parser.add_argument(
         "--full-pcb",
         dest="full_pcb_alias",
         action="store_true",
         default=None,
-        help="Alias pro --no-tight-pcb.",
+        help="Alias for --no-tight-pcb.",
     )
-    parser.add_argument("--margin-right", type=float, help="Pravý okraj od flíčku [mm] (výchozí: 10.0)")
-    parser.add_argument("--margin-top", type=float, help="Horní okraj od flíčku [mm] (výchozí: 10.0)")
-    parser.add_argument("--margin-bottom", type=float, help="Spodní okraj pod spodním ramenem [mm] (výchozí: 5.0)")
+    parser.add_argument("--margin-right", type=float, help="Right margin from patch [mm] (default: 10.0)")
+    parser.add_argument("--margin-top", type=float, help="Top margin from patch [mm] (default: 10.0)")
+    parser.add_argument("--margin-bottom", type=float, help="Bottom margin below lower arm [mm] (default: 5.0)")
 
-    # Parametrické přepisy
-    parser.add_argument("--patch-l", type=float, help="Délka vyzařujícího flíčku L [mm]")
-    parser.add_argument("--patch-w", type=float, help="Šířka vyzařujícího flíčku W [mm]")
-    parser.add_argument("--sub-h", type=float, help="Tloušťka substrátu h [mm]")
-    parser.add_argument("--eps-r", type=float, help="Relativní permitivita substrátu eps_r [-]")
-    parser.add_argument("--freq", type=float, help="Střední návrhová frekvence [GHz]")
-    parser.add_argument("--port-z0", type=float, help="Jmenovitá impedance portu [Ohm]")
-    parser.add_argument("--delta-l", type=float, help="Fázovací rozdíl drah Delta L [mm]")
-    parser.add_argument("--bend-radius", type=float, help="Poloměr oblouků vedení [mm]")
-    parser.add_argument("--t-fillet-r", type=float, help="Poloměr zaoblení T-článku [mm]")
-    parser.add_argument("--trans-w", type=float, help="Šířka čtvrtvlnného transformátoru w_T [mm]")
-    parser.add_argument("--trans-w-b", type=float, help="Šířka transformátoru spodní větve w_T_b [mm]")
-    parser.add_argument("--trans-w-l", type=float, help="Šířka transformátoru levé větve w_T_l [mm]")
-    parser.add_argument("--trans-l", type=float, help="Délka transformátoru l_T [mm]")
-    parser.add_argument("--trans-l-b", type=float, help="Délka transformátoru spodní větve l_T_b [mm]")
-    parser.add_argument("--trans-l-l", type=float, help="Délka transformátoru levé větve l_T_l [mm]")
-    parser.add_argument("--inset", type=float, help="Hloubka zanoření zářezů na obou ramenech [mm]")
-    parser.add_argument("--inset-b", type=float, help="Hloubka zanoření zářezu spodní větve [mm]")
-    parser.add_argument("--inset-l", type=float, help="Hloubka zanoření zářezu levé větve [mm]")
-    parser.add_argument("--inset-gap", type=float, help="Šířka mezery zářezu na obou ramenech [mm]")
-    parser.add_argument("--inset-gap-b", type=float, help="Šířka mezery zářezu spodní větve [mm]")
-    parser.add_argument("--inset-gap-l", type=float, help="Šířka mezery zářezu levé větve [mm]")
-    parser.add_argument("--mask-clearance", type=float, help="Odsazení nepájivé masky (mask clearance) [mm]")
+    # Parameter overrides
+    parser.add_argument("--patch-l", type=float, help="Radiating patch length L [mm]")
+    parser.add_argument("--patch-w", type=float, help="Radiating patch width W [mm]")
+    parser.add_argument("--sub-h", type=float, help="Substrate thickness h [mm]")
+    parser.add_argument("--eps-r", type=float, help="Substrate relative permittivity eps_r [-]")
+    parser.add_argument("--freq", type=float, help="Center design frequency [GHz]")
+    parser.add_argument("--port-z0", type=float, help="Nominal port impedance [Ohm]")
+    parser.add_argument("--delta-l", type=float, help="Phasing path difference Delta L [mm]")
+    parser.add_argument("--bend-radius", type=float, help="Transmission-line bend radius [mm]")
+    parser.add_argument("--t-fillet-r", type=float, help="T-junction fillet radius [mm]")
+    parser.add_argument("--trans-w", type=float, help="Quarter-wave transformer width w_T [mm]")
+    parser.add_argument("--trans-w-b", type=float, help="Bottom branch transformer width w_T_b [mm]")
+    parser.add_argument("--trans-w-l", type=float, help="Left branch transformer width w_T_l [mm]")
+    parser.add_argument("--trans-l", type=float, help="Transformer length l_T [mm]")
+    parser.add_argument("--trans-l-b", type=float, help="Bottom branch transformer length l_T_b [mm]")
+    parser.add_argument("--trans-l-l", type=float, help="Left branch transformer length l_T_l [mm]")
+    parser.add_argument("--inset", type=float, help="Inset feed depth on both arms [mm]")
+    parser.add_argument("--inset-b", type=float, help="Bottom branch inset feed depth [mm]")
+    parser.add_argument("--inset-l", type=float, help="Left branch inset feed depth [mm]")
+    parser.add_argument("--inset-gap", type=float, help="Inset feed gap width on both arms [mm]")
+    parser.add_argument("--inset-gap-b", type=float, help="Bottom branch inset gap width [mm]")
+    parser.add_argument("--inset-gap-l", type=float, help="Left branch inset gap width [mm]")
+    parser.add_argument("--mask-clearance", type=float, help="Solder mask clearance [mm]")
     parser.add_argument(
         "--sma-gap",
         type=float,
-        help="Mezera G-S-G mezi 50 Ohm páskem a SMA GND ploškou [mm] (výchozí: 0.70)",
+        help="G-S-G gap between 50 Ohm microstrip and SMA GND pad [mm] (default: 0.70)",
     )
     parser.add_argument(
         "--sma-pad-len",
         type=float,
-        help="Délka SMA GND plošky [mm] (výchozí: 3.50)",
+        help="SMA GND pad length [mm] (default: 3.50)",
     )
     parser.add_argument(
         "--sma-pad-w",
         type=float,
-        help="Šířka SMA GND plošky [mm] (výchozí: 1.50)",
+        help="SMA GND pad width [mm] (default: 1.50)",
     )
 
-    # Výrobní možnosti VUT (Manufacturing of antennas - instructions.pdf)
+    # VUT manufacturing options (Manufacturing of antennas - instructions.pdf)
     parser.add_argument(
         "--mfg-vut",
         action="store_true",
-        help="Aktivovat výrobní prvky pro VUT (8 ořezových značek a identifikační symbol na F.Cu a F.Mask)",
+        help="Enable VUT manufacturing features (8 corner marks and identification symbol on F.Cu and F.Mask)",
     )
     parser.add_argument(
         "--ident-symbol",
         type=str,
         default="PM.",
-        help="Identifikační symbol pro výrobu (výchozí: 'PM.')",
+        help="Identification symbol for manufacturing (default: 'PM.')",
     )
     parser.add_argument(
         "--mirror",
         action="store_true",
-        help="Zrcadlit desku podél osy Y (x -> -x) pro přípravu filmů fotocesty (bod 4 pokynů)",
+        help="Mirror the board along the Y-axis (x -> -x) for photolithography film output (instruction item 4)",
     )
 
     args = parser.parse_args()
 
-    # 2. Načtení kořenového .env a případného profilu varianty
+    # 2. Load root .env and optional variant profile
     profile_arg = args.profile.strip() if args.profile else None
     root_dir, _ = load_env(profile=profile_arg)
     active_profile_env = os.getenv("ANTENNA_PROFILE", "").strip() or None
@@ -244,7 +244,7 @@ def main() -> int:
     else:
         profile_slug = None
 
-    # 3. Sestavení parametrů z .env (a profilu) s případným přepsáním z CLI
+    # 3. Assemble parameters from .env (and profile) with optional CLI overrides
     params = load_model4_params_from_env()
 
     if args.tight_pcb is not None:
@@ -337,11 +337,11 @@ def main() -> int:
     do_footprint = args.footprint or (not args.pcb)
 
     print("=" * 80)
-    print(" UNIVERZÁLNÍ KICAD 10 EXPORT PRO MIKROPÁSKOVOU ANTÉNU (MODEL 4 LHCP)")
+    print(" UNIVERSAL KICAD 10 EXPORT FOR MICROSTRIP PATCH ANTENNA (MODEL 4 LHCP)")
     print("=" * 80)
     if profile_slug:
-        print(f"Aktivní profil: {profile_slug}")
-    print(f"Cílový adresář: {out_dir}")
+        print(f"Active profile:   {profile_slug}")
+    print(f"Target directory: {out_dir}")
     print("-" * 80)
 
     res_pcb = None
@@ -358,18 +358,18 @@ def main() -> int:
         fp_file = os.path.join(out_dir, "Antenna_Model4_LHCP.kicad_mod")
 
     if do_pcb:
-        print(f"Generuji KiCad 10 desku (.kicad_pcb): {os.path.basename(pcb_file)} ...")
+        print(f"Generating KiCad 10 PCB (.kicad_pcb): {os.path.basename(pcb_file)} ...")
         res_pcb = generate_kicad_pcb(params, pcb_file)
-        print(f"  -> Uloženo ({res_pcb['file_size_bytes']} B, {res_pcb['vias_count']} prokovů, "
-              f"{res_pcb['rf_polygons_count']} RF polygonů, "
+        print(f"  -> Saved ({res_pcb['file_size_bytes']} B, {res_pcb['vias_count']} vias, "
+              f"{res_pcb['rf_polygons_count']} RF polygons, "
               f"{res_pcb['mask_openings_count']} F.Mask + {res_pcb['mask_openings_bottom_count']} B.Mask)")
 
     if do_footprint:
-        print(f"Generuji KiCad 10 pouzdro (.kicad_mod): {os.path.basename(fp_file)} ...")
+        print(f"Generating KiCad 10 footprint (.kicad_mod): {os.path.basename(fp_file)} ...")
         res_fp = generate_kicad_footprint(params, fp_file)
-        print(f"  -> Uloženo ({res_fp['file_size_bytes']} B, zákaznický pad 1 RF_IN + SMD pady 2,3 GND)")
+        print(f"  -> Saved ({res_fp['file_size_bytes']} B, custom pad 1 RF_IN + SMD pads 2,3 GND)")
 
-    # Volitelná synchronizace do projektu kicad/antena1/ (pouze bez aktivního profilu)
+    # Optional sync to kicad/antena1/ project (only when no profile is active)
     if not profile_slug:
         alt_kicad_dir = os.path.join(root_dir, "kicad", "antena1")
         if os.path.isdir(alt_kicad_dir) and os.path.abspath(out_dir) != os.path.abspath(alt_kicad_dir):
@@ -380,48 +380,48 @@ def main() -> int:
                     shutil.copy2(res_pcb['dru_path'], os.path.join(alt_kicad_dir, "antenna_model4.kicad_dru"))
             if do_footprint and os.path.exists(fp_file):
                 shutil.copy2(fp_file, os.path.join(alt_kicad_dir, "Antenna_Model4_LHCP.kicad_mod"))
-            print(f"  -> Synchronizováno do projektu KiCad: {alt_kicad_dir}")
+            print(f"  -> Synced to KiCad project: {alt_kicad_dir}")
 
-    # 4. Zobrazení souhrnné tabulky parametrů
+    # 4. Print parameter summary table
     info = (res_pcb['routing_info'] if res_pcb else res_fp['routing_info'])
     w_pcb = res_pcb['W_sub'] if res_pcb else res_fp['W_sub']
     l_pcb = res_pcb['L_sub'] if res_pcb else res_fp['L_sub']
     tight_mode = bool(params.get('tight_pcb', True))
-    mode_desc = "Kompaktní / oříznutý (tight_pcb=True)" if tight_mode else "Plný symetrický (tight_pcb=False)"
+    mode_desc = "Compact / trimmed (tight_pcb=True)" if tight_mode else "Full symmetric (tight_pcb=False)"
     print("-" * 80)
-    print(" PŘEHLED VYGENEROVANÉ GEOMETRIE:")
+    print(" GENERATED GEOMETRY SUMMARY:")
     print("-" * 80)
     if profile_slug:
         profile_label = params.get('profile_name') or profile_slug
         profile_summary = (
             f"{profile_slug} ({profile_label})" if profile_label != profile_slug else profile_slug
         )
-        print(f"  Aktivní profil varianty:           {profile_summary}")
-    print(f"  Režim desky (PCB crop):            {mode_desc}")
-    print(f"  Vyzařující flíček (L x W):         {info['L']:.2f} mm x {info['W']:.2f} mm")
-    print(f"  Rozměry DPS (W_sub x L_sub x h):   {w_pcb:.2f} mm x {l_pcb:.2f} mm x {info['h']:.2f} mm (eps_r = {info['eps_r']:.2f})")
+        print(f"  Active variant profile:              {profile_summary}")
+    print(f"  Board mode (PCB crop):               {mode_desc}")
+    print(f"  Radiating patch (L x W):             {info['L']:.2f} mm x {info['W']:.2f} mm")
+    print(f"  PCB dimensions (W_sub x L_sub x h):  {w_pcb:.2f} mm x {l_pcb:.2f} mm x {info['h']:.2f} mm (eps_r = {info['eps_r']:.2f})")
     if tight_mode:
         area_full = info['W_sub'] * info['L_sub']
         area_tight = w_pcb * l_pcb
         saving_pct = (1.0 - area_tight / area_full) * 100.0
-        print(f"  Původní symetrický substrát:       {info['W_sub']:.2f} mm x {info['L_sub']:.2f} mm (úspora plochy: {saving_pct:.1f} %)")
-    print(f"  Návrhová frekvence / Z0:           {info['f_design']:.4f} GHz / {info['port_z0']:.1f} Ohm")
-    print(f"  50 Ohm přívodní pásek (w_50):      {info['w_50']:.3f} mm")
-    print(f"  100 Ohm větve děliče (w_feed):     {info['w_feed']:.3f} mm (eps_eff = {info['eps_eff_feed']:.3f})")
+        print(f"  Original symmetric substrate:        {info['W_sub']:.2f} mm x {info['L_sub']:.2f} mm (area savings: {saving_pct:.1f} %)")
+    print(f"  Design frequency / Z0:               {info['f_design']:.4f} GHz / {info['port_z0']:.1f} Ohm")
+    print(f"  50 Ohm feed line (w_50):             {info['w_50']:.3f} mm")
+    print(f"  100 Ohm divider arms (w_feed):       {info['w_feed']:.3f} mm (eps_eff = {info['eps_eff_feed']:.3f})")
     is_asym_trans = (
         abs(info['w_T_b'] - info['w_T_l']) > 1e-6
         or abs(info['l_T_b'] - info['l_T_l']) > 1e-6
     )
     if is_asym_trans:
         print(
-            f"  Transformátor spodní (w_T_b/l_T_b):{info['w_T_b']:.3f} mm / {info['l_T_b']:.3f} mm"
+            f"  Bottom transformer (w_T_b/l_T_b):    {info['w_T_b']:.3f} mm / {info['l_T_b']:.3f} mm"
         )
         print(
-            f"  Transformátor levý (w_T_l/l_T_l):  {info['w_T_l']:.3f} mm / {info['l_T_l']:.3f} mm"
+            f"  Left transformer (w_T_l/l_T_l):      {info['w_T_l']:.3f} mm / {info['l_T_l']:.3f} mm"
         )
     else:
         print(
-            f"  Čtvrtvlnný transformátor w_T / l_T:{info['w_T_b']:.3f} mm / {info['l_T_b']:.3f} mm"
+            f"  Quarter-wave transformer w_T / l_T:  {info['w_T_b']:.3f} mm / {info['l_T_b']:.3f} mm"
         )
     is_asym_inset = (
         abs(info['inset_b'] - info['inset_l']) > 1e-6
@@ -429,24 +429,24 @@ def main() -> int:
     )
     if is_asym_inset:
         print(
-            f"  Zářez spodní (inset_b / gap_b):    {info['inset_b']:.2f} mm / {info['inset_gap_b']:.2f} mm"
+            f"  Bottom inset (inset_b / gap_b):      {info['inset_b']:.2f} mm / {info['inset_gap_b']:.2f} mm"
         )
         print(
-            f"  Zářez levý (inset_l / gap_l):      {info['inset_l']:.2f} mm / {info['inset_gap_l']:.2f} mm"
+            f"  Left inset (inset_l / gap_l):        {info['inset_l']:.2f} mm / {info['inset_gap_l']:.2f} mm"
         )
-    print(f"  Poloměr oblouků (feed_bend_radius):{info['bend_radius']:.2f} mm")
-    print(f"  Zaoblení T-článku (t_fillet_r):    {info['t_fillet_r']:.2f} mm")
-    print(f"  Délka levé větve (L_100_l):        {info['L_100_l']:.3f} mm")
-    print(f"  Délka spodní větve (L_100_b):      {info['L_100_b']:.3f} mm")
-    print(f"  Fázovací rozdíl drah (Delta L):    {info['L_100_b'] - info['L_100_l']:.3f} mm (požadavek: {info['feed_delta_l']:.3f} mm)")
-    print(f"  Odsazení nepájivé masky (clearance):{info['mask_clearance']:.2f} mm (F.Mask RF + B.Mask SMA)")
+    print(f"  Bend radius (feed_bend_radius):      {info['bend_radius']:.2f} mm")
+    print(f"  T-junction fillet (t_fillet_r):      {info['t_fillet_r']:.2f} mm")
+    print(f"  Left arm length (L_100_l):           {info['L_100_l']:.3f} mm")
+    print(f"  Bottom arm length (L_100_b):         {info['L_100_b']:.3f} mm")
+    print(f"  Phase path difference (Delta L):     {info['L_100_b'] - info['L_100_l']:.3f} mm (target: {info['feed_delta_l']:.3f} mm)")
+    print(f"  Solder mask clearance:               {info['mask_clearance']:.2f} mm (F.Mask RF + B.Mask SMA)")
     print(
-        f"  SMA rozhraní:                      Cinch Johnson 142-0701-801 "
+        f"  SMA interface:                       Cinch Johnson 142-0701-801 "
         f"(G-S-G gap={info['sma_gap']:.2f} mm, pad={info['sma_pad_len']:.2f}x{info['sma_pad_w']:.2f} mm, "
-        f"maska={info['sma_mask_len']:.2f}x{2.0 * info['sma_mask_half_h']:.2f} mm, 6 prokovů D=0.3/0.6mm)"
+        f"mask={info['sma_mask_len']:.2f}x{2.0 * info['sma_mask_half_h']:.2f} mm, 6 vias D=0.3/0.6mm)"
     )
     print("=" * 80)
-    print(" Export úspěšně dokončen.")
+    print(" Export completed successfully.")
     return 0
 
 

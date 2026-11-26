@@ -1,22 +1,22 @@
-# Verzovací systém a dokumentace
+# Version control and documentation
 .git
 .gitignore
 README.md
 LICENSE
 
-# Konfigurace a lokální prostředí
+# Configuration and local environment
 .env
 .venv
 venv
 
-# Python cache a testy
+# Python cache and tests
 .pytest_cache
 .ruff_cache
 **/__pycache__
 **/*.py[cod]
 tests
 
-# Data, výsledky simulací a vizuální výstupy
+# Data, simulation results, and visual outputs
 data
 export
 postpro

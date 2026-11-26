@@ -1,5 +1,5 @@
 services:
-  # 1. Samotný solver (Palace) - spouští se pouze jako jednorázová úloha (run)
+  # 1. Standalone solver (Palace) - runs only as a one-off task (run)
   palace:
     image: anteny-palace:latest
     build:
@@ -9,8 +9,8 @@ services:
     mem_limit: ${PALACE_MEM_LIMIT:-11g}
     memswap_limit: ${PALACE_MEMSWAP_LIMIT:-31g}
     volumes:
-      # Při spuštění `palace` zevnitř `pipeline` kontejneru (Docker-out-of-Docker) musí `CONF_DIR` a `DATA_DIR`
-      # odpovídat absolutní cestě na hostiteli (nebo lze spouštět `python src/main.py` lokálně a pouze `palace` v Dockeru).
+      # When running `palace` from inside the `pipeline` container (Docker-out-of-Docker), `CONF_DIR` and `DATA_DIR`
+      # must match absolute paths on the host (or run `python src/main.py` locally with only `palace` in Docker).
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data
     environment:
@@ -19,8 +19,8 @@ services:
     working_dir: /workspace
     profiles: ["worker"]
 
-  # 2. Nástroj pro orchestraci simulací a generování sítě
-  # Spuštění: docker compose run --rm pipeline
+  # 2. Simulation orchestration and mesh generation service
+  # Run: docker compose run --rm pipeline
   pipeline:
     build:
       context: .
@@ -29,8 +29,8 @@ services:
       - path: .env
         required: false
     volumes:
-      # Při spuštění `palace` zevnitř `pipeline` kontejneru (Docker-out-of-Docker) musí `CONF_DIR` a `DATA_DIR`
-      # odpovídat absolutní cestě na hostiteli (nebo lze spouštět `python src/main.py` lokálně a pouze `palace` v Dockeru).
+      # When running `palace` from inside the `pipeline` container (Docker-out-of-Docker), `CONF_DIR` and `DATA_DIR`
+      # must match absolute paths on the host (or run `python src/main.py` locally with only `palace` in Docker).
       - ${CONF_DIR:-.}:/workspace
       - ${DATA_DIR:-./data}:/workspace/data
       - ${EXPORT_DIR:-./export}:/workspace/export
@@ -39,9 +39,9 @@ services:
     profiles: ["worker"]
     command: python src/sweep.py
 
-  # 3. Nástroj pro export výrobních podkladů Gerber a DRC kontrolu v KiCad 10 CLI
-  # Spuštění: docker compose --profile kicad-export run --rm kicad
-  # S profilem varianty: ANTENNA_PROFILE=<profile> docker compose --profile kicad-export run --rm kicad
+  # 3. KiCad 10 CLI tool for Gerber manufacturing export and DRC check
+  # Run: docker compose --profile kicad-export run --rm kicad
+  # With variant profile: ANTENNA_PROFILE=<profile> docker compose --profile kicad-export run --rm kicad
   kicad:
     image: kicad/kicad:10.0
     volumes:

@@ -1,14 +1,14 @@
 """
-geometry_v5.py - Model 5: Dvouportový model se dvěma nezávislými 100 Ohm porty a zakřivenými větvemi.
-Odvozeno z Modelu 4:
-  - Odstraňuje 50 Ohm T-článek a 50 Ohm kmen.
-  - Obě 100 Ohm napájecí větve jsou vyvedeny na dva samostatné 100 Ohm lumped porty na hraně substrátu:
-      * Port 1 (spodní větev, pole Ey, fázování Delta L): vyveden na levé hraně substrátu (YZ rovina na x = x_port, y = y_port_1, Tag 4).
-      * Port 2 (levá větev, pole Ex, referenční fáze): vyveden na levé hraně substrátu (YZ rovina na x = x_port, y = y_port_2, Tag 6).
-  - Zachovává trasování větví z Modelu 4 včetně kruhových oblouků o poloměru R (FEED_BEND_RADIUS).
-  - Přesná analytická shoda rozdílu délek drah L_100_b - L_100_l == feed_delta_l (cca lambda_g/4 pro -90° posuv).
-  - Umožňuje nezávislé ladění a vyhodnocování odrazu spodní větve (S11), levé větve (S22), vzájemné vazby (S21)
-    a fázového rozdílu před opětovným sloučením do 50 Ohm T-článku.
+geometry_v5.py - Model 5: Two-port model with two independent 100 Ohm ports and curved branches.
+Derived from Model 4:
+  - Removes the 50 Ohm T-junction and 50 Ohm trunk.
+  - Both 100 Ohm feed branches terminate at two separate 100 Ohm lumped ports on the substrate edge:
+      * Port 1 (bottom branch, Ey field, Delta L phasing): brought out to left substrate edge (YZ plane at x = x_port, y = y_port_1, Tag 4).
+      * Port 2 (left branch, Ex field, reference phase): brought out to left substrate edge (YZ plane at x = x_port, y = y_port_2, Tag 6).
+  - Preserves branch routing from Model 4 including circular arcs of radius R (FEED_BEND_RADIUS).
+  - Exact analytical match of path length difference L_100_b - L_100_l == feed_delta_l (~lambda_g/4 for -90 deg phase shift).
+  - Enables independent tuning and evaluation of bottom branch reflection (S11), left branch reflection (S22),
+    mutual coupling (S21), and phase difference prior to recombining into the 50 Ohm T-junction.
 """
 
 import gmsh
@@ -31,9 +31,9 @@ COORD_TOL = 1e-9
 
 def compute_model5_routing(params):
     """
-    Vypočte veškeré RF a geometrické souřadnice dvouportového Modelu 5 (bez spuštění Gmsh),
-    včetně přesných trasovacích bodů (waypoints) obou zakřivených 100 Ohm větví
-    a poloh Portu 1 a Portu 2 na levé hraně substrátu.
+    Compute all RF and geometric coordinates for the two-port Model 5 (without starting Gmsh),
+    including exact routing waypoints of both curved 100 Ohm branches
+    and Port 1 / Port 2 positions on the left substrate edge.
     """
     L = float(params.get('patch_L', 29.95))
     W = float(params.get('patch_W', L))
@@ -42,7 +42,7 @@ def compute_model5_routing(params):
     f_design = float(params.get('design_freq_ghz', DESIGN_FREQ_GHZ))
     port_z0 = float(params.get('port_impedance', 100.0))
 
-    # 1. Syntéza šířky 100 Ohm větví přívodu
+    # 1. Width synthesis for 100 Ohm feed branches
     raw_w_100 = next(
         (params[k] for k in ('feed_100_w', 'w_feed', 'w_100', 'w2') if params.get(k) is not None),
         None,
@@ -52,7 +52,7 @@ def compute_model5_routing(params):
     eps_eff_feed = calc_microstrip_eps_eff(w_feed, h, eps_r)
     lambda_g_4_feed = calc_quarter_wave_length(f_design, eps_eff_feed)
 
-    # 2. Parametry čtvrtvlnného impedančního transformátoru (výchozí: w_T = 0.30 mm, l_T = 19.00 mm)
+    # 2. Quarter-wave impedance transformer parameters (default: w_T = 0.30 mm, l_T = 19.00 mm)
     w_T_default = float(params.get('trans_w', params.get('w_T', params.get('w_trans', 0.30))))
     eps_eff_trans_def = calc_microstrip_eps_eff(w_T_default, h, eps_r)
     l_T_default = float(params.get('trans_l', params.get('l_T', params.get('l_trans', calc_quarter_wave_length(f_design, eps_eff_trans_def)))))
@@ -80,37 +80,37 @@ def compute_model5_routing(params):
         else (l_T_b if abs(l_T_b - l_T_l) < 1e-9 else l_T_default)
     )
 
-    # 3. Mělký zářez a mezery (výchozí y0b = y0l = 2.5 mm, gap = 0.5 mm)
+    # 3. Shallow inset and gaps (default y0b = y0l = 2.5 mm, gap = 0.5 mm)
     inset_b = float(params.get('feed_inset_b', params.get('inset_b', params.get('y0b', params.get('y0', params.get('feed_inset', 2.5))))))
     inset_l = float(params.get('feed_inset_l', params.get('inset_l', params.get('y0l', params.get('y0', params.get('feed_inset', 2.5))))))
     if inset_b < 0.0 or inset_l < 0.0:
-        raise ValueError(f"Hloubka zanoření (inset) musí být nezáporná: inset_b={inset_b}, inset_l={inset_l}")
+        raise ValueError(f"Inset depth must be non-negative: inset_b={inset_b}, inset_l={inset_l}")
 
     inset_gap_b = float(params.get('inset_gap_b', params.get('feed_inset_gap_b', params.get('gap_b', params.get('inset_gap', params.get('feed_inset_gap', 0.5))))))
     inset_gap_l = float(params.get('inset_gap_l', params.get('feed_inset_gap_l', params.get('gap_l', params.get('inset_gap', params.get('feed_inset_gap', 0.5))))))
 
-    # 4. Fázovací prodloužení delta_L v 100 Ohm vedení
+    # 4. Phasing extension delta_L in 100 Ohm line
     raw_delta_l = params.get('feed_delta_l', params.get('delta_l', params.get('phase_delay_mm', params.get('feed_delta'))))
     feed_delta_l = float(raw_delta_l) if raw_delta_l is not None else lambda_g_4_feed
 
-    # 5. Parametry oblouků a geometrií větví
+    # 5. Arc and branch geometry parameters
     bend_radius = float(params.get('feed_bend_radius', params.get('bend_radius', 3.0)))
     if bend_radius <= (w_feed / 2.0) + 0.1:
         raise ValueError(
-            f"Poloměr oblouku feed_bend_radius={bend_radius:.3f} mm musí být větší než w_feed/2 + 0.1 ({w_feed/2.0 + 0.1:.3f} mm)."
+            f"Arc radius feed_bend_radius={bend_radius:.3f} mm must be greater than w_feed/2 + 0.1 ({w_feed/2.0 + 0.1:.3f} mm)."
         )
 
     raw_end_straight = next((params[k] for k in ('feed_end_straight', 'end_straight') if params.get(k) is not None), None)
     end_straight = float(raw_end_straight) if raw_end_straight is not None else 4.6
     if end_straight < 0.5:
-        raise ValueError(f"Koncový rovný úsek feed_end_straight={end_straight:.2f} mm musí být >= 0.5 mm.")
+        raise ValueError(f"Terminal straight section feed_end_straight={end_straight:.2f} mm must be >= 0.5 mm.")
 
     raw_arm_offset = next((params[k] for k in ('feed_arm_offset', 'arm_offset') if params.get(k) is not None), None)
     if raw_arm_offset is not None:
         arm_offset = float(raw_arm_offset)
         if arm_offset <= bend_radius + 0.5:
             raise ValueError(
-                f"Odsazení levého ramene feed_arm_offset={arm_offset:.2f} mm musí být > feed_bend_radius + 0.5 ({bend_radius + 0.5:.2f} mm)."
+                f"Left arm offset feed_arm_offset={arm_offset:.2f} mm must be > feed_bend_radius + 0.5 ({bend_radius + 0.5:.2f} mm)."
             )
     else:
         arm_offset = end_straight + bend_radius
@@ -118,7 +118,7 @@ def compute_model5_routing(params):
     raw_sub_margin = params.get('sub_margin')
     sub_margin = float(raw_sub_margin) if raw_sub_margin is not None else max(8.0, 5.0 * h)
 
-    # 6. Pozice vstupů transformátorů a os větví
+    # 6. Transformer entry positions and branch centerlines
     y_junc_b = -L / 2.0 + inset_b - l_T_b
     x_junc_l = -W / 2.0 + inset_l - l_T_l
     x_left_vert = x_junc_l - arm_offset
@@ -128,7 +128,7 @@ def compute_model5_routing(params):
     raw_y_bot = params.get('feed_y_bot', params.get('y_bot'))
     y_bot = float(raw_y_bot) if raw_y_bot is not None else y_bot_default
 
-    # Virtuální střed fázování y_T (referenční rovina fázového středu)
+    # Virtual phasing center y_T (phase-center reference plane)
     raw_y_T = params.get('feed_y_T', params.get('y_T'))
     if raw_y_T is None:
         y_T = 0.5 * (
@@ -147,8 +147,8 @@ def compute_model5_routing(params):
             - (0.5 * np.pi - 2.0) * bend_radius
         )
 
-    # 7. Odstup portů od virtuálního středu y_T (y_port_1 = y_T - offset, y_port_2 = y_T + offset)
-    # Pro zachování L_100_b - L_100_l == delta_l musí být offset symetrický kolem y_T.
+    # 7. Port spacing from virtual center y_T (y_port_1 = y_T - offset, y_port_2 = y_T + offset)
+    # To maintain L_100_b - L_100_l == delta_l, the offset must be symmetric about y_T.
     max_safe_offset = (y_T - y_bot) - 2.0 * bend_radius - 0.4
     default_offset = min(3.0, max(1.5, max_safe_offset))
     raw_offset = params.get('feed_port_offset', params.get('port_offset'))
@@ -157,14 +157,14 @@ def compute_model5_routing(params):
     s_vert_b = (y_T - port_offset) - y_bot - 2.0 * bend_radius
     if s_vert_b < -1e-6:
         raise ValueError(
-            f"Zvolený port_offset={port_offset:.2f} mm je příliš velký: svislý úsek spodní větve "
-            f"({s_vert_b:.2f} mm) nestačí pro dva oblouky R={bend_radius:.2f} mm (max safe offset={max_safe_offset:.2f} mm)."
+            f"Selected port_offset={port_offset:.2f} mm is too large: bottom branch vertical section "
+            f"({s_vert_b:.2f} mm) is insufficient for two arcs R={bend_radius:.2f} mm (max safe offset={max_safe_offset:.2f} mm)."
         )
 
-    y_port_1 = y_T - port_offset  # Port 1 (spodní větev, pole Ey)
-    y_port_2 = y_T + port_offset  # Port 2 (levá větev, pole Ex)
+    y_port_1 = y_T - port_offset  # Port 1 (bottom branch, Ey field)
+    y_port_2 = y_T + port_offset  # Port 2 (left branch, Ex field)
 
-    # 8. Rozměry substrátu a pozice levých portů (x_port = -W_sub / 2)
+    # 8. Substrate dimensions and left port coordinates (x_port = -W_sub / 2)
     raw_feed_port_len = next((params[k] for k in ('feed_port_len', 'feed_50_len', 'l1') if params.get(k) is not None), None)
     feed_port_len = float(raw_feed_port_len) if raw_feed_port_len is not None else 9.0
 
@@ -185,7 +185,7 @@ def compute_model5_routing(params):
     x_port = -W_sub / 2.0
     effective_feed_port_len = (x_T - bend_radius) - x_port
 
-    # 9. Střednicové trasy (waypoints) pro obě zakřivené větve
+    # 9. Centerline paths (waypoints) for both curved branches
     arm_l_waypoints = [
         (x_port, y_port_2),
         (x_T, y_port_2),
@@ -266,7 +266,7 @@ def compute_model5_routing(params):
 
 def build_model_v5(params):
     """
-    Vytvoří 3D CAD model dvouportového Modelu 5 v OpenCASCADE a připraví entity pro síťování v Gmsh.
+    Create the 3D CAD model of the two-port Model 5 in OpenCASCADE and prepare entities for meshing in Gmsh.
     """
     info = compute_model5_routing(params)
 
@@ -295,7 +295,7 @@ def build_model_v5(params):
     y_junc_b = info['y_junc_b']
     x_junc_l = info['x_junc_l']
 
-    # Zpětné uložení vypočtených hodnot do params
+    # Store computed values back into params
     params['antenna_model'] = 5
     params['port_impedance'] = float(params.get('port_impedance', 100.0))
     params['w_feed'] = float(np.round(w_feed, 4))
@@ -364,7 +364,7 @@ def build_model_v5(params):
     params['arm_l_waypoints'] = info['arm_l_waypoints']
     params['arm_b_waypoints'] = info['arm_b_waypoints']
 
-    # 1. Inicializace Gmsh a základní objemy (Substrát a Vzduchový box)
+    # 1. Initialize Gmsh and base volumes (Substrate and Air box)
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 1)
     gmsh.model.add("lhcp_antenna_model5")
@@ -379,7 +379,7 @@ def build_model_v5(params):
         h + 2.0 * margin,
     )
 
-    # 2. Vyzařující flíček s mělkými zářezy na z = h
+    # 2. Radiating patch with shallow inset notches at z = h
     patch_base = gmsh.model.occ.addRectangle(-W / 2.0, -L / 2.0, h, W, L)
     tool_notches = []
     if inset_b > 0.0:
@@ -397,19 +397,19 @@ def build_model_v5(params):
     else:
         patch_tag = patch_base
 
-    # 3. Čtvrtvlnné transformátory u flíčku (z = h)
+    # 3. Quarter-wave transformers at the patch (z = h)
     trans_b = gmsh.model.occ.addRectangle(-w_T_b / 2.0, y_junc_b, h, w_T_b, l_T_b)
     trans_l = gmsh.model.occ.addRectangle(x_junc_l, -w_T_l / 2.0, h, l_T_l, w_T_l)
 
-    # 4. Zakřivená 100 Ohm vedení pro obě větve (Model 5 nemá 50 Ohm kmen ani T-spojku)
+    # 4. Curved 100 Ohm lines for both branches (Model 5 has no 50 Ohm trunk or T-junction)
     arm_l_tag = build_curved_trace_occ(info['arm_l_waypoints'], w_feed, bend_radius, h)
     arm_b_tag = build_curved_trace_occ(info['arm_b_waypoints'], w_feed, bend_radius, h)
 
     metal_surfs = [patch_tag, trans_b, trans_l, arm_l_tag, arm_b_tag]
     gmsh.model.occ.synchronize()
 
-    # 5. Dva samostatné 100 Ohm lumped porty na levé hraně substrátu (x = x_port = -W_sub / 2)
-    # Port 1: spodní větev (Ey, zpoždění Delta L), YZ rovina kolem y_port_1
+    # 5. Two separate 100 Ohm lumped ports on left substrate edge (x = x_port = -W_sub / 2)
+    # Port 1: bottom branch (Ey, Delta L delay), YZ plane around y_port_1
     p1_1 = gmsh.model.occ.addPoint(x_port, y_port_1 - w_feed / 2.0, 0.0)
     p1_2 = gmsh.model.occ.addPoint(x_port, y_port_1 + w_feed / 2.0, 0.0)
     p1_3 = gmsh.model.occ.addPoint(x_port, y_port_1 + w_feed / 2.0, h)
@@ -421,7 +421,7 @@ def build_model_v5(params):
     cl1 = gmsh.model.occ.addCurveLoop([l1_1, l1_2, l1_3, l1_4])
     port1_tag = gmsh.model.occ.addPlaneSurface([cl1])
 
-    # Port 2: levá větev (Ex, referenční fáze 0°), YZ rovina kolem y_port_2
+    # Port 2: left branch (Ex, reference phase 0 deg), YZ plane around y_port_2
     p2_1 = gmsh.model.occ.addPoint(x_port, y_port_2 - w_feed / 2.0, 0.0)
     p2_2 = gmsh.model.occ.addPoint(x_port, y_port_2 + w_feed / 2.0, 0.0)
     p2_3 = gmsh.model.occ.addPoint(x_port, y_port_2 + w_feed / 2.0, h)
@@ -433,12 +433,12 @@ def build_model_v5(params):
     cl2 = gmsh.model.occ.addCurveLoop([l2_1, l2_2, l2_3, l2_4])
     port2_tag = gmsh.model.occ.addPlaneSurface([cl2])
 
-    # 6. Zemní plocha GND (z = 0)
+    # 6. Ground plane GND (z = 0)
     gnd_tag = gmsh.model.occ.addRectangle(-W_sub / 2.0, -L_sub / 2.0, 0.0, W_sub, L_sub)
 
     gmsh.model.occ.synchronize()
 
-    # 7. Konformní fragmentace objemů a ploch (Boolean Fragments)
+    # 7. Conformal fragmentation of volumes and surfaces (Boolean Fragments)
     vols = gmsh.model.occ.getEntities(3)
     input_surfs = [(2, s) for s in metal_surfs] + [(2, gnd_tag), (2, port1_tag), (2, port2_tag)]
 

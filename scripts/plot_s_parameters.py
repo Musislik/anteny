@@ -23,19 +23,19 @@ from postpro_utils import load_env, load_port_v_voltages
 
 def plot_s_parameters(export_dir, output_png=None, params=None):
     """
-    Vykreslí finální diagnostický graf S-parametrů a vstupní impedance 'graf_S_parametry.png'.
+    Plot the final diagnostic S-parameters and input impedance graph 'plot_s_parameters.png'.
     
-    Pravidlo 2: Pokud je buzen pouze jeden port (DRIVEN_PORT=1 nebo 2):
-      - Kreslí se VÝHRADNĚ aktivní cesta (S11 nebo S22, Zin1 nebo Zin2).
-      - Pasivní port se nezobrazuje, zobrazí se pouze křivka izolace/přeslechu S21 v dB.
-    Pravidlo 3: V případě buzení oběma porty (DRIVEN_PORT=all):
-      - Vykreslí se S11, S22 a S21 v dB a vstupní impedance obou portů.
+    Rule 2: If only a single port is driven (DRIVEN_PORT=1 or 2):
+      - Plot ONLY the active path (S11 or S22, Zin1 or Zin2).
+      - Do not show the passive port; only plot the isolation/crosstalk curve S21 in dB.
+    Rule 3: If both ports are driven (DRIVEN_PORT=all):
+      - Plot S11, S22, and S21 in dB along with input impedance of both ports.
     """
     if output_png is None:
-        output_png = os.path.join(export_dir, "graf_S_parametry.png")
+        output_png = os.path.join(export_dir, "plot_s_parameters.png")
     output_png = os.path.abspath(os.path.normpath(output_png))
     
-    # 1. Zjištění parametrů (params.json nebo předaný slovník)
+    # 1. Resolve parameters (params.json or passed dictionary)
     res_params = {}
     if params:
         res_params.update(params)
@@ -63,7 +63,7 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
     if dp_hint is not None:
         dp_hint = str(dp_hint).lower().strip()
 
-    # 2. Hledání simulačních souborů
+    # 2. Search for simulation files
     search_dirs = [export_dir, os.path.join(export_dir, "postpro")]
     v_path = None
     s_path = None
@@ -83,7 +83,7 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
     zin1 = None
     zin2 = None
 
-    # Načtení z port-S.csv
+    # Load from port-S.csv
     if s_path and os.path.exists(s_path) and os.path.getsize(s_path) > 0:
         try:
             with open(s_path, 'r', encoding='utf-8') as f:
@@ -132,9 +132,9 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
             if s12_idx is not None and s12_idx < data.shape[1]:
                 s12_db = data[:, s12_idx]
         except Exception as e:
-            print(f"Upozornění při načítání {s_path}: {e}")
+            print(f"Warning while loading {s_path}: {e}")
 
-    # Fallback na port-V.csv
+    # Fallback to port-V.csv
     if (s11_db is None and s22_db is None) and v_path and os.path.exists(v_path) and os.path.getsize(v_path) > 0:
         try:
             v_freqs, s11_c, s22_c, s21_c, s12_c = load_port_v_voltages(v_path)
@@ -151,16 +151,16 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
                 if s12_c is not None:
                     s12_db = 20.0 * np.log10(np.clip(np.abs(s12_c), 1e-10, 10.0))
         except Exception as e:
-            print(f"Upozornění při načítání {v_path}: {e}")
+            print(f"Warning while loading {v_path}: {e}")
 
     if freqs is None or (s11_db is None and s22_db is None):
-        print(f"[Plot S-Params] Žádná data pro vykreslení v {export_dir}")
+        print(f"[Plot S-Params] No data to plot in {export_dir}")
         return None
 
-    # Izolace/přeslech
+    # Isolation / crosstalk
     iso_db = s21_db if s21_db is not None else s12_db
 
-    # Auto-detekce buzení
+    # Auto-detect excitation mode
     if s11_db is not None and s22_db is not None:
         driven_mode = "all"
     elif s22_db is not None:
@@ -170,42 +170,42 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-    # 1. Panel: S-parametry
+    # 1st panel: S-parameters
     if s11_db is not None:
         min1_idx = np.argmin(s11_db)
-        s11_label = r"$S_{11}$ (Port 1 — $50\ \Omega$ T-článek)" if model == 4 else r"$S_{11}$ (Port 1 - spodní, $E_y$)"
+        s11_label = r"$S_{11}$ (Port 1 — $50\ \Omega$ T-junction)" if model == 4 else r"$S_{11}$ (Port 1 - bottom, $E_y$)"
         ax1.plot(freqs, s11_db, label=s11_label, color='royalblue', lw=2.2)
         ax1.plot(freqs[min1_idx], s11_db[min1_idx], 'bo', label=f'Min $S_{{11}}$: {s11_db[min1_idx]:.2f} dB @ {freqs[min1_idx]:.3f} GHz')
 
     if s22_db is not None:
         min2_idx = np.argmin(s22_db)
-        ax1.plot(freqs, s22_db, label=r"$S_{22}$ (Port 2 - levý, $E_x$)", color='crimson', lw=2.2, linestyle='--')
+        ax1.plot(freqs, s22_db, label=r"$S_{22}$ (Port 2 - left, $E_x$)", color='crimson', lw=2.2, linestyle='--')
         ax1.plot(freqs[min2_idx], s22_db[min2_idx], 'ro', label=f'Min $S_{{22}}$: {s22_db[min2_idx]:.2f} dB @ {freqs[min2_idx]:.3f} GHz')
 
     if s21_db is not None and s12_db is not None and not np.allclose(s21_db, s12_db, atol=1e-3):
-        ax1.plot(freqs, s21_db, label=r"Izolace $S_{21}$", color='purple', lw=1.8, linestyle=':')
-        ax1.plot(freqs, s12_db, label=r"Izolace $S_{12}$", color='darkviolet', lw=1.5, linestyle='-.')
+        ax1.plot(freqs, s21_db, label=r"Isolation $S_{21}$", color='purple', lw=1.8, linestyle=':')
+        ax1.plot(freqs, s12_db, label=r"Isolation $S_{12}$", color='darkviolet', lw=1.5, linestyle='-.')
     elif iso_db is not None:
         iso_name = "S_{21}" if (s11_db is not None or s12_db is None) else "S_{12}"
-        ax1.plot(freqs, iso_db, label=rf"Izolace / přeslech ${iso_name}$", color='purple', lw=1.8, linestyle=':')
+        ax1.plot(freqs, iso_db, label=rf"Isolation / crosstalk ${iso_name}$", color='purple', lw=1.8, linestyle=':')
 
-    ax1.axhline(-10.0, color='red', linestyle='--', lw=1.5, label='Kritérium -10 dB')
+    ax1.axhline(-10.0, color='red', linestyle='--', lw=1.5, label='-10 dB Criterion')
     
     if s11_db is not None and s22_db is not None:
-        title_s = rf"S-parametry ($S_{{11}}$, $S_{{22}}$) — $Z_0 = {z0:.0f}\ \Omega$"
+        title_s = rf"S-parameters ($S_{{11}}$, $S_{{22}}$) — $Z_0 = {z0:.0f}\ \Omega$"
     elif model == 4:
-        title_s = rf"S-parametry — Model 4 (Finální $50\ \Omega$ T-článek, $Z_0 = {z0:.0f}\ \Omega$)"
+        title_s = rf"S-parameters — Model 4 (Final $50\ \Omega$ T-junction, $Z_0 = {z0:.0f}\ \Omega$)"
     elif driven_mode == "1":
-        title_s = r"S-parametry — Buzení Portu 1 ($E_y$, spodní rameno)"
+        title_s = r"S-parameters — Port 1 Excitation ($E_y$, bottom arm)"
     else:
-        title_s = r"S-parametry — Buzení Portu 2 ($E_x$, levé rameno)"
+        title_s = r"S-parameters — Port 2 Excitation ($E_x$, left arm)"
 
     ax1.set_title(title_s, fontsize=12, fontweight='bold')
-    ax1.set_ylabel("Magnituda [dB]", fontsize=11)
+    ax1.set_ylabel("Magnitude [dB]", fontsize=11)
     ax1.grid(True, linestyle=':', alpha=0.7)
     ax1.legend(loc='best', fontsize=9)
 
-    # 2. Panel: Vstupní impedance Zin
+    # 2nd panel: Port input impedance Zin
     if zin1 is not None:
         ax2.plot(freqs, zin1.real, label=r"$\mathrm{Re}\{Z_{in1}\}$ (Port 1)", color='royalblue', lw=2.0)
         ax2.plot(freqs, zin1.imag, label=r"$\mathrm{Im}\{Z_{in1}\}$ (Port 1)", color='deepskyblue', lw=1.6, linestyle='--')
@@ -214,11 +214,11 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
         ax2.plot(freqs, zin2.real, label=r"$\mathrm{Re}\{Z_{in2}\}$ (Port 2)", color='crimson', lw=2.0)
         ax2.plot(freqs, zin2.imag, label=r"$\mathrm{Im}\{Z_{in2}\}$ (Port 2)", color='coral', lw=1.6, linestyle='--')
 
-    ax2.axhline(z0, color='gray', linestyle='--', alpha=0.7, label=rf"Cíl $Z_0 = {z0:.0f}\ \Omega$")
+    ax2.axhline(z0, color='gray', linestyle='--', alpha=0.7, label=rf"Target $Z_0 = {z0:.0f}\ \Omega$")
     ax2.axhline(0.0, color='black', linestyle='-', alpha=0.4, label=r"$\mathrm{Im}\{Z\} = 0\ \Omega$")
 
-    ax2.set_title(rf"Vstupní impedance portů $Z_{{in}}$ [$\Omega$] (Reference $Z_0 = {z0:.0f}\ \Omega$)", fontsize=12, fontweight='bold')
-    ax2.set_xlabel("Frekvence [GHz]", fontsize=11)
+    ax2.set_title(rf"Port Input Impedance $Z_{{in}}$ [$\Omega$] (Reference $Z_0 = {z0:.0f}\ \Omega$)", fontsize=12, fontweight='bold')
+    ax2.set_xlabel("Frequency [GHz]", fontsize=11)
     ax2.set_ylabel(r"Impedance [$\Omega$]", fontsize=11)
     ax2.grid(True, linestyle=':', alpha=0.7)
     ax2.legend(loc='best', fontsize=9, ncol=2)
@@ -227,64 +227,64 @@ def plot_s_parameters(export_dir, output_png=None, params=None):
     os.makedirs(os.path.dirname(output_png) or ".", exist_ok=True)
     plt.savefig(output_png, dpi=200)
     plt.close()
-    print(f"[Plot S-Params] Uložen graf S-parametrů a impedance: {output_png}")
+    print(f"[Plot S-Params] Saved S-parameters and impedance plot: {output_png}")
 
-    # Uložení samostatných dílčích grafů do podsložky grafy/
-    grafy_dirs = [os.path.join(export_dir, "grafy")]
+    # Save individual sub-plots into the plots/ subfolder
+    plots_dirs = [os.path.join(export_dir, "plots")]
     out_dir = os.path.dirname(output_png)
     if os.path.abspath(out_dir) != os.path.abspath(export_dir):
-        grafy_dirs.append(os.path.join(out_dir, "grafy"))
+        plots_dirs.append(os.path.join(out_dir, "plots"))
 
-    for g_dir in grafy_dirs:
-        os.makedirs(g_dir, exist_ok=True)
+    for p_dir in plots_dirs:
+        os.makedirs(p_dir, exist_ok=True)
 
-        # 1. Samostatný graf S11 a S22
+        # 1. Standalone S11 and S22 plot
         fig_s, ax_s = plt.subplots(figsize=(8.5, 5))
         if s11_db is not None:
             min1_idx = np.argmin(s11_db)
-            ax_s.plot(freqs, s11_db, label=r"$S_{11}$ (Port 1 - spodní, $E_y$)", color='royalblue', lw=2.2)
+            ax_s.plot(freqs, s11_db, label=r"$S_{11}$ (Port 1 - bottom, $E_y$)", color='royalblue', lw=2.2)
             ax_s.plot(freqs[min1_idx], s11_db[min1_idx], 'bo', label=f'Min $S_{{11}}$: {s11_db[min1_idx]:.2f} dB @ {freqs[min1_idx]:.3f} GHz')
         if s22_db is not None:
             min2_idx = np.argmin(s22_db)
-            ax_s.plot(freqs, s22_db, label=r"$S_{22}$ (Port 2 - levý, $E_x$)", color='crimson', lw=2.2, linestyle='--')
+            ax_s.plot(freqs, s22_db, label=r"$S_{22}$ (Port 2 - left, $E_x$)", color='crimson', lw=2.2, linestyle='--')
             ax_s.plot(freqs[min2_idx], s22_db[min2_idx], 'ro', label=f'Min $S_{{22}}$: {s22_db[min2_idx]:.2f} dB @ {freqs[min2_idx]:.3f} GHz')
 
-        ax_s.axhline(-10.0, color='red', linestyle='--', lw=1.5, label='Kritérium -10 dB')
-        ax_s.set_title(rf"Činitel odrazu ($S_{{11}}$, $S_{{22}}$) — $Z_0 = {z0:.0f}\ \Omega$", fontsize=12, fontweight='bold')
-        ax_s.set_xlabel("Frekvence [GHz]", fontsize=11)
-        ax_s.set_ylabel("Magnituda [dB]", fontsize=11)
+        ax_s.axhline(-10.0, color='red', linestyle='--', lw=1.5, label='-10 dB Criterion')
+        ax_s.set_title(rf"Reflection Coefficient ($S_{{11}}$, $S_{{22}}$) — $Z_0 = {z0:.0f}\ \Omega$", fontsize=12, fontweight='bold')
+        ax_s.set_xlabel("Frequency [GHz]", fontsize=11)
+        ax_s.set_ylabel("Magnitude [dB]", fontsize=11)
         ax_s.grid(True, linestyle=':', alpha=0.7)
         ax_s.legend(loc='best', fontsize=9)
         plt.tight_layout()
-        p_s11_s22 = os.path.join(g_dir, "graf_S11_S22.png")
+        p_s11_s22 = os.path.join(p_dir, "plot_s11_s22.png")
         plt.savefig(p_s11_s22, dpi=200)
         plt.close(fig_s)
 
-        # 2. Samostatný graf izolace S21 a S12
+        # 2. Standalone isolation S21 and S12 plot
         if s21_db is not None and s12_db is not None and not np.allclose(s21_db, s12_db, atol=1e-3):
             fig_iso, ax_iso = plt.subplots(figsize=(8.5, 5))
-            ax_iso.plot(freqs, s21_db, label=r"Izolace $S_{21}$ (Port 1 $\rightarrow$ Port 2)", color='purple', lw=2.0)
-            ax_iso.plot(freqs, s12_db, label=r"Izolace $S_{12}$ (Port 2 $\rightarrow$ Port 1)", color='darkviolet', lw=1.8, linestyle='--')
-            ax_iso.set_title(r"Izolace mezi porty ($S_{21}$ a $S_{12}$)", fontsize=12, fontweight='bold')
-            ax_iso.set_xlabel("Frekvence [GHz]", fontsize=11)
-            ax_iso.set_ylabel("Magnituda [dB]", fontsize=11)
+            ax_iso.plot(freqs, s21_db, label=r"Isolation $S_{21}$ (Port 1 $\rightarrow$ Port 2)", color='purple', lw=2.0)
+            ax_iso.plot(freqs, s12_db, label=r"Isolation $S_{12}$ (Port 2 $\rightarrow$ Port 1)", color='darkviolet', lw=1.8, linestyle='--')
+            ax_iso.set_title(r"Port-to-Port Isolation ($S_{21}$ and $S_{12}$)", fontsize=12, fontweight='bold')
+            ax_iso.set_xlabel("Frequency [GHz]", fontsize=11)
+            ax_iso.set_ylabel("Magnitude [dB]", fontsize=11)
             ax_iso.grid(True, linestyle=':', alpha=0.7)
             ax_iso.legend(loc='best', fontsize=9)
             plt.tight_layout()
-            p_iso = os.path.join(g_dir, "graf_S21_izolace.png")
+            p_iso = os.path.join(p_dir, "plot_s21_isolation.png")
             plt.savefig(p_iso, dpi=200)
             plt.close(fig_iso)
         elif iso_db is not None:
             fig_iso, ax_iso = plt.subplots(figsize=(8.5, 5))
             iso_name = "S_{21}" if (s11_db is not None or s12_db is None) else "S_{12}"
-            ax_iso.plot(freqs, iso_db, label=rf"Izolace / přeslech ${iso_name}$", color='purple', lw=2.0)
-            ax_iso.set_title(rf"Izolace mezi porty (${iso_name}$)", fontsize=12, fontweight='bold')
-            ax_iso.set_xlabel("Frekvence [GHz]", fontsize=11)
-            ax_iso.set_ylabel("Magnituda [dB]", fontsize=11)
+            ax_iso.plot(freqs, iso_db, label=rf"Isolation / crosstalk ${iso_name}$", color='purple', lw=2.0)
+            ax_iso.set_title(rf"Port-to-Port Isolation (${iso_name}$)", fontsize=12, fontweight='bold')
+            ax_iso.set_xlabel("Frequency [GHz]", fontsize=11)
+            ax_iso.set_ylabel("Magnitude [dB]", fontsize=11)
             ax_iso.grid(True, linestyle=':', alpha=0.7)
             ax_iso.legend(loc='best', fontsize=9)
             plt.tight_layout()
-            p_iso = os.path.join(g_dir, "graf_S21_izolace.png")
+            p_iso = os.path.join(p_dir, "plot_s21_isolation.png")
             plt.savefig(p_iso, dpi=200)
             plt.close(fig_iso)
     return output_png
@@ -298,13 +298,13 @@ def _has_port_csv(directory):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Vykreslení diagnostických grafů S-parametrů a vstupní impedance z port-S.csv nebo port-V.csv"
+        description="Plot diagnostic S-parameters and port input impedance from port-S.csv or port-V.csv"
     )
     parser.add_argument(
         "export_dir",
         nargs="?",
         default=None,
-        help="Cesta k exportní složce s výsledky simulace (výchozí: DATA_DIR/postpro nebo DATA_DIR z .env)",
+        help="Path to the export directory with simulation results (default: DATA_DIR/postpro or DATA_DIR from .env)",
     )
     args = parser.parse_args()
 
@@ -317,8 +317,8 @@ if __name__ == "__main__":
         elif _has_port_csv(data_dir):
             target = data_dir
         else:
-            print(f"[CHYBA] Soubory port-S.csv ani port-V.csv nebyly nalezeny v {postpro_dir} ani v {data_dir}.")
-            print("Zadejte cestu k exportní složce jako argument nebo nejprve spusťte simulaci.")
+            print(f"[ERROR] Neither port-S.csv nor port-V.csv was found in {postpro_dir} or {data_dir}.")
+            print("Provide the export directory path as an argument or run the simulation first.")
             parser.print_help()
             sys.exit(1)
 

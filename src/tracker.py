@@ -1,24 +1,24 @@
 """
-tracker.py - Jednoduchý, robustní a transparentní systém pro sledování parametrů a výsledků simulací.
-Podporuje:
-  - Model 1 (1 port, T-dělič): zapisuje do export/sweep_results.csv a .md
-  - Model 2 (2 porty, 100 Ohm LHCP): zapisuje do export/sweep_results_model2.csv a .md
-  - Model 3 (2 porty, 100 Ohm + lambda_g/4 transformátor): zapisuje do export/sweep_results_model3.csv a .md
-  - Model 4 (Finální model, 50 Ohm T-článek + oblouky): zapisuje do export/sweep_results_model4.csv a .md
+tracker.py - Simple, robust, and transparent system for tracking simulation parameters and results.
+Supports:
+  - Model 1 (1 port, T-splitter): writes to export/sweep_results.csv and .md
+  - Model 2 (2 ports, 100 Ohm LHCP): writes to export/sweep_results_model2.csv and .md
+  - Model 3 (2 ports, 100 Ohm + lambda_g/4 transformer): writes to export/sweep_results_model3.csv and .md
+  - Model 4 (Final model, 50 Ohm T-junction + bends): writes to export/sweep_results_model4.csv and .md
 """
 
 import os
 import csv
 import numpy as np
 
-# Konstanty pro VF výpočty
+# Constants for RF calculations
 S11_BW_THRESHOLD_DB = -10.0
 GHZ_TO_MHZ = 1000.0
-ETA_0 = 376.7303135  # Vlnová impedance vakua [Ohm]
+ETA_0 = 376.7303135  # Free-space wave impedance [Ohm]
 DESIGN_FREQ_GHZ = 2.3325
 
 # ==============================================================================
-# 1. KONFIGURACE PRO MODEL 1 (Původní)
+# 1. CONFIGURATION FOR MODEL 1 (Original)
 # ==============================================================================
 TRACKED_PARAMS_V1 = [
     ('feed_inset', 'inset_mm', '{:.2f}'),
@@ -39,13 +39,13 @@ TRACKED_METRICS_V1 = [
     ('e_lhcp', 'E_LHCP [V]', '{:.2f}'),
     ('e_rhcp', 'E_RHCP [V]', '{:.2f}'),
     ('axial_ratio_db', 'AR [dB]', '{:.2f}'),
-    ('polarization', 'Polarizace', '{}'),
+    ('polarization', 'Polarization', '{}'),
     ('gain_lhcp_dbi', 'Gain_LHCP [dBi]', '{:.2f}'),
     ('gain_rhcp_dbi', 'Gain_RHCP [dBi]', '{:.2f}'),
 ]
 
 # ==============================================================================
-# 2. KONFIGURACE PRO MODEL 2 (Dvouportový model)
+# 2. CONFIGURATION FOR MODEL 2 (Dual-port model)
 # ==============================================================================
 TRACKED_PARAMS_V2 = [
     ('feed_inset_b', 'inset_b_mm', '{:.2f}'),
@@ -69,7 +69,7 @@ TRACKED_METRICS_V2 = [
     ('e_lhcp', 'E_LHCP [V]', '{:.2f}'),
     ('e_rhcp', 'E_RHCP [V]', '{:.2f}'),
     ('axial_ratio_db', 'AR [dB]', '{:.2f}'),
-    ('polarization', 'Polarizace', '{}'),
+    ('polarization', 'Polarization', '{}'),
     ('gain_lhcp_dbi', 'Gain_LHCP [dBi]', '{:.2f}'),
     ('gain_rhcp_dbi', 'Gain_RHCP [dBi]', '{:.2f}'),
 ]
@@ -94,13 +94,13 @@ FIELDNAMES_V2 = [
     'E_LHCP [V]',
     'E_RHCP [V]',
     'AR [dB]',
-    'Polarizace',
+    'Polarization',
     'Gain_LHCP [dBi]',
     'Gain_RHCP [dBi]',
     'export_zip',
 ]
 # ==============================================================================
-# 3. KONFIGURACE PRO MODEL 3 (Hybridní dvoustupňové přizpůsobení)
+# 3. CONFIGURATION FOR MODEL 3 (Hybrid two-stage matching)
 # ==============================================================================
 TRACKED_PARAMS_V3 = [
     ('trans_w', 'trans_w_mm', '{:.2f}'),
@@ -135,7 +135,7 @@ FIELDNAMES_V3 = [
     'E_LHCP [V]',
     'E_RHCP [V]',
     'AR [dB]',
-    'Polarizace',
+    'Polarization',
     'Gain_LHCP [dBi]',
     'Gain_RHCP [dBi]',
     'export_zip',
@@ -143,7 +143,7 @@ FIELDNAMES_V3 = [
 FIELDNAMES_MODEL3 = FIELDNAMES_V3
 
 # ==============================================================================
-# 4. KONFIGURACE PRO MODEL 4 (Finální model: 50 Ohm T-článek + oblouky)
+# 4. CONFIGURATION FOR MODEL 4 (Final model: 50 Ohm T-junction + bends)
 # ==============================================================================
 FIELDNAMES_V4 = [
     'run_name',
@@ -167,7 +167,7 @@ FIELDNAMES_V4 = [
     'E_LHCP [V]',
     'E_RHCP [V]',
     'AR [dB]',
-    'Polarizace',
+    'Polarization',
     'Gain_LHCP [dBi]',
     'Gain_RHCP [dBi]',
     'export_zip',
@@ -175,7 +175,7 @@ FIELDNAMES_V4 = [
 FIELDNAMES_MODEL4 = FIELDNAMES_V4
 
 # ==============================================================================
-# 5. KONFIGURACE PRO MODEL 5 (Dvouportový 100 Ohm model s oblouky bez T-článku)
+# 5. CONFIGURATION FOR MODEL 5 (Dual-port 100 Ohm model with bends, no T-junction)
 # ==============================================================================
 FIELDNAMES_V5 = [
     'run_name',
@@ -201,7 +201,7 @@ FIELDNAMES_V5 = [
     'E_LHCP [V]',
     'E_RHCP [V]',
     'AR [dB]',
-    'Polarizace',
+    'Polarization',
     'Gain_LHCP [dBi]',
     'Gain_RHCP [dBi]',
     'export_zip',
@@ -209,7 +209,7 @@ FIELDNAMES_V5 = [
 FIELDNAMES_MODEL5 = FIELDNAMES_V5
 
 # ==============================================================================
-# 6. KONFIGURACE PRO MODEL 6 (Dvouportový 100 Ohm model s interními porty z M4)
+# 6. CONFIGURATION FOR MODEL 6 (Dual-port 100 Ohm model with internal ports from M4)
 # ==============================================================================
 FIELDNAMES_V6 = [
     'run_name',
@@ -236,7 +236,7 @@ FIELDNAMES_V6 = [
     'E_LHCP [V]',
     'E_RHCP [V]',
     'AR [dB]',
-    'Polarizace',
+    'Polarization',
     'Gain_LHCP [dBi]',
     'Gain_RHCP [dBi]',
     'export_zip',
@@ -244,7 +244,7 @@ FIELDNAMES_V6 = [
 FIELDNAMES_MODEL6 = FIELDNAMES_V6
 
 # ==============================================================================
-# 7. KONFIGURACE PRO MODEL 7 (Zrcadlený Model 4 pro RHCP, 50 Ohm T-článek vpravo)
+# 7. CONFIGURATION FOR MODEL 7 (Mirrored Model 4 for RHCP, 50 Ohm T-junction on right)
 # ==============================================================================
 FIELDNAMES_V7 = [
     'run_name',
@@ -268,7 +268,7 @@ FIELDNAMES_V7 = [
     'E_LHCP [V]',
     'E_RHCP [V]',
     'AR [dB]',
-    'Polarizace',
+    'Polarization',
     'Gain_LHCP [dBi]',
     'Gain_RHCP [dBi]',
     'export_zip',
@@ -277,7 +277,7 @@ FIELDNAMES_MODEL7 = FIELDNAMES_V7
 
 
 def extract_s11_metrics(s11_file, z0=50.0):
-    """Extrahuje rezonanční frekvenci, minimum S11, šířku pásma a vstupní impedanci pro Model 1."""
+    """Extract resonant frequency, S11 minimum, bandwidth, and input impedance for Model 1."""
     if not os.path.exists(s11_file) or os.path.getsize(s11_file) == 0:
         return {}
 
@@ -293,13 +293,13 @@ def extract_s11_metrics(s11_file, z0=50.0):
         f0 = float(freqs[min_idx])
         s11_min = float(s11_db[min_idx])
 
-        # Výpočet impedance z S11 při rezonanci f0
+        # Compute impedance from S11 at resonance f0
         s11_lin = 10.0 ** (s11_min / 20.0)
         s11_rad = np.deg2rad(s11_deg[min_idx])
         gamma = s11_lin * np.exp(1j * s11_rad)
         zin = z0 * (1.0 + gamma) / (1.0 - gamma + 1e-12)
 
-        # Šířka pásma pod -10 dB s lineární interpolací
+        # -10 dB bandwidth with linear interpolation
         bw_mhz = 0.0
         if s11_min <= S11_BW_THRESHOLD_DB:
             f_low = freqs[0] if s11_db[0] <= S11_BW_THRESHOLD_DB else None
@@ -329,19 +329,19 @@ def extract_s11_metrics(s11_file, z0=50.0):
             'zin_im_ohm': float(zin.imag),
         }
     except Exception as e:
-        print(f"Upozornění: Chyba při čtení S-parametrů z {s11_file}: {e}")
+        print(f"Warning: Error reading S-parameters from {s11_file}: {e}")
         return {}
 
 
 def extract_s_parameters_model2(output_dir, z0=100.0):
     """
-    Vyhodnotí VF parametry pro dvouportový Model 2:
-    - Primární a spolehlivý zdroj: port-S.csv (přímo z Palace)
-      Obsahuje reálná data rozptylu |S[1][1]|, |S[2][2]|, |S[2][1]| a fáze.
-      Určí skutečná minima S11_min a S22_min a rezonanční frekvence f0_b a f0_l.
-      Zin1 a Zin2 počítá z komplexního činitele odrazu: Zin = Z0 * (1 + Gamma) / (1 - Gamma).
-    - Sekundární / doplňkový fallback: port-V.csv a port-I.csv
-      Nikdy nepoužívá incidentní sloupce (V_inc, I_inc), striktně hledá Re{V}, Im{V}, Re{I}, Im{I}.
+    Evaluate RF parameters for dual-port Model 2:
+    - Primary reliable source: port-S.csv (directly from Palace)
+      Contains real scattering data |S[1][1]|, |S[2][2]|, |S[2][1]| and phases.
+      Determines true minima S11_min and S22_min and resonant frequencies f0_b and f0_l.
+      Computes Zin1 and Zin2 from the complex reflection coefficient: Zin = Z0 * (1 + Gamma) / (1 - Gamma).
+    - Secondary / fallback source: port-V.csv and port-I.csv
+      Never uses incident columns (V_inc, I_inc); strictly searches for Re{V}, Im{V}, Re{I}, Im{I}.
     """
     v_path = os.path.join(output_dir, "port-V.csv")
     i_path = os.path.join(output_dir, "port-I.csv")
@@ -359,7 +359,7 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
                     return idx
         return None
 
-    # 1. PRIMÁRNÍ ZDROJ: port-S.csv
+    # 1. PRIMARY SOURCE: port-S.csv
     if os.path.exists(s_path) and os.path.getsize(s_path) > 0:
         try:
             with open(s_path, 'r', encoding='utf-8') as f:
@@ -372,22 +372,22 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
             if s_data.shape[0] > 0 and s_data.shape[1] >= 2:
                 freqs = s_data[:, 0]
 
-                # Vyhledání sloupců pro S11 (|S[1][1]|) a případnou fázi
+                # Locate columns for S11 (|S[1][1]|) and optional phase
                 s11_idx = find_col_idx(s_header, ["|s[1][1]|", "s[1][1]", "s[1,1]", "|s11|", "s11"])
                 s11_deg_idx = find_col_idx(s_header, ["arg(s[1][1])", "arg(s[1,1])", "arg(s11)", "phase(s[1][1])", "phase(s11)"])
 
-                # Vyhledání sloupců pro S22 (|S[2][2]|) a případnou fázi
+                # Locate columns for S22 (|S[2][2]|) and optional phase
                 s22_idx = find_col_idx(s_header, ["|s[2][2]|", "s[2][2]", "s[2,2]", "|s22|", "s22"])
                 s22_deg_idx = find_col_idx(s_header, ["arg(s[2][2])", "arg(s[2,2])", "arg(s22)", "phase(s[2][2])", "phase(s22)"])
 
-                # Vyhledání sloupců pro přenos S21 a S12
+                # Locate columns for transmission S21 and S12
                 s21_idx = find_col_idx(s_header, ["|s[2][1]|", "s[2][1]", "s[2,1]", "|s21|", "s21"])
                 s12_idx = find_col_idx(s_header, ["|s[1][2]|", "s[1][2]", "s[1,2]", "|s12|", "s12"])
 
-                # Fallback pro neoznačené sloupce (pouze pokud nebyl nalezen ani jeden z S11 / S22)
+                # Fallback for unlabeled columns (only if neither S11 nor S22 was found)
                 if s11_idx is None and s22_idx is None:
                     if s_data.shape[1] >= 8:
-                        # 2 porty plná matice: [f, S11, arg11, S21, arg21, S12, arg12, S22, arg22]
+                        # 2 ports full matrix: [f, S11, arg11, S21, arg21, S12, arg12, S22, arg22]
                         s11_idx, s11_deg_idx = 1, 2
                         s21_idx = 3
                         s12_idx = 5
@@ -400,7 +400,7 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
 
                 metrics['freqs'] = freqs
 
-                # Vyhodnocení Port 1 (pokud je přítomen v S-matici)
+                # Evaluate Port 1 (if present in S-matrix)
                 if s11_idx is not None and s11_idx < s_data.shape[1]:
                     s11_db = s_data[:, s11_idx]
                     min1_idx = int(np.argmin(s11_db))
@@ -424,7 +424,7 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
                         's11_db': s11_db,
                     })
 
-                # Vyhodnocení Port 2 (pokud je přítomen v S-matici)
+                # Evaluate Port 2 (if present in S-matrix)
                 if s22_idx is not None and s22_idx < s_data.shape[1]:
                     s22_db = s_data[:, s22_idx]
                     min2_idx = int(np.argmin(s22_db))
@@ -448,7 +448,7 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
                         's22_db': s22_db,
                     })
 
-                # Izolace S21 / S12
+                # Isolation S21 / S12
                 if s21_idx is not None and s21_idx < s_data.shape[1]:
                     metrics['s21_db'] = s_data[:, s21_idx]
                     ref_idx = min1_idx if s11_idx is not None else 0
@@ -458,10 +458,10 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
 
                 return metrics
         except Exception as e:
-            print(f"Upozornění: Chyba při čtení primárního souboru port-S.csv: {e}")
+            print(f"Warning: Error reading primary file port-S.csv: {e}")
 
-    # 2. SEKUNDÁRNÍ / FALLBACK VÝPOČET: port-V.csv a port-I.csv
-    # Používá se, pokud port-S.csv chybí (např. syntetické testy)
+    # 2. SECONDARY / FALLBACK CALCULATION: port-V.csv and port-I.csv
+    # Used when port-S.csv is missing (e.g., synthetic tests)
     if os.path.exists(v_path) and os.path.exists(i_path) and os.path.getsize(v_path) > 0 and os.path.getsize(i_path) > 0:
         try:
             with open(v_path, 'r', encoding='utf-8') as f:
@@ -479,7 +479,7 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
 
             freqs = v_data[:, 0]
 
-            # Striktně vyřazujeme incidentní sloupce (obsahující 'inc')!
+            # Strictly exclude incident columns (containing 'inc')!
             v1_re_idx = find_col_idx(v_header, ["re{v[1]}", "re(v[1])", "v[1]_re", "re_v1", "v1r", "rev1", "re{v_1}", "v1_re"], exclude_patterns=["inc"])
             v1_im_idx = find_col_idx(v_header, ["im{v[1]}", "im(v[1])", "v[1]_im", "im_v1", "v1i", "imv1", "im{v_1}", "v1_im"], exclude_patterns=["inc"])
             v2_re_idx = find_col_idx(v_header, ["re{v[2]}", "re(v[2])", "v[2]_re", "re_v2", "v2r", "rev2", "re{v_2}", "v2_re"], exclude_patterns=["inc"])
@@ -490,7 +490,7 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
             i2_re_idx = find_col_idx(i_header, ["re{i[2]}", "re(i[2])", "i[2]_re", "re_i2", "i2r", "rei2", "re{i_2}", "i2_re"], exclude_patterns=["inc"])
             i2_im_idx = find_col_idx(i_header, ["im{i[2]}", "im(i[2])", "i[2]_im", "im_i2", "i2i", "imi2", "im{i_2}", "i2_im"], exclude_patterns=["inc"])
 
-            # Bezpečné fallback indexy pro strukturu: col 0=f, col 1=V_inc1, col 2=Re{V1}, col 3=Im{V1}, col 4=V_inc2, col 5=Re{V2}, col 6=Im{V2}
+            # Safe fallback indices for layout: col 0=f, col 1=V_inc1, col 2=Re{V1}, col 3=Im{V1}, col 4=V_inc2, col 5=Re{V2}, col 6=Im{V2}
             if v1_re_idx is None:
                 v1_re_idx = 2 if v_data.shape[1] > 2 else 1
             if v1_im_idx is None:
@@ -509,7 +509,7 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
             if i2_im_idx is None and i_data.shape[1] > 6:
                 i2_im_idx = 6
 
-            # Port 1 (spodní port)
+            # Port 1 (bottom port)
             v1_re = v_data[:, v1_re_idx]
             v1_im = v_data[:, v1_im_idx] if v1_im_idx is not None else np.zeros_like(v1_re)
             v1 = v1_re + 1j * v1_im
@@ -521,8 +521,8 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
             v1_inc_idx = find_col_idx(v_header, ["v_inc[1]", "v_inc1", "vinc1"])
             v2_inc_idx = find_col_idx(v_header, ["v_inc[2]", "v_inc2", "vinc2"])
 
-            # Pokud Palace vrátil V a I takové, že V/I == Z0 (lumped port chování v Palace),
-            # počítáme činitel odrazu přímo z dopadající vlny: Gamma = (V - V_inc) / V_inc
+            # If Palace returned V and I such that V/I == Z0 (lumped port behavior in Palace),
+            # compute reflection coefficient directly from incident wave: Gamma = (V - V_inc) / V_inc
             if v1_inc_idx is not None and np.allclose(v1 / (i1 + 1e-15), z0, atol=1e-2):
                 v1_inc = v_data[:, v1_inc_idx]
                 gamma1 = (v1 - v1_inc) / (v1_inc + 1e-15)
@@ -544,7 +544,7 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
             metrics['freqs'] = freqs
             metrics['s11_db'] = s11_db
 
-            # Port 2 (levý port)
+            # Port 2 (left port)
             if v2_re_idx is not None and i2_re_idx is not None:
                 v2_re = v_data[:, v2_re_idx]
                 v2_im = v_data[:, v2_im_idx] if v2_im_idx is not None else np.zeros_like(v2_re)
@@ -581,17 +581,17 @@ def extract_s_parameters_model2(output_dir, z0=100.0):
 
             return metrics
         except Exception as e:
-            print(f"Upozornění: Chyba při výpočtu S-parametrů z port-V a port-I: {e}")
+            print(f"Warning: Error computing S-parameters from port-V and port-I: {e}")
 
     return metrics
 
 
 def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
     """
-    Vyhodnotí vyzařování z farfield-rE.csv:
-    - Vyhodnocuje všechny frekvence f v souboru pro koherentní superpozici Portu 1 a Portu 2.
-    - Hledá maximum zisku LHCP a jeho frekvenci (fGainMaxLhcp, Gain_max_LHCP).
-    - Zachovává metriky na zadané rezonanční / cílové frekvenci target_freq.
+    Evaluate radiation metrics from farfield-rE.csv:
+    - Evaluates all frequencies f in the file for coherent superposition of Port 1 and Port 2.
+    - Finds maximum LHCP gain and its frequency (fGainMaxLhcp, Gain_max_LHCP).
+    - Preserves metrics at the specified resonant / target frequency target_freq.
     """
     if not os.path.exists(farfield_file) or os.path.getsize(farfield_file) == 0:
         return {}
@@ -612,8 +612,8 @@ def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
         e_lhcp_list = []
         e_rhcp_list = []
 
-        # V Palace FEM je jmenovitý dopadající výkon P_inc = 0.5 W (V_inc = sqrt(50) V pro R = 50 Ohm,
-        # resp. P_inc = 0.5 * V_inc * I_inc = 0.5 W na jeden buzený port).
+        # In Palace FEM, nominal incident power is P_inc = 0.5 W (V_inc = sqrt(50) V for R = 50 Ohm,
+        # i.e., P_inc = 0.5 * V_inc * I_inc = 0.5 W per driven port).
         p_inc_per_port = 0.5
         p_in_single = p_inc_per_port * (1.0 - (10.0 ** (s11_min_db / 10.0))) if s11_min_db is not None else p_inc_per_port
         p_in_single = max(p_in_single, 0.005)
@@ -632,8 +632,8 @@ def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
         for f_val in freqs:
             f_data = data[np.isclose(data[:, 0], f_val, atol=1e-7)]
 
-            # Boresight bod: theta nejblíže 0 (osa +Z)
-            # Podpora pro více excitačních módů v Palace (Model 2 má 2 nezávislé buzené porty / excitace)
+            # Boresight point: theta closest to 0 (+Z axis)
+            # Support for multiple excitation modes in Palace (Model 2 has 2 independent driven ports / excitations)
             unique_excs = np.unique(f_data[:, 1]) if f_data.shape[1] > 1 else [1]
             ex_tot = 0.0 + 0.0j
             ey_tot = 0.0 + 0.0j
@@ -651,17 +651,17 @@ def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
                 ex_tot += row[4] + 1j * row[5]
                 ey_tot += row[6] + 1j * row[7]
 
-            # Rozklad na LHCP a RHCP fázory dle standardu IEEE (+Z):
+            # Decomposition into LHCP and RHCP phasors per IEEE standard (+Z):
             # E_LHCP = (Ex + j*Ey)/sqrt(2), E_RHCP = (Ex - j*Ey)/sqrt(2)
             e_lhcp_f = float(abs(ex_tot + 1j * ey_tot) / np.sqrt(2.0))
             e_rhcp_f = float(abs(ex_tot - 1j * ey_tot) / np.sqrt(2.0))
 
-            # Osový poměr (Axial Ratio v dB)
+            # Axial Ratio (in dB)
             major_f = max(e_lhcp_f, e_rhcp_f) + min(e_lhcp_f, e_rhcp_f)
             minor_f = max(abs(e_lhcp_f - e_rhcp_f), 1e-9)
             ar_db_f = float(20.0 * np.log10(major_f / minor_f))
 
-            # Odhad zisku v dBi
+            # Gain estimate in dBi
             u_lhcp_f = (e_lhcp_f ** 2) / (2.0 * ETA_0)
             u_rhcp_f = (e_rhcp_f ** 2) / (2.0 * ETA_0)
             p_in = max(num_excs * p_in_single, 0.01)
@@ -682,19 +682,19 @@ def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
         gain_rhcp_freqs = np.array(gain_rhcp_list)
         ar_freqs = np.array(ar_list)
 
-        # Nalezení frekvence s maximálním ziskem LHCP
+        # Find frequency with maximum LHCP gain
         max_idx_l = int(np.argmax(gain_lhcp_freqs))
         f_gain_max_lhcp = float(freqs[max_idx_l])
         gain_max_lhcp = float(gain_lhcp_freqs[max_idx_l])
         ar_at_gain_max_lhcp = float(ar_freqs[max_idx_l])
 
-        # Nalezení frekvence s maximálním ziskem RHCP
+        # Find frequency with maximum RHCP gain
         max_idx_r = int(np.argmax(gain_rhcp_freqs))
         f_gain_max_rhcp = float(freqs[max_idx_r])
         gain_max_rhcp = float(gain_rhcp_freqs[max_idx_r])
         ar_at_gain_max_rhcp = float(ar_freqs[max_idx_r])
 
-        # Hodnoty na cílové / rezonanční frekvenci target_freq
+        # Values at target / resonant frequency target_freq
         eval_f = target_freq if target_freq is not None else DESIGN_FREQ_GHZ
         target_idx = int(np.argmin(np.abs(freqs - eval_f)))
 
@@ -722,12 +722,12 @@ def extract_farfield_metrics(farfield_file, target_freq=None, s11_min_db=None):
             'ar_at_max_gain_rhcp_db': ar_at_gain_max_rhcp,
         }
     except Exception as e:
-        print(f"Upozornění: Chyba při analýze vyzařování z {farfield_file}: {e}")
+        print(f"Warning: Error analyzing far-field from {farfield_file}: {e}")
         return {}
 
 
 def format_value(val, fmt):
-    """Pomocné bezpečné formátování hodnoty."""
+    """Helper for safe value formatting."""
     if val is None or val == "":
         return "-"
     try:
@@ -738,9 +738,9 @@ def format_value(val, fmt):
 
 def record_run(params, output_dir="data/postpro", run_name=None, export_zip=None, results_dir=None):
     """
-    Zaznamená běh do příslušné tabulky podle verze modelu (ANTENNA_MODEL):
-      - Model 1 -> export/sweep_results.csv a .md
-      - Model 2 -> export/sweep_results_model2.csv a .md
+    Record run into the corresponding table based on model version (ANTENNA_MODEL):
+      - Model 1 -> export/sweep_results.csv and .md
+      - Model 2 -> export/sweep_results_model2.csv and .md
     """
     model_version = int(params.get('antenna_model', os.getenv('ANTENNA_MODEL', '1')))
     
@@ -809,18 +809,18 @@ def _record_run_model1(params, output_dir, run_name, export_zip, results_dir):
             writer.writeheader()
         writer.writerow(row)
 
-    update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků Modelu 1 (T-dělič)")
+    update_markdown_summary(csv_file, md_file, title="Summary Table of Model 1 Results (T-splitter)")
 
     print("\n" + "=" * 95)
-    print("VÝSLEDKY SIMULAČNÍHO KROKU MODELU 1 (Zaznamenáno do export/sweep_results.csv):")
+    print("MODEL 1 SIMULATION STEP RESULTS (Logged to export/sweep_results.csv):")
     print("-" * 95)
     info_parts = [
-        f"Krok: {row['run_name']}",
-        f"Zanoření: {row.get('inset_mm', '-') } mm",
+        f"Step: {row['run_name']}",
+        f"Inset: {row.get('inset_mm', '-') } mm",
         f"f0: {row.get('f0 [GHz]', '-')} GHz",
         f"S11: {row.get('S11_min [dB]', '-')} dB",
         f"BW: {row.get('BW_-10dB [MHz]', '-')} MHz",
-        f"Pol: {row.get('Polarizace', '-')}",
+        f"Pol: {row.get('Polarization', '-')}",
         f"AR: {row.get('AR [dB]', '-')} dB",
         f"G_LHCP: {row.get('Gain_LHCP [dBi]', '-')} dBi",
     ]
@@ -867,7 +867,7 @@ def _record_run_model2(params, output_dir, run_name, export_zip, results_dir):
         'E_LHCP [V]': format_value(farfield_metrics.get('e_lhcp'), '{:.2f}'),
         'E_RHCP [V]': format_value(farfield_metrics.get('e_rhcp'), '{:.2f}'),
         'AR [dB]': format_value(farfield_metrics.get('axial_ratio_db'), '{:.2f}'),
-        'Polarizace': format_value(farfield_metrics.get('polarization'), '{}'),
+        'Polarization': format_value(farfield_metrics.get('polarization'), '{}'),
         'Gain_LHCP [dBi]': format_value(farfield_metrics.get('gain_lhcp_dbi'), '{:.2f}'),
         'Gain_RHCP [dBi]': format_value(farfield_metrics.get('gain_rhcp_dbi'), '{:.2f}'),
         'export_zip': export_zip or (f"{run_name}.zip" if run_name else "-"),
@@ -902,13 +902,13 @@ def _record_run_model2(params, output_dir, run_name, export_zip, results_dir):
                 writer.writeheader()
             writer.writerow(row)
 
-    update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků Modelu 2 (Dvouportový LHCP)")
+    update_markdown_summary(csv_file, md_file, title="Summary Table of Model 2 Results (Dual-Port LHCP)")
 
     print("\n" + "=" * 115)
-    print("VÝSLEDKY SIMULAČNÍHO KROKU MODELU 2 (Zaznamenáno do export/sweep_results_model2.csv):")
+    print("MODEL 2 SIMULATION STEP RESULTS (Logged to export/sweep_results_model2.csv):")
     print("-" * 115)
     info_parts = [
-        f"Krok: {row['run_name']}",
+        f"Step: {row['run_name']}",
         f"ib={row['inset_b_mm']} mm",
         f"il={row['inset_l_mm']} mm",
         f"fl_b={row['feed_len_b_mm']} mm",
@@ -922,7 +922,7 @@ def _record_run_model2(params, output_dir, run_name, export_zip, results_dir):
         f"G_max_LHCP={row['Gain_max_LHCP [dBi]']} dBi",
         f"Zin1={row['Zin1_Re [Ohm]']} Ohm",
         f"Zin2={row['Zin2_Re [Ohm]']} Ohm",
-        f"Pol={row['Polarizace']}",
+        f"Pol={row['Polarization']}",
         f"AR={row['AR [dB]']} dB",
         f"G_LHCP={row['Gain_LHCP [dBi]']} dBi",
     ]
@@ -976,7 +976,7 @@ def _record_run_model3(params, output_dir, run_name, export_zip, results_dir):
         'E_LHCP [V]': format_value(farfield_metrics.get('e_lhcp'), '{:.2f}'),
         'E_RHCP [V]': format_value(farfield_metrics.get('e_rhcp'), '{:.2f}'),
         'AR [dB]': format_value(farfield_metrics.get('axial_ratio_db'), '{:.2f}'),
-        'Polarizace': format_value(farfield_metrics.get('polarization'), '{}'),
+        'Polarization': format_value(farfield_metrics.get('polarization'), '{}'),
         'Gain_LHCP [dBi]': format_value(farfield_metrics.get('gain_lhcp_dbi'), '{:.2f}'),
         'Gain_RHCP [dBi]': format_value(farfield_metrics.get('gain_rhcp_dbi'), '{:.2f}'),
         'export_zip': export_zip or (f"{run_name}.zip" if run_name else "-"),
@@ -1011,13 +1011,13 @@ def _record_run_model3(params, output_dir, run_name, export_zip, results_dir):
                 writer.writeheader()
             writer.writerow(row)
 
-    update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků Modelu 3 (Hybridní dvoustupňové přizpůsobení)")
+    update_markdown_summary(csv_file, md_file, title="Summary Table of Model 3 Results (Hybrid Two-Stage Matching)")
 
     print("\n" + "=" * 125)
-    print("VÝSLEDKY SIMULAČNÍHO KROKU MODELU 3 (Zaznamenáno do export/sweep_results_model3.csv):")
+    print("MODEL 3 SIMULATION STEP RESULTS (Logged to export/sweep_results_model3.csv):")
     print("-" * 125)
     info_parts = [
-        f"Krok: {row['run_name']}",
+        f"Step: {row['run_name']}",
         f"w_T={row['trans_w_mm']} mm",
         f"l_T={row['trans_l_mm']} mm",
         f"y0b={row['inset_b_mm']} mm",
@@ -1031,7 +1031,7 @@ def _record_run_model3(params, output_dir, run_name, export_zip, results_dir):
         f"G_max_LHCP={row['Gain_max_LHCP [dBi]']} dBi",
         f"Zin1={row['Zin1_Re [Ohm]']} Ohm",
         f"Zin2={row['Zin2_Re [Ohm]']} Ohm",
-        f"Pol={row['Polarizace']}",
+        f"Pol={row['Polarization']}",
         f"AR={row['AR [dB]']} dB",
         f"G_LHCP={row['Gain_LHCP [dBi]']} dBi",
     ]
@@ -1044,7 +1044,7 @@ record_run_model3 = _record_run_model3
 
 
 def _append_csv_with_migration(csv_file, fieldnames, row):
-    """Zapíše řádek do CSV a při přidaných sloupcích bezpečně migruje hlavičku."""
+    """Write a row to CSV and safely migrate the header when columns are added."""
     file_exists = os.path.exists(csv_file) and os.path.getsize(csv_file) > 0
     file_rewritten = False
 
@@ -1113,20 +1113,20 @@ def _record_run_model4(params, output_dir, run_name, export_zip, results_dir):
         'E_LHCP [V]': format_value(farfield_metrics.get('e_lhcp'), '{:.2f}'),
         'E_RHCP [V]': format_value(farfield_metrics.get('e_rhcp'), '{:.2f}'),
         'AR [dB]': format_value(farfield_metrics.get('axial_ratio_db'), '{:.2f}'),
-        'Polarizace': format_value(farfield_metrics.get('polarization'), '{}'),
+        'Polarization': format_value(farfield_metrics.get('polarization'), '{}'),
         'Gain_LHCP [dBi]': format_value(farfield_metrics.get('gain_lhcp_dbi'), '{:.2f}'),
         'Gain_RHCP [dBi]': format_value(farfield_metrics.get('gain_rhcp_dbi'), '{:.2f}'),
         'export_zip': export_zip or (f"{run_name}.zip" if run_name else "-"),
     }
 
     _append_csv_with_migration(csv_file, FIELDNAMES_V4, row)
-    update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků Modelu 4 (Finální model 50 Ohm T-článek)")
+    update_markdown_summary(csv_file, md_file, title="Summary Table of Model 4 Results (Final 50 Ohm T-junction)")
 
     print("\n" + "=" * 125)
-    print("VÝSLEDKY SIMULAČNÍHO KROKU MODELU 4 (Zaznamenáno do export/sweep_results_model4.csv):")
+    print("MODEL 4 SIMULATION STEP RESULTS (Logged to export/sweep_results_model4.csv):")
     print("-" * 125)
     info_parts = [
-        f"Krok: {row['run_name']}",
+        f"Step: {row['run_name']}",
         f"L={row['patch_L_mm']} mm",
         f"w_T={row['trans_w_mm']} mm",
         f"dL={row['delta_l_mm']} mm",
@@ -1135,7 +1135,7 @@ def _record_run_model4(params, output_dir, run_name, export_zip, results_dir):
         f"S11={row['S11_min [dB]']} dB",
         f"BW={row['BW_-10dB [MHz]']} MHz",
         f"Zin={row['Zin_Re [Ohm]']}+j{row['Zin_Im [Ohm]']} Ohm",
-        f"Pol={row['Polarizace']}",
+        f"Pol={row['Polarization']}",
         f"AR={row['AR [dB]']} dB",
         f"G_LHCP={row['Gain_LHCP [dBi]']} dBi",
     ]
@@ -1190,20 +1190,20 @@ def _record_run_model5(params, output_dir, run_name, export_zip, results_dir):
         'E_LHCP [V]': format_value(farfield_metrics.get('e_lhcp'), '{:.2f}'),
         'E_RHCP [V]': format_value(farfield_metrics.get('e_rhcp'), '{:.2f}'),
         'AR [dB]': format_value(farfield_metrics.get('axial_ratio_db'), '{:.2f}'),
-        'Polarizace': format_value(farfield_metrics.get('polarization'), '{}'),
+        'Polarization': format_value(farfield_metrics.get('polarization'), '{}'),
         'Gain_LHCP [dBi]': format_value(farfield_metrics.get('gain_lhcp_dbi'), '{:.2f}'),
         'Gain_RHCP [dBi]': format_value(farfield_metrics.get('gain_rhcp_dbi'), '{:.2f}'),
         'export_zip': export_zip or (f"{run_name}.zip" if run_name else "-"),
     }
 
     _append_csv_with_migration(csv_file, FIELDNAMES_V5, row)
-    update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků Modelu 5 (Dvouportový 100 Ohm model s oblouky)")
+    update_markdown_summary(csv_file, md_file, title="Summary Table of Model 5 Results (Dual-Port 100 Ohm Model with Bends)")
 
     print("\n" + "=" * 125)
-    print("VÝSLEDKY SIMULAČNÍHO KROKU MODELU 5 (Zaznamenáno do export/sweep_results_model5.csv):")
+    print("MODEL 5 SIMULATION STEP RESULTS (Logged to export/sweep_results_model5.csv):")
     print("-" * 125)
     info_parts = [
-        f"Krok: {row['run_name']}",
+        f"Step: {row['run_name']}",
         f"L={row['patch_L_mm']} mm",
         f"w_T={row['trans_w_mm']} mm",
         f"l_T={row['trans_l_mm']} mm",
@@ -1219,7 +1219,7 @@ def _record_run_model5(params, output_dir, run_name, export_zip, results_dir):
         f"S21={row['S21_min [dB]']} dB",
         f"Zin1={row['Zin1_Re [Ohm]']} Ohm",
         f"Zin2={row['Zin2_Re [Ohm]']} Ohm",
-        f"Pol={row['Polarizace']}",
+        f"Pol={row['Polarization']}",
         f"AR={row['AR [dB]']} dB",
         f"G_LHCP={row['Gain_LHCP [dBi]']} dBi",
     ]
@@ -1275,20 +1275,20 @@ def _record_run_model6(params, output_dir, run_name, export_zip, results_dir):
         'E_LHCP [V]': format_value(farfield_metrics.get('e_lhcp'), '{:.2f}'),
         'E_RHCP [V]': format_value(farfield_metrics.get('e_rhcp'), '{:.2f}'),
         'AR [dB]': format_value(farfield_metrics.get('axial_ratio_db'), '{:.2f}'),
-        'Polarizace': format_value(farfield_metrics.get('polarization'), '{}'),
+        'Polarization': format_value(farfield_metrics.get('polarization'), '{}'),
         'Gain_LHCP [dBi]': format_value(farfield_metrics.get('gain_lhcp_dbi'), '{:.2f}'),
         'Gain_RHCP [dBi]': format_value(farfield_metrics.get('gain_rhcp_dbi'), '{:.2f}'),
         'export_zip': export_zip or (f"{run_name}.zip" if run_name else "-"),
     }
 
     _append_csv_with_migration(csv_file, FIELDNAMES_V6, row)
-    update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků Modelu 6 (Dvouportový zakřivený model s interními 100 Ohm porty)")
+    update_markdown_summary(csv_file, md_file, title="Summary Table of Model 6 Results (Dual-Port Curved Model with Internal 100 Ohm Ports)")
 
     print("\n" + "=" * 125)
-    print("VÝSLEDKY SIMULAČNÍHO KROKU MODELU 6 (Zaznamenáno do export/sweep_results_model6.csv):")
+    print("MODEL 6 SIMULATION STEP RESULTS (Logged to export/sweep_results_model6.csv):")
     print("-" * 125)
     info_parts = [
-        f"Krok: {row['run_name']}",
+        f"Step: {row['run_name']}",
         f"L={row['patch_L_mm']} mm",
         f"w_T={row['trans_w_mm']} mm",
         f"l_T={row['trans_l_mm']} mm",
@@ -1304,7 +1304,7 @@ def _record_run_model6(params, output_dir, run_name, export_zip, results_dir):
         f"S21={row['S21_min [dB]']} dB",
         f"Zin1={row['Zin1_Re [Ohm]']} Ohm",
         f"Zin2={row['Zin2_Re [Ohm]']} Ohm",
-        f"Pol={row['Polarizace']}",
+        f"Pol={row['Polarization']}",
         f"AR={row['AR [dB]']} dB",
         f"G_LHCP={row['Gain_LHCP [dBi]']} dBi",
     ]
@@ -1359,20 +1359,20 @@ def _record_run_model7(params, output_dir, run_name, export_zip, results_dir):
         'E_LHCP [V]': format_value(farfield_metrics.get('e_lhcp'), '{:.2f}'),
         'E_RHCP [V]': format_value(farfield_metrics.get('e_rhcp'), '{:.2f}'),
         'AR [dB]': format_value(farfield_metrics.get('axial_ratio_db'), '{:.2f}'),
-        'Polarizace': format_value(farfield_metrics.get('polarization'), '{}'),
+        'Polarization': format_value(farfield_metrics.get('polarization'), '{}'),
         'Gain_LHCP [dBi]': format_value(farfield_metrics.get('gain_lhcp_dbi'), '{:.2f}'),
         'Gain_RHCP [dBi]': format_value(farfield_metrics.get('gain_rhcp_dbi'), '{:.2f}'),
         'export_zip': export_zip or (f"{run_name}.zip" if run_name else "-"),
     }
 
     _append_csv_with_migration(csv_file, FIELDNAMES_V7, row)
-    update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků Modelu 7 (Zrcadlený model 50 Ohm T-článek pro RHCP)")
+    update_markdown_summary(csv_file, md_file, title="Summary Table of Model 7 Results (Mirrored 50 Ohm T-junction for RHCP)")
 
     print("\n" + "=" * 125)
-    print("VÝSLEDKY SIMULAČNÍHO KROKU MODELU 7 (Zaznamenáno do export/sweep_results_model7.csv):")
+    print("MODEL 7 SIMULATION STEP RESULTS (Logged to export/sweep_results_model7.csv):")
     print("-" * 125)
     info_parts = [
-        f"Krok: {row['run_name']}",
+        f"Step: {row['run_name']}",
         f"L={row['patch_L_mm']} mm",
         f"w_T={row['trans_w_mm']} mm",
         f"dL={row['delta_l_mm']} mm",
@@ -1381,7 +1381,7 @@ def _record_run_model7(params, output_dir, run_name, export_zip, results_dir):
         f"S11={row['S11_min [dB]']} dB",
         f"BW={row['BW_-10dB [MHz]']} MHz",
         f"Zin={row['Zin_Re [Ohm]']}+j{row['Zin_Im [Ohm]']} Ohm",
-        f"Pol={row['Polarizace']}",
+        f"Pol={row['Polarization']}",
         f"AR={row['AR [dB]']} dB",
         f"G_RHCP={row['Gain_RHCP [dBi]']} dBi",
     ]
@@ -1394,8 +1394,8 @@ def _record_run_model7(params, output_dir, run_name, export_zip, results_dir):
 record_run_model7 = _record_run_model7
 
 
-def update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledků simulací"):
-    """Převede CSV soubor na přehlednou Markdown tabulku."""
+def update_markdown_summary(csv_file, md_file, title="Simulation Results Summary Table"):
+    """Convert a CSV file into a clean Markdown summary table."""
     if not os.path.exists(csv_file):
         return
 
@@ -1410,7 +1410,7 @@ def update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledk
         headers = list(rows[0].keys())
         md_lines = [
             f"# 📊 {title}\n",
-            f"Poslední aktualizace: automaticky vygenerováno z `{os.path.basename(csv_file)}`.\n",
+            f"Last updated: automatically generated from `{os.path.basename(csv_file)}`.\n",
             "| " + " | ".join(headers) + " |",
             "| " + " | ".join(["---"] * len(headers)) + " |",
         ]
@@ -1422,11 +1422,11 @@ def update_markdown_summary(csv_file, md_file, title="Souhrnná tabulka výsledk
         with open(md_file, mode='w', encoding='utf-8') as f:
             f.write("\n".join(md_lines) + "\n")
     except Exception as e:
-        print(f"Upozornění: Nepodařilo se aktualizovat Markdown tabulku: {e}")
+        print(f"Warning: Failed to update Markdown table: {e}")
 
 
 def print_summary_table_model2(csv_file=None):
-    """Vytiskne celou souhrnnou tabulku Modelu 2 (Dvouportový LHCP) do konzole."""
+    """Print the full Model 2 (Dual-port LHCP) summary table to the console."""
     if csv_file is None:
         try:
             from postpro_utils import get_export_dir
@@ -1436,7 +1436,7 @@ def print_summary_table_model2(csv_file=None):
         csv_file = os.path.join(exp_dir, "sweep_results_model2.csv")
 
     if not os.path.exists(csv_file):
-        print(f"Tabulka {csv_file} zatím neexistuje.")
+        print(f"Table {csv_file} does not exist yet.")
         return
 
     with open(csv_file, mode='r', encoding='utf-8') as f:
@@ -1444,13 +1444,13 @@ def print_summary_table_model2(csv_file=None):
         rows = list(reader)
 
     if not rows:
-        print("Tabulka výsledků Modelu 2 je prázdná.")
+        print("Model 2 results table is empty.")
         return
 
     print("\n" + "=" * 165)
-    print("KOMPLETNÍ SOUHRNNÁ TABULKA MODELU 2 (DVOUPOVRTOVÝ LHCP):")
+    print("FULL MODEL 2 SUMMARY TABLE (DUAL-PORT LHCP):")
     disp_cols = [
-        ('run_name', 'Krok', 20),
+        ('run_name', 'Step', 20),
         ('inset_b_mm', 'ib [mm]', 8),
         ('inset_l_mm', 'il [mm]', 8),
         ('feed_len_b_mm', 'fl_b [mm]', 10),
@@ -1465,7 +1465,7 @@ def print_summary_table_model2(csv_file=None):
         ('Zin1_Re [Ohm]', 'Zin1 [Ohm]', 10),
         ('Zin2_Re [Ohm]', 'Zin2 [Ohm]', 10),
         ('AR [dB]', 'AR [dB]', 8),
-        ('Polarizace', 'Pol', 6),
+        ('Polarization', 'Pol', 6),
         ('Gain_LHCP [dBi]', 'G_LHCP', 8),
     ]
     print("=" * 165)
@@ -1479,13 +1479,13 @@ def print_summary_table_model2(csv_file=None):
         print(row_str)
 
     print("=" * 145)
-    print(f"Kompletní data uložena v: {csv_file}")
-    print(f"Markdown přehled uložen v: {os.path.splitext(csv_file)[0] + '.md'}")
+    print(f"Full data saved to: {csv_file}")
+    print(f"Markdown summary saved to: {os.path.splitext(csv_file)[0] + '.md'}")
     print("=" * 145)
 
 
 def print_summary_table_model3(csv_file=None):
-    """Vytiskne celou souhrnnou tabulku Modelu 3 (Hybridní přizpůsobení) do konzole."""
+    """Print the full Model 3 (Hybrid Matching) summary table to the console."""
     if csv_file is None:
         try:
             from postpro_utils import get_export_dir
@@ -1495,7 +1495,7 @@ def print_summary_table_model3(csv_file=None):
         csv_file = os.path.join(exp_dir, "sweep_results_model3.csv")
 
     if not os.path.exists(csv_file):
-        print(f"Tabulka {csv_file} zatím neexistuje.")
+        print(f"Table {csv_file} does not exist yet.")
         return
 
     with open(csv_file, mode='r', encoding='utf-8') as f:
@@ -1503,13 +1503,13 @@ def print_summary_table_model3(csv_file=None):
         rows = list(reader)
 
     if not rows:
-        print("Tabulka výsledků Modelu 3 je prázdná.")
+        print("Model 3 results table is empty.")
         return
 
     print("\n" + "=" * 175)
-    print("KOMPLETNÍ SOUHRNNÁ TABULKA MODELU 3 (HYBRIDNÍ PŘIZPŮSOBENÍ):")
+    print("FULL MODEL 3 SUMMARY TABLE (HYBRID MATCHING):")
     disp_cols = [
-        ('run_name', 'Krok', 20),
+        ('run_name', 'Step', 20),
         ('trans_w_mm', 'w_T [mm]', 9),
         ('trans_l_mm', 'l_T [mm]', 9),
         ('inset_b_mm', 'y0b [mm]', 9),
@@ -1524,7 +1524,7 @@ def print_summary_table_model3(csv_file=None):
         ('Zin1_Re [Ohm]', 'Zin1 [Ohm]', 10),
         ('Zin2_Re [Ohm]', 'Zin2 [Ohm]', 10),
         ('AR [dB]', 'AR [dB]', 8),
-        ('Polarizace', 'Pol', 6),
+        ('Polarization', 'Pol', 6),
         ('Gain_LHCP [dBi]', 'G_LHCP', 8),
     ]
     print("=" * 175)
@@ -1538,14 +1538,14 @@ def print_summary_table_model3(csv_file=None):
         print(row_str)
 
     print("=" * 175)
-    print(f"Kompletní data uložena v: {csv_file}")
-    print(f"Markdown přehled uložen v: {os.path.splitext(csv_file)[0] + '.md'}")
+    print(f"Full data saved to: {csv_file}")
+    print(f"Markdown summary saved to: {os.path.splitext(csv_file)[0] + '.md'}")
     print("=" * 175)
 
 
 def _print_csv_table(csv_file, title, disp_cols, empty_msg, sep_width=165):
     if not os.path.exists(csv_file):
-        print(f"Tabulka {csv_file} zatím neexistuje.")
+        print(f"Table {csv_file} does not exist yet.")
         return
 
     with open(csv_file, mode='r', encoding='utf-8') as f:
@@ -1569,13 +1569,13 @@ def _print_csv_table(csv_file, title, disp_cols, empty_msg, sep_width=165):
         print(row_str)
 
     print("=" * sep_width)
-    print(f"Kompletní data uložena v: {csv_file}")
-    print(f"Markdown přehled uložen v: {os.path.splitext(csv_file)[0] + '.md'}")
+    print(f"Full data saved to: {csv_file}")
+    print(f"Markdown summary saved to: {os.path.splitext(csv_file)[0] + '.md'}")
     print("=" * sep_width)
 
 
 def print_summary_table_model4(csv_file=None):
-    """Vytiskne celou souhrnnou tabulku Modelu 4 (Finální model 50 Ohm T-článek) do konzole."""
+    """Print the full Model 4 (Final 50 Ohm T-junction) summary table to the console."""
     if csv_file is None:
         try:
             from postpro_utils import get_export_dir
@@ -1585,7 +1585,7 @@ def print_summary_table_model4(csv_file=None):
         csv_file = os.path.join(exp_dir, "sweep_results_model4.csv")
 
     disp_cols = [
-        ('run_name', 'Krok', 22),
+        ('run_name', 'Step', 22),
         ('patch_L_mm', 'L [mm]', 8),
         ('trans_w_mm', 'w_T [mm]', 9),
         ('delta_l_mm', 'dL [mm]', 8),
@@ -1597,20 +1597,20 @@ def print_summary_table_model4(csv_file=None):
         ('Zin_Re [Ohm]', 'Zin_Re', 8),
         ('Zin_Im [Ohm]', 'Zin_Im', 8),
         ('AR [dB]', 'AR [dB]', 8),
-        ('Polarizace', 'Pol', 6),
+        ('Polarization', 'Pol', 6),
         ('Gain_LHCP [dBi]', 'G_LHCP', 8),
     ]
     _print_csv_table(
         csv_file=csv_file,
-        title="KOMPLETNÍ SOUHRNNÁ TABULKA MODELU 4 (FINÁLNÍ MODEL 50 OHM T-ČLÁNEK):",
+        title="FULL MODEL 4 SUMMARY TABLE (FINAL 50 OHM T-JUNCTION MODEL):",
         disp_cols=disp_cols,
-        empty_msg="Tabulka výsledků Modelu 4 je prázdná.",
+        empty_msg="Model 4 results table is empty.",
         sep_width=165,
     )
 
 
 def print_summary_table_model5(csv_file=None):
-    """Vytiskne celou souhrnnou tabulku Modelu 5 (Dvouportový model 100 Ohm s oblouky) do konzole."""
+    """Print the full Model 5 (Dual-port 100 Ohm model with bends) summary table to the console."""
     if csv_file is None:
         try:
             from postpro_utils import get_export_dir
@@ -1620,7 +1620,7 @@ def print_summary_table_model5(csv_file=None):
         csv_file = os.path.join(exp_dir, "sweep_results_model5.csv")
 
     disp_cols = [
-        ('run_name', 'Krok', 22),
+        ('run_name', 'Step', 22),
         ('patch_L_mm', 'L [mm]', 8),
         ('trans_w_mm', 'w_T [mm]', 9),
         ('trans_l_mm', 'l_T [mm]', 9),
@@ -1636,20 +1636,20 @@ def print_summary_table_model5(csv_file=None):
         ('Zin1_Re [Ohm]', 'Zin1_Re', 8),
         ('Zin2_Re [Ohm]', 'Zin2_Re', 8),
         ('AR [dB]', 'AR [dB]', 8),
-        ('Polarizace', 'Pol', 6),
+        ('Polarization', 'Pol', 6),
         ('Gain_LHCP [dBi]', 'G_LHCP', 8),
     ]
     _print_csv_table(
         csv_file=csv_file,
-        title="KOMPLETNÍ SOUHRNNÁ TABULKA MODELU 5 (DVOU PORTOVÝ 100 OHM MODEL S OBLOUKY):",
+        title="FULL MODEL 5 SUMMARY TABLE (DUAL-PORT 100 OHM MODEL WITH BENDS):",
         disp_cols=disp_cols,
-        empty_msg="Tabulka výsledků Modelu 5 je prázdná.",
+        empty_msg="Model 5 results table is empty.",
         sep_width=175,
     )
 
 
 def print_summary_table_model6(csv_file=None):
-    """Vytiskne celou souhrnnou tabulku Modelu 6 (Dvouportový model 100 Ohm s interními porty) do konzole."""
+    """Print the full Model 6 (Dual-port 100 Ohm model with internal ports) summary table to the console."""
     if csv_file is None:
         try:
             from postpro_utils import get_export_dir
@@ -1659,7 +1659,7 @@ def print_summary_table_model6(csv_file=None):
         csv_file = os.path.join(exp_dir, "sweep_results_model6.csv")
 
     disp_cols = [
-        ('run_name', 'Krok', 22),
+        ('run_name', 'Step', 22),
         ('patch_L_mm', 'L [mm]', 8),
         ('trans_w_mm', 'w_T [mm]', 9),
         ('trans_l_mm', 'l_T [mm]', 9),
@@ -1675,20 +1675,20 @@ def print_summary_table_model6(csv_file=None):
         ('Zin1_Re [Ohm]', 'Zin1_Re', 8),
         ('Zin2_Re [Ohm]', 'Zin2_Re', 8),
         ('AR [dB]', 'AR [dB]', 8),
-        ('Polarizace', 'Pol', 6),
+        ('Polarization', 'Pol', 6),
         ('Gain_LHCP [dBi]', 'G_LHCP', 8),
     ]
     _print_csv_table(
         csv_file=csv_file,
-        title="KOMPLETNÍ SOUHRNNÁ TABULKA MODELU 6 (DVOU PORTOVÝ 100 OHM MODEL S INTERNÍMI PORTY):",
+        title="FULL MODEL 6 SUMMARY TABLE (DUAL-PORT 100 OHM MODEL WITH INTERNAL PORTS):",
         disp_cols=disp_cols,
-        empty_msg="Tabulka výsledků Modelu 6 je prázdná.",
+        empty_msg="Model 6 results table is empty.",
         sep_width=175,
     )
 
 
 def print_summary_table_model7(csv_file=None):
-    """Vytiskne celou souhrnnou tabulku Modelu 7 (Zrcadlený model 50 Ohm T-článek pro RHCP) do konzole."""
+    """Print the full Model 7 (Mirrored 50 Ohm T-junction for RHCP) summary table to the console."""
     if csv_file is None:
         try:
             from postpro_utils import get_export_dir
@@ -1698,7 +1698,7 @@ def print_summary_table_model7(csv_file=None):
         csv_file = os.path.join(exp_dir, "sweep_results_model7.csv")
 
     disp_cols = [
-        ('run_name', 'Krok', 22),
+        ('run_name', 'Step', 22),
         ('patch_L_mm', 'L [mm]', 8),
         ('trans_w_mm', 'w_T [mm]', 9),
         ('delta_l_mm', 'dL [mm]', 8),
@@ -1710,20 +1710,20 @@ def print_summary_table_model7(csv_file=None):
         ('Zin_Re [Ohm]', 'Zin_Re', 8),
         ('Zin_Im [Ohm]', 'Zin_Im', 8),
         ('AR [dB]', 'AR [dB]', 8),
-        ('Polarizace', 'Pol', 6),
+        ('Polarization', 'Pol', 6),
         ('Gain_RHCP [dBi]', 'G_RHCP', 8),
     ]
     _print_csv_table(
         csv_file=csv_file,
-        title="KOMPLETNÍ SOUHRNNÁ TABULKA MODELU 7 (ZRCADLENÝ MODEL 50 OHM T-ČLÁNEK PRO RHCP):",
+        title="FULL MODEL 7 SUMMARY TABLE (MIRRORED 50 OHM T-JUNCTION FOR RHCP):",
         disp_cols=disp_cols,
-        empty_msg="Tabulka výsledků Modelu 7 je prázdná.",
+        empty_msg="Model 7 results table is empty.",
         sep_width=165,
     )
 
 
 def print_summary_table(csv_file=None, model_version=None):
-    """Vytiskne celou souhrnnou tabulku přehledně do konzole."""
+    """Print the full summary table cleanly to the console."""
     if model_version is None:
         model_version = int(os.getenv("ANTENNA_MODEL", "1"))
 
@@ -1749,7 +1749,7 @@ def print_summary_table(csv_file=None, model_version=None):
         csv_file = os.path.join(exp_dir, "sweep_results.csv")
 
     if not os.path.exists(csv_file):
-        print(f"Tabulka {csv_file} zatím neexistuje.")
+        print(f"Table {csv_file} does not exist yet.")
         return
 
     with open(csv_file, mode='r', encoding='utf-8') as f:
@@ -1757,20 +1757,20 @@ def print_summary_table(csv_file=None, model_version=None):
         rows = list(reader)
 
     if not rows:
-        print("Tabulka výsledků je prázdná.")
+        print("Results table is empty.")
         return
 
     print("\n" + "=" * 125)
-    print("KOMPLETNÍ SOUHRNNÁ TABULKA MODELU 1 (T-DĚLIČ):")
+    print("FULL MODEL 1 SUMMARY TABLE (T-SPLITTER):")
     disp_cols = [
-        ('run_name', 'Krok', 18),
-        ('inset_mm', 'Zanoření', 10),
+        ('run_name', 'Step', 18),
+        ('inset_mm', 'Inset', 10),
         ('f0 [GHz]', 'f0 [GHz]', 10),
         ('S11_min [dB]', 'S11 [dB]', 10),
         ('BW_-10dB [MHz]', 'BW [MHz]', 10),
         ('Zin_Re [Ohm]', 'Zin_Re', 8),
         ('AR [dB]', 'AR [dB]', 8),
-        ('Polarizace', 'Pol', 8),
+        ('Polarization', 'Pol', 8),
         ('Gain_LHCP [dBi]', 'G_LHCP', 8),
         ('Gain_RHCP [dBi]', 'G_RHCP', 8),
     ]
@@ -1786,13 +1786,13 @@ def print_summary_table(csv_file=None, model_version=None):
         print(row_str)
 
     print("=" * 125)
-    print(f"Kompletní data uložena v: {csv_file}")
-    print(f"Markdown přehled uložen v: {os.path.splitext(csv_file)[0] + '.md'}")
+    print(f"Full data saved to: {csv_file}")
+    print(f"Markdown summary saved to: {os.path.splitext(csv_file)[0] + '.md'}")
     print("=" * 125)
 
 
-# Zpětná kompatibilita pro main.py
+# Backward compatibility for main.py
 def analyze_and_log_run(params, csv_filepath, run_name=None):
-    """Zpětně kompatibilní volání z main.py."""
+    """Backward-compatible wrapper called from main.py."""
     output_dir = os.path.dirname(csv_filepath) or "data/postpro"
     return record_run(params, output_dir=output_dir, run_name=run_name)

@@ -43,11 +43,11 @@ class TestPalaceBuilderLinearSolver(unittest.TestCase):
 
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_default_without_max_size(self):
-        """Když není linear_max_size zadán, config nesmí obsahovat MaxSize (plný GMRES bez restartu)."""
+        """When linear_max_size is not specified, config must not contain MaxSize (full GMRES without restart)."""
         params = dict(self.base_params)
         build_palace_config(params, data_dir=self.temp_dir.name)
         cfg = self._read_config()
-        
+
         linear_cfg = cfg["Solver"]["Linear"]
         self.assertEqual(linear_cfg["Type"], "SuperLU")
         self.assertEqual(linear_cfg["KSPType"], "FGMRES")
@@ -57,65 +57,65 @@ class TestPalaceBuilderLinearSolver(unittest.TestCase):
 
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_explicit_none_max_size(self):
-        """Explicitní linear_max_size=None v params nesmí vložit MaxSize."""
+        """Explicit linear_max_size=None in params must not insert MaxSize."""
         params = dict(self.base_params)
         params['linear_max_size'] = None
         build_palace_config(params, data_dir=self.temp_dir.name)
         cfg = self._read_config()
-        
+
         self.assertNotIn("MaxSize", cfg["Solver"]["Linear"])
 
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_explicit_integer_max_size(self):
-        """Explicitní hodnota linear_max_size vloží odpovídající MaxSize."""
+        """Explicit linear_max_size value inserts the corresponding MaxSize."""
         params = dict(self.base_params)
         params['linear_max_size'] = 50
         build_palace_config(params, data_dir=self.temp_dir.name)
         cfg = self._read_config()
-        
+
         self.assertEqual(cfg["Solver"]["Linear"]["MaxSize"], 50)
 
     @mock.patch.dict(os.environ, {"LINEAR_MAX_SIZE": "80"}, clear=True)
     def test_env_linear_max_size(self):
-        """LINEAR_MAX_SIZE v prostředí se uplatní, pokud není v params."""
+        """LINEAR_MAX_SIZE from environment applies when not present in params."""
         params = dict(self.base_params)
         build_palace_config(params, data_dir=self.temp_dir.name)
         cfg = self._read_config()
-        
+
         self.assertEqual(cfg["Solver"]["Linear"]["MaxSize"], 80)
 
     @mock.patch.dict(os.environ, {"LINEAR_MAX_SIZE": ""}, clear=True)
     def test_env_empty_linear_max_size(self):
-        """Prázdná hodnota LINEAR_MAX_SIZE v prostředí nevloží MaxSize."""
+        """Empty LINEAR_MAX_SIZE in environment does not insert MaxSize."""
         params = dict(self.base_params)
         build_palace_config(params, data_dir=self.temp_dir.name)
         cfg = self._read_config()
-        
+
         self.assertNotIn("MaxSize", cfg["Solver"]["Linear"])
 
 
 class TestResolveParamLinearMaxSize(unittest.TestCase):
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_resolve_default_none(self):
-        """Bez env a bez custom_params vrací None."""
+        """Without env and without custom_params, returns None."""
         val = _resolve_param('linear_max_size', 'LINEAR_MAX_SIZE', None, {}, int)
         self.assertIsNone(val)
 
     @mock.patch.dict(os.environ, {"LINEAR_MAX_SIZE": ""}, clear=True)
     def test_resolve_empty_env(self):
-        """S prázdným env vrací None."""
+        """With empty env, returns None."""
         val = _resolve_param('linear_max_size', 'LINEAR_MAX_SIZE', None, {}, int)
         self.assertIsNone(val)
 
     @mock.patch.dict(os.environ, {"LINEAR_MAX_SIZE": "60"}, clear=True)
     def test_resolve_from_env(self):
-        """S platným číslem v env vrací int."""
+        """With valid integer in env, returns int."""
         val = _resolve_param('linear_max_size', 'LINEAR_MAX_SIZE', None, {}, int)
         self.assertEqual(val, 60)
 
     @mock.patch.dict(os.environ, {"LINEAR_MAX_SIZE": "60"}, clear=True)
     def test_resolve_custom_params_override(self):
-        """custom_params má přednost před env."""
+        """custom_params takes precedence over env."""
         val = _resolve_param('linear_max_size', 'LINEAR_MAX_SIZE', None, {'linear_max_size': 75}, int)
         self.assertEqual(val, 75)
 

@@ -1,14 +1,14 @@
 """
-geometry_v4.py - Model 4 (Finální model): Dokončení Modelu 3 s otočeným levým 50 Ohm T-článkem a plynulými oblouky.
-Architektura:
-  - Čtvercový vyzařující flíček L × W s mělkými zářezy (výchozí parametry převzaty z Modelu 3).
-  - Vnitřní čtvrtvlnné transformátory (w_T, l_T) převádějící ~140 Ohm flíčku na 100 Ohm.
-  - Dvě 100 Ohm mikropáskové větve s plynulými kruhovými oblouky bez meandru (pouze 3 oblouky celkem):
-      * Levá větev (Ex, referenční fáze 0°): vedení s 1 obloukem z horního ramene T-článku do levého transformátoru.
-      * Spodní větev (Ey, zpoždění -90°): vedení se 2 oblouky ze spodního ramene T-článku do spodního transformátoru,
-        kde poloha T-uzlu y_T přirozeně zajišťuje prodloužení dráhy o delta_L ≈ lambda_g/4 oproti levé větvi.
-  - Otočený symetrický T-článek (100 Ohm || 100 Ohm = 50 Ohm) s plynulým zaoblením vnitřních rohů.
-  - Jediný výstupní 50 Ohm lumped port na levé hraně substrátu (x = -W_sub/2, y = y_T).
+geometry_v4.py - Model 4 (Final model): Completion of Model 3 with rotated left 50 Ohm T-junction and smooth circular arcs.
+Architecture:
+  - Square radiating patch L × W with shallow insets (default parameters inherited from Model 3).
+  - Inner quarter-wave transformers (w_T, l_T) transforming ~140 Ohm patch impedance to 100 Ohm.
+  - Two 100 Ohm microstrip branches with smooth circular arcs without meandering (only 3 arcs total):
+      * Left branch (Ex, reference phase 0 deg): trace with 1 arc from the upper arm of the T-junction to the left transformer.
+      * Bottom branch (Ey, -90 deg delay): trace with 2 arcs from the lower arm of the T-junction to the bottom transformer,
+        where the T-junction y_T position naturally provides a path extension of delta_L ≈ lambda_g/4 over the left branch.
+  - Rotated symmetric T-junction (100 Ohm || 100 Ohm = 50 Ohm) with smooth inner corner fillets.
+  - Single 50 Ohm output lumped port on the left substrate edge (x = -W_sub/2, y = y_T).
 """
 
 import gmsh
@@ -33,21 +33,21 @@ def _unit_vec(p_from, p_to):
     dy = float(p_to[1] - p_from[1])
     length = float(np.hypot(dx, dy))
     if length <= COORD_TOL:
-        raise ValueError(f"Segment mezi {p_from} a {p_to} má nulovou délku.")
+        raise ValueError(f"Segment between {p_from} and {p_to} has zero length.")
     return np.array([dx / length, dy / length], dtype=float), length
 
 
 def build_curved_trace_occ(waypoints, width, bend_radius, z):
     """
-    Vytvoří jednu spojitou 2D plochu v OpenCASCADE (gmsh.model.occ) podél ortogonálních
-    `waypoints` o šířce `width`, kde každý 90° ohyb má soustředné kruhové oblouky
-    (vnitřní poloměr `R - w/2`, vnější `R + w/2`).
+    Create a single continuous 2D surface in OpenCASCADE (gmsh.model.occ) along orthogonal
+    `waypoints` with width `width`, where each 90 deg bend has concentric circular arcs
+    (inner radius `R - w/2`, outer radius `R + w/2`).
     """
     pts = [np.asarray(p, dtype=float) for p in waypoints]
     half_w = float(width) / 2.0
     r = float(bend_radius)
     if r <= half_w + 1e-4:
-        raise ValueError(f"Poloměr oblouku bend_radius={r:.3f} mm musí být větší než polovina šířky vedení ({half_w:.3f} mm).")
+        raise ValueError(f"Arc radius bend_radius={r:.3f} mm must be greater than half the trace width ({half_w:.3f} mm).")
 
     n_pts = len(pts)
     dirs = []
@@ -58,7 +58,7 @@ def build_curved_trace_occ(waypoints, width, bend_radius, z):
         trim_e = r if i < n_pts - 2 else 0.0
         if seg_len - trim_s - trim_e < -1e-7:
             raise ValueError(
-                f"Segment {i} je příliš krátký ({seg_len:.3f} mm) pro poloměr oblouku R={r:.3f} mm."
+                f"Segment {i} is too short ({seg_len:.3f} mm) for bend radius R={r:.3f} mm."
             )
         dirs.append(u)
         norms.append(np.array([-u[1], u[0]], dtype=float))
@@ -72,14 +72,14 @@ def build_curved_trace_occ(waypoints, width, bend_radius, z):
             return p_tag_b
         return p_tag_a
 
-    # Sestavení uzlů a křivek levé a pravé hrany pásku
+    # Build nodes and curves for the left and right edges of the trace
     l_start_xy = pts[0] + half_w * norms[0]
     r_start_xy = pts[0] - half_w * norms[0]
     l_start_tag = _add_pt(l_start_xy)
     r_start_tag = _add_pt(r_start_xy)
 
     left_curves = []
-    right_segments = []  # (kind, args) pro zpětné sestavení smyčky
+    right_segments = []  # (kind, args) for building the return loop
 
     curr_l_tag, curr_l_xy = l_start_tag, l_start_xy
     curr_r_tag, curr_r_xy = r_start_tag, r_start_xy
@@ -91,7 +91,7 @@ def build_curved_trace_occ(waypoints, width, bend_radius, z):
         n_out = norms[i]
         cross = float(u_in[0] * u_out[1] - u_in[1] * u_out[0])
         if abs(abs(cross) - 1.0) > 1e-5:
-            raise ValueError(f"Roh {i} není ortogonální (cross={cross:.4f}).")
+            raise ValueError(f"Corner {i} is not orthogonal (cross={cross:.4f}).")
 
         c_xy = pts[i] - r * u_in + r * u_out
         c_tag = _add_pt(c_xy)
@@ -103,7 +103,7 @@ def build_curved_trace_occ(waypoints, width, bend_radius, z):
         r_in_xy = a_xy - half_w * n_in
         r_out_xy = b_xy - half_w * n_out
 
-        # Levá hrana: rovný úsek -> oblouk
+        # Left edge: straight segment -> arc
         if float(np.hypot(l_in_xy[0] - curr_l_xy[0], l_in_xy[1] - curr_l_xy[1])) > COORD_TOL:
             l_in_tag = _add_pt(l_in_xy)
             left_curves.append(gmsh.model.occ.addLine(curr_l_tag, l_in_tag))
@@ -113,7 +113,7 @@ def build_curved_trace_occ(waypoints, width, bend_radius, z):
         left_curves.append(gmsh.model.occ.addCircleArc(l_in_tag, c_tag, l_out_tag))
         curr_l_tag, curr_l_xy = l_out_tag, l_out_xy
 
-        # Pravá hrana: zapíšeme pro pozpátku jdoucí smyčku
+        # Right edge: store for reverse-order loop assembly
         if float(np.hypot(r_in_xy[0] - curr_r_xy[0], r_in_xy[1] - curr_r_xy[1])) > COORD_TOL:
             r_in_tag = _add_pt(r_in_xy)
             right_segments.append(("line", curr_r_tag, r_in_tag))
@@ -150,10 +150,10 @@ def build_curved_trace_occ(waypoints, width, bend_radius, z):
 
 def build_t_junction_trunk_occ(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, z):
     """
-    Vytvoří plochu vodorovného 50 Ohm přívodního kmene z levého portu (x_port, y_T)
-    doprava k otočené svislé příčce T-článku na x_T ([x_T - hw_f, x_T + hw_f],
-    y in [y_T - d_t, y_T + d_t], kde d_t = w_50/2 + t_fillet_r), s plynulými
-    vnitřními kruhovými zaobleními (pokud t_fillet_r > 0).
+    Create the surface of the horizontal 50 Ohm feed trunk from the left port (x_port, y_T)
+    rightward to the rotated vertical T-junction crossbar at x_T ([x_T - hw_f, x_T + hw_f],
+    y in [y_T - d_t, y_T + d_t], where d_t = w_50/2 + t_fillet_r), with smooth
+    inner circular fillets (if t_fillet_r > 0).
     """
     hw_50 = float(w_50) / 2.0
     hw_f = float(w_feed) / 2.0
@@ -174,8 +174,8 @@ def build_t_junction_trunk_occ(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, z):
     x_fillet_start = x_bar_left - r_f
     if x_fillet_start <= x_left + 1e-4:
         raise ValueError(
-            f"Délka 50 Ohm vedení (x_bar_left - x_port = {x_bar_left - x_left:.2f} mm) "
-            f"nestačí pro zaoblení T-článku r={r_f:.2f} mm."
+            f"50 Ohm line length (x_bar_left - x_port = {x_bar_left - x_left:.2f} mm) "
+            f"is insufficient for T-junction fillet radius r={r_f:.2f} mm."
         )
 
     p_bl = gmsh.model.occ.addPoint(x_left, y_center - hw_50, z)
@@ -205,7 +205,7 @@ def build_t_junction_trunk_occ(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, z):
 
 def build_model_v4(params):
     """
-    Vytvoří 3D CAD model finálního Modelu 4 v OpenCASCADE a připraví entity pro síťování.
+    Create the 3D CAD model of the final Model 4 in OpenCASCADE and prepare entities for meshing.
     """
     info = compute_model4_routing(params)
 
@@ -235,7 +235,7 @@ def build_model_v4(params):
     y_junc_b = info['y_junc_b']
     x_junc_l = info['x_junc_l']
 
-    # Uložení vypočtených parametrů zpět do params
+    # Store computed parameters back into params
     params['antenna_model'] = 4
     params['w_50'] = float(np.round(w_50, 4))
     params['feed_50_w'] = params['w_50']
@@ -311,7 +311,7 @@ def build_model_v4(params):
     params['arm_l_waypoints'] = info['arm_l_waypoints']
     params['arm_b_waypoints'] = info['arm_b_waypoints']
 
-    # 1. Inicializace Gmsh a základní objemy (Substrát a Vzduchový box)
+    # 1. Initialize Gmsh and base volumes (Substrate and Air box)
     gmsh.initialize()
     gmsh.option.setNumber("General.Terminal", 1)
     gmsh.model.add("lhcp_antenna_model4")
@@ -326,7 +326,7 @@ def build_model_v4(params):
         h + 2.0 * margin,
     )
 
-    # 2. Vyzařující flíček s mělkými zářezy na z = h
+    # 2. Radiating patch with shallow inset notches at z = h
     patch_base = gmsh.model.occ.addRectangle(-W / 2.0, -L / 2.0, h, W, L)
     tool_notches = []
     if inset_b > 0.0:
@@ -344,11 +344,11 @@ def build_model_v4(params):
     else:
         patch_tag = patch_base
 
-    # 3. Čtvrtvlnné transformátory u flíčku (z = h)
+    # 3. Quarter-wave transformers at the patch (z = h)
     trans_b = gmsh.model.occ.addRectangle(-w_T_b / 2.0, y_junc_b, h, w_T_b, l_T_b)
     trans_l = gmsh.model.occ.addRectangle(x_junc_l, -w_T_l / 2.0, h, l_T_l, w_T_l)
 
-    # 4. Zakřivená 100 Ohm vedení a otočený 50 Ohm T-článek (sloučeno bez překryvů přes occ.fuse)
+    # 4. Curved 100 Ohm traces and rotated 50 Ohm T-junction (merged without overlaps via occ.fuse)
     trunk_tag, _ = build_t_junction_trunk_occ(x_port, x_T, y_T, w_50, w_feed, t_fillet_r, h)
     arm_l_tag = build_curved_trace_occ(info['arm_l_build_waypoints'], w_feed, bend_radius, h)
     arm_b_tag = build_curved_trace_occ(info['arm_b_build_waypoints'], w_feed, bend_radius, h)
@@ -359,7 +359,7 @@ def build_model_v4(params):
     metal_surfs = [patch_tag, trans_b, trans_l] + feed_net_tags
     gmsh.model.occ.synchronize()
 
-    # 5. Výstupní 50 Ohm lumped port (YZ rovina na levé hraně substrátu x = x_port)
+    # 5. Output 50 Ohm lumped port (YZ plane on left substrate edge x = x_port)
     p1 = gmsh.model.occ.addPoint(x_port, y_T - w_50 / 2.0, 0.0)
     p2 = gmsh.model.occ.addPoint(x_port, y_T + w_50 / 2.0, 0.0)
     p3 = gmsh.model.occ.addPoint(x_port, y_T + w_50 / 2.0, h)
@@ -371,12 +371,12 @@ def build_model_v4(params):
     cl = gmsh.model.occ.addCurveLoop([l1, l2, l3, l4])
     port_tag = gmsh.model.occ.addPlaneSurface([cl])
 
-    # 6. Zemní plocha GND (z = 0)
+    # 6. Ground plane GND (z = 0)
     gnd_tag = gmsh.model.occ.addRectangle(-W_sub / 2.0, -L_sub / 2.0, 0.0, W_sub, L_sub)
 
     gmsh.model.occ.synchronize()
 
-    # 7. Konformní fúze objemů a ploch (Boolean Fragments)
+    # 7. Conformal fusion of volumes and surfaces (Boolean Fragments)
     vols = gmsh.model.occ.getEntities(3)
     input_surfs = [(2, s) for s in metal_surfs] + [(2, gnd_tag), (2, port_tag)]
 

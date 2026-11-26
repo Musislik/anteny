@@ -1,12 +1,12 @@
 """
-test_model6.py - Komplexní jednotkové testy pro dvouportový Model 6 (interní 100 Ohm porty s oblouky z M4).
-Ověřuje:
-  1. Analytiku drah a přesnou shodu fázování (L_100_b - d_t) - (L_100_l - d_t) == feed_delta_l.
-  2. Shodu rozměrů substrátu a trasování s Modelem 4.
-  3. Geometrii OpenCASCADE (dva interní lumped porty v rovině XZ na y_T ± d_t, Tag 4 a Tag 6).
-  4. Router geometry.py, konfiguraci Palace (2× 100 Ohm porty) a 3D konformní síťování (mesh.py).
-  5. Parametrické sweepy (sweep_model6.py), tracking (sweep_results_model6.csv/.md) a vizualizaci.
-  6. Kompletní end-to-end běh main(skip_simulation=True) pro Model 6.
+test_model6.py - Comprehensive unit tests for two-port Model 6 (internal 100 Ohm ports with M4 curved bends).
+Verifies:
+  1. Path analytics and exact phasing match (L_100_b - d_t) - (L_100_l - d_t) == feed_delta_l.
+  2. Agreement of substrate dimensions and routing with Model 4.
+  3. OpenCASCADE geometry (two internal lumped ports in XZ plane at y_T +- d_t, Tag 4 and Tag 6).
+  4. geometry.py router, Palace config (2x 100 Ohm ports), and 3D conformal meshing (mesh.py).
+  5. Parametric sweeps (sweep_model6.py), tracking (sweep_results_model6.csv/.md), and visualization.
+  6. Complete end-to-end run of main(skip_simulation=True) for Model 6.
 """
 
 import os
@@ -43,7 +43,7 @@ from visualization import plot_geometry
 
 
 def test_model6_routing_and_exact_phase_delay():
-    """Ověření výpočtu obloukových drah a striktní rovnosti (L_100_b - d_t) - (L_100_l - d_t) == Delta L."""
+    """Verify curved path calculation and strict equality (L_100_b - d_t) - (L_100_l - d_t) == Delta L."""
     base = {
         'patch_L': 28.8,
         'patch_W': 28.8,
@@ -73,18 +73,18 @@ def test_model6_routing_and_exact_phase_delay():
         cfg4 = dict(cfg, port_impedance=50.0)
         info4 = compute_model4_routing(cfg4)
 
-        # 1. Shoda rozměrů substrátu a polohy T-uzlu s Modelem 4
+        # 1. Agreement of substrate dimensions and T-junction position with Model 4
         assert np.isclose(info6['W_sub'], info4['W_sub'], atol=1e-6)
         assert np.isclose(info6['L_sub'], info4['L_sub'], atol=1e-6)
         assert np.isclose(info6['x_T'], info4['x_T'], atol=1e-6)
         assert np.isclose(info6['y_T'], info4['y_T'], atol=1e-6)
         assert np.isclose(info6['d_t'], info4['d_t'], atol=1e-6)
 
-        # 2. Striktní splnění rozdílu délek větví (L_100_b - d_t) - (L_100_l - d_t) == feed_delta_l
+        # 2. Strict satisfaction of branch length difference (L_100_b - d_t) - (L_100_l - d_t) == feed_delta_l
         diff_analytical = (info6['L_100_b'] - info6['d_t']) - (info6['L_100_l'] - info6['d_t'])
         assert np.isclose(diff_analytical, info6['feed_delta_l'], atol=1e-6)
 
-        # 3. Přesná shoda přímo ze stavebních waypoints
+        # 3. Exact match directly from build waypoints
         len_b_built = calc_curved_path_length(info6['arm_b_build_waypoints'], info6['bend_radius'])
         len_l_built = calc_curved_path_length(info6['arm_l_build_waypoints'], info6['bend_radius'])
         diff_built = len_b_built - len_l_built
@@ -92,27 +92,27 @@ def test_model6_routing_and_exact_phase_delay():
         assert np.isclose(len_b_built, info6['L_100_b_eff'], atol=1e-6)
         assert np.isclose(len_l_built, info6['L_100_l_eff'], atol=1e-6)
 
-        # 4. Polohy interních portů
+        # 4. Internal port positions
         assert np.isclose(info6['port1_x'], info6['x_T'], atol=1e-6)
         assert np.isclose(info6['port2_x'], info6['x_T'], atol=1e-6)
         assert np.isclose(info6['port1_y'], info6['y_T'] - info6['d_t'], atol=1e-6)
         assert np.isclose(info6['port2_y'], info6['y_T'] + info6['d_t'], atol=1e-6)
 
-        # 5. Kontrola délek rovných úseků
+        # 5. Straight segment length checks
         assert info6['s_end_l'] >= 0.5 - 1e-6
         assert info6['s_end_b'] >= info6['end_straight'] - 1e-6
         assert info6['s_T_up'] >= 0.5 - 1e-6
         assert info6['s_T_down'] >= 0.5 - 1e-6
         assert info6['s_horiz_b'] >= -1e-6
 
-        # 6. Ověření generování 2D obrysů pro vizualizaci
+        # 6. Verify 2D outline generation for visualization
         poly_l = compute_curved_ribbon_outline(info6['arm_l_build_waypoints'], info6['w_feed'], info6['bend_radius'])
         poly_b = compute_curved_ribbon_outline(info6['arm_b_build_waypoints'], info6['w_feed'], info6['bend_radius'])
         assert len(poly_l) > 10 and len(poly_b) > 10
 
 
 def test_model6_geometry_and_defaults():
-    """Ověření OpenCASCADE CAD geometrie Modelu 6, interních portů a parametrů."""
+    """Verify OpenCASCADE CAD geometry for Model 6, internal ports, and default parameters."""
     params = {
         'antenna_model': 6,
         'patch_L': 28.8,
@@ -126,17 +126,17 @@ def test_model6_geometry_and_defaults():
         assert sub_tag is not None and air_tag is not None
         assert params['antenna_model'] == 6
 
-        # Výchozí rozměry
+        # Default dimensions
         assert np.isclose(params['patch_L'], 28.8, atol=1e-3)
         assert np.isclose(params['patch_W'], 28.8, atol=1e-3)
         assert np.isclose(params['feed_inset_b'], 2.5, atol=1e-3)
         assert np.isclose(params['feed_inset_l'], 2.5, atol=1e-3)
 
-        # 100 Ohm mikropáskové vedení
+        # 100 Ohm microstrip line
         expected_w100 = synth_microstrip_w(100.0, 1.52, 4.3)
         assert np.isclose(params['w_feed'], expected_w100, atol=1e-3)
 
-        # Dva portové povrchy (Tag 4 a Tag 6)
+        # Two port surfaces (Tag 4 and Tag 6)
         assert len(params['port_tags']) == 2
         assert len(params['port1_tags']) == 1
         assert len(params['port2_tags']) == 1
@@ -145,7 +145,7 @@ def test_model6_geometry_and_defaults():
         assert params['port1_surface_tag'] in params['port_tags']
         assert params['port2_surface_tag'] in params['port_tags']
 
-        # Pozice portů (interní XZ plochy)
+        # Port positions (internal XZ surfaces)
         assert np.isclose(params['port1_x'], params['feed_x_T'], atol=1e-3)
         assert np.isclose(params['port2_x'], params['feed_x_T'], atol=1e-3)
         assert np.isclose(params['port1_y'], params['feed_y_T'] - params['d_t'], atol=1e-3)
@@ -156,7 +156,7 @@ def test_model6_geometry_and_defaults():
         if gmsh.isInitialized():
             gmsh.finalize()
 
-    # Kontrola neplatných geometrických vstupů
+    # Invalid geometric input checks
     for bad_override in (
         {'feed_bend_radius': 0.2},
         {'feed_inset_b': -1.0},
@@ -174,7 +174,7 @@ def test_model6_geometry_and_defaults():
 
 
 def test_model6_router_and_palace_config(tmp_path):
-    """Ověření routeru build_model pro model=6 a konfigurace dvou 100 Ohm portů v Palace."""
+    """Verify build_model router for model=6 and two 100 Ohm ports configuration in Palace."""
     orig_cwd = os.getcwd()
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
@@ -199,7 +199,7 @@ def test_model6_router_and_palace_config(tmp_path):
         assert sub_tag is not None and air_tag is not None
         assert params['antenna_model'] == 6
 
-        # 1. Test simultánního buzení obou portů
+        # 1. Test simultaneous excitation of both ports
         build_palace_config(params, data_dir=data_dir)
         with open(os.path.join(data_dir, "config.json"), "r", encoding="utf-8") as f:
             cfg = json.load(f)
@@ -221,7 +221,7 @@ def test_model6_router_and_palace_config(tmp_path):
         assert p2['Direction'] == "+Z"
         assert p2['Excitation'] is True
 
-        # 2. Test sekvenčního režimu (driven_port='all' -> staticky v config.json buzen Port 1)
+        # 2. Test sequential mode (driven_port='all' -> static config.json excites Port 1)
         params['driven_port'] = 'all'
         build_palace_config(params, data_dir=data_dir)
         with open(os.path.join(data_dir, "config.json"), "r", encoding="utf-8") as f:
@@ -231,7 +231,7 @@ def test_model6_router_and_palace_config(tmp_path):
         assert p1_all['Excitation'] is True
         assert p2_all['Excitation'] is False
 
-        # 3. Test buzení pouze Portu 2
+        # 3. Test exciting Port 2 only
         params['driven_port'] = '2'
         build_palace_config(params, data_dir=data_dir)
         with open(os.path.join(data_dir, "config.json"), "r", encoding="utf-8") as f:
@@ -248,7 +248,7 @@ def test_model6_router_and_palace_config(tmp_path):
 
 
 def test_model6_mesh_and_physical_groups(tmp_path):
-    """Ověření generování konformní Gmsh sítě pro Model 6 a správného zařazení Physical Groups."""
+    """Verify conformal Gmsh mesh generation for Model 6 and correct Physical Groups assignment."""
     orig_cwd = os.getcwd()
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
@@ -297,7 +297,7 @@ def test_model6_mesh_and_physical_groups(tmp_path):
 
 
 def test_model6_visualization_and_tracker(tmp_path):
-    """Ověření 2D náhledu geometrie a zapisování výsledků do CSV/Markdown pro Model 6."""
+    """Verify 2D geometry preview and recording results to CSV/Markdown for Model 6."""
     orig_cwd = os.getcwd()
     try:
         os.chdir(str(tmp_path))
@@ -315,7 +315,7 @@ def test_model6_visualization_and_tracker(tmp_path):
             'd_t': 2.25,
         }
 
-        # 1. Vizualizace
+        # 1. Visualization
         vis_file = os.path.join(str(tmp_path), "test_vis_m6.png")
         plot_geometry(params, filename=vis_file)
         assert os.path.exists(vis_file) and os.path.getsize(vis_file) > 1000
@@ -346,7 +346,7 @@ def test_model6_visualization_and_tracker(tmp_path):
         md_summary = os.path.join(res_dir, "sweep_results_model6.md")
         assert os.path.exists(md_summary)
 
-        # 3. Test výpisu souhrnné tabulky
+        # 3. Test printing summary table
         print_summary_table_model6(csv_file=csv_summary)
 
     finally:
@@ -354,8 +354,8 @@ def test_model6_visualization_and_tracker(tmp_path):
 
 
 def test_model6_sweep_builder():
-    """Ověření sestavování kroků sweepu pro Model 6."""
-    # 1. Sweep patch_l
+    """Verify sweep step builder for Model 6."""
+    # 1. patch_l sweep
     steps_pl, desc_pl = build_sweep_steps_m6(sweep_target="patch_l", patch_lengths=[28.6, 28.8, 29.0])
     assert len(steps_pl) == 3
     assert "patch_l" in desc_pl
@@ -363,17 +363,17 @@ def test_model6_sweep_builder():
         assert s['antenna_model'] == 6
         assert s['port_impedance'] == 100.0
 
-    # 2. Sweep bend_radius
+    # 2. bend_radius sweep
     steps_br, desc_br = build_sweep_steps_m6(sweep_target="bend_radius", bend_radii=[2.5, 3.0, 3.5])
     assert len(steps_br) == 3
     assert steps_br[0]['bend_radius'] == 2.5
 
-    # 3. Sweep t_fillet_r
+    # 3. t_fillet_r sweep
     steps_tf, desc_tf = build_sweep_steps_m6(sweep_target="t_fillet_r", t_fillet_list=[0.6, 0.8, 1.0])
     assert len(steps_tf) == 3
     assert steps_tf[1]['t_fillet_r'] == 0.8
 
-    # 4. Sweep driven_port
+    # 4. driven_port sweep
     steps_dp, desc_dp = build_sweep_steps_m6(sweep_target="driven_port")
     assert len(steps_dp) == 3
     driven_modes = [s['driven_port'] for s in steps_dp]
@@ -381,7 +381,7 @@ def test_model6_sweep_builder():
 
 
 def test_model6_end_to_end_main(tmp_path):
-    """Ověření kompletní pipeline Modelu 6 přes main(skip_simulation=True)."""
+    """Verify complete Model 6 pipeline via main(skip_simulation=True)."""
     orig_cwd = os.getcwd()
     data_dir = str(tmp_path / "data")
     export_dir = str(tmp_path / "export")
@@ -415,7 +415,7 @@ def test_model6_end_to_end_main(tmp_path):
             }
             main(custom_params=custom_params, skip_simulation=True)
 
-            # Ověření výstupů
+            # Verify outputs
             mesh_file = os.path.join(data_dir, "mesh.msh")
             cfg_file = os.path.join(data_dir, "config.json")
             step_file = os.path.join(data_dir, "antenna_model.step")
@@ -426,7 +426,7 @@ def test_model6_end_to_end_main(tmp_path):
             assert os.path.exists(step_file)
             assert os.path.exists(vis_file)
 
-            # Ověření config.json
+            # Verify config.json
             with open(cfg_file, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
             lumped_ports = cfg['Boundaries']['LumpedPort']

@@ -1,16 +1,16 @@
 """
-geometry_mfg.py - Generátor 3D STEP modelu pro výrobu antény dle pokynů VUT FEKT
+geometry_mfg.py - 3D STEP model generator for antenna manufacturing per BUT FEKT guidelines
 (Manufacturing of antennas - instructions.pdf).
 
-Splňuje všech 6 bodů výrobních pokynů:
-  1. Horní plocha vyzařovače i značek je umístěna přesně v rovině z = 0.
-  2. V každém ze 4 rohů jsou vytvořeny dva kvádry (cubes) s horní plochou v z = 0
-     a výškou substrátu h pro přesné ruční odstřižení desky po vyleptání.
-  3. Identifikační znak 'PM.' s horní plochou v z = 0 umístěný nad horní hranou.
-  4. Zrcadlový obraz horní strany (x -> -x) pro přípravu filmů fotocesty.
-  5. V modelu je ponechán POUZE motiv antény, ořezové značky a identifikační znak
-     (žádný dielektrický substrát, žádný vzduchový box, žádné porty).
-  6. Export do standardního 3D formátu STEP (.step).
+Satisfies all 6 points of the manufacturing guidelines:
+  1. Top surface of the radiator and marks lies strictly on the z = 0 plane.
+  2. Two blocks (cubes) are created at each of the 4 corners with top surface at z = 0
+     and height equal to substrate thickness h for accurate manual board trimming after etching.
+  3. Identification mark 'PM.' with top surface at z = 0 placed above the top edge.
+  4. Mirror image of the top side (x -> -x) for photolithography film preparation.
+  5. ONLY the antenna pattern, corner cut marks, and identification mark are kept in the model
+     (no dielectric substrate, no air box, no ports).
+  6. Export to standard 3D STEP (.step) format.
 """
 
 import os
@@ -34,7 +34,7 @@ from geometry_v7 import (
 
 
 def _add_polygon_surface_occ(pts: List[Tuple[float, float]], z: float = 0.0) -> int:
-    """Vytvoří rovinnou plochu (Plane Surface) v OpenCASCADE z 2D polygonu."""
+    """Create a planar surface (Plane Surface) in OpenCASCADE from a 2D polygon."""
     p_tags = []
     for x, y in pts:
         p_tags.append(gmsh.model.occ.addPoint(float(x), float(y), float(z)))
@@ -58,19 +58,19 @@ def build_mfg_model(
     extrude_solids: bool = True,
 ) -> Dict[str, Any]:
     """
-    Sestaví v OpenCASCADE (Gmsh) a vyexportuje kompletní výrobní 3D STEP model pro VUT.
+    Build in OpenCASCADE (Gmsh) and export the complete manufacturing 3D STEP model for BUT.
 
     Args:
-        params: Slovník parametrů antény (rozměry L, W, h, vedení atd.).
-        output_step_path: Cesta k výstupnímu souboru .step.
-        copper_thickness: Tloušťka vrstvy mědi [mm] pro extruzi z rovnoběžky z=0 dolů (výchozí: 35 µm).
-        mark_len: Délka ramen ořezových kvádrů [mm] (výchozí: 8.0).
-        mark_w: Šířka ořezových kvádrů [mm] (výchozí: 2.0).
-        ident_symbol: Text identifikační značky (výchozí: 'PM.').
-        extrude_solids: True pro 3D tělesa (solids), False pro 2D plochy (sheet bodies) v z=0.
+        params: Antenna parameter dictionary (dimensions L, W, h, feed lines, etc.).
+        output_step_path: Path to the output .step file.
+        copper_thickness: Copper layer thickness [mm] for extrusion downward from z=0 (default: 35 µm).
+        mark_len: Corner cut-mark leg length [mm] (default: 8.0).
+        mark_w: Corner cut-mark width [mm] (default: 2.0).
+        ident_symbol: Identification mark text (default: 'PM.').
+        extrude_solids: True for 3D solids, False for 2D sheet bodies at z=0.
 
     Returns:
-        Slovník s metadaty o vygenerované geometrii.
+        Dictionary with metadata about the generated geometry.
     """
     info = compute_model7_routing(params)
 
@@ -123,7 +123,7 @@ def build_mfg_model(
     gmsh.model.add("vut_antenna_mfg")
 
     # =========================================================================
-    # 1. Zrcadlený vyzařující flíček a napájecí síť v z = 0
+    # 1. Mirrored radiating patch and feed network at z = 0
     # =========================================================================
     patch_base = gmsh.model.occ.addRectangle(-W / 2.0, -L / 2.0, 0.0, W, L)
     tool_notches = []
@@ -154,7 +154,7 @@ def build_mfg_model(
     antenna_surfs = [patch_tag, trans_b, trans_r] + feed_net_tags
 
     # =========================================================================
-    # 2. Osm ořezových kvádrů v rozích substrátu (výška h, horní plocha v z = 0)
+    # 2. Eight corner cut-mark blocks at substrate corners (height h, top face at z = 0)
     # =========================================================================
     marks_cad = compute_mfg_corner_marks(
         mfg_x_min, mfg_x_max, mfg_y_min, mfg_y_max, mark_len=mark_len, mark_w=mark_w
@@ -168,12 +168,12 @@ def build_mfg_model(
         ry = min(ys)
         rdx = max(xs) - rx
         rdy = max(ys) - ry
-        # Kvádry s horní plochou v z = 0 a spodní v z = -h
+        # Blocks with top face at z = 0 and bottom face at z = -h
         box_tag = gmsh.model.occ.addBox(rx, ry, -h, rdx, rdy, h)
         corner_cube_tags.append(box_tag)
 
     # =========================================================================
-    # 3. Identifikační značka 'PM.' (zrcadlená podél osy Y, horní plocha v z = 0)
+    # 3. Identification mark 'PM.' (mirrored across Y-axis, top face at z = 0)
     # =========================================================================
     ident_polys = compute_mfg_ident_polygons(
         text=ident_symbol,
@@ -188,7 +188,7 @@ def build_mfg_model(
     for poly in ident_polys:
         surf = _add_polygon_surface_occ(poly, z=0.0)
         if extrude_solids:
-            # Extruze do záporného Z o výšku substrátu h
+            # Extrude along negative Z by substrate height h
             ext = gmsh.model.occ.extrude([(2, surf)], 0.0, 0.0, -h)
             solid_tags = [tag for dim, tag in ext if dim == 3]
             ident_tags.extend(solid_tags)
@@ -196,7 +196,7 @@ def build_mfg_model(
             ident_tags.append(surf)
 
     # =========================================================================
-    # 4. Extruze motivu mědi na požadovanou tloušťku dolů (z 0 do -t_cu)
+    # 4. Extrude copper pattern downward to target thickness (from 0 to -t_cu)
     # =========================================================================
     if extrude_solids:
         t_cu = float(copper_thickness)
@@ -208,7 +208,7 @@ def build_mfg_model(
     gmsh.model.occ.synchronize()
 
     # =========================================================================
-    # 5. Export do STEP souboru
+    # 5. Export to STEP file
     # =========================================================================
     abs_out = os.path.abspath(output_step_path)
     os.makedirs(os.path.dirname(abs_out), exist_ok=True)

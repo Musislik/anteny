@@ -23,21 +23,21 @@ wheels/
 venv/
 .venv/
 
-# Docker a editor
+# Docker and editor
 .env
 .vscode/
 .idea/
 *.swp
 trash/
 
-# Datové a exportní složky (veškeré generované vstupy i výstupy simulací)
+# Data and export directories (all generated simulation inputs and outputs)
 data/
 postpro/
 export/
-export/prehled_m3.md
+export/summary_m3.md
 kicad/
 
-# Pojistka pro generované artefakty (pokud by vznikly v kořeni)
+# Safeguard for generated artifacts (in case they are created in the root directory)
 mesh.msh
 config.json
 *.step
@@ -51,7 +51,7 @@ config.json
 *.vtu
 *.pvtu
 
-# MLflow a databáze běhů
+# MLflow and run databases
 mlruns/
 mlflow.db
 mlflow.db-journal

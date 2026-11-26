@@ -1,10 +1,10 @@
 """
-sweep_model2.py - Samostatný parametrický sweep pro dvouportový Model 2 (LHCP).
-Podporuje čtyři režimy sweepování:
-  1. 'symmetric': Párový sweep se stejnou hloubkou zanoření na obou portech (inset_b = inset_l).
-  2. 'single_fixed': Zafixování jednoho napaječe a sweepování druhého (např. fixní inset_l, sweep inset_b).
-  3. 'grid': 2D kartézská mřížka (kombinace všech hodnot SWEEP_INSETS_B a SWEEP_INSETS_L).
-  4. 'manual': Explicitně definované dvojice (inset_b, inset_l) nebo paralelní 1:1 párování insets_b a insets_l.
+sweep_model2.py - Standalone parametric sweep for two-port Model 2 (LHCP).
+Supports four sweep modes:
+  1. 'symmetric': Paired sweep with equal inset depth on both ports (inset_b = inset_l).
+  2. 'single_fixed': Fix one feed and sweep the other (e.g., fixed inset_l, sweep inset_b).
+  3. 'grid': 2D Cartesian grid (combinations of all SWEEP_INSETS_B and SWEEP_INSETS_L values).
+  4. 'manual': Explicitly defined pairs (inset_b, inset_l) or 1:1 zipped pairing of insets_b and insets_l.
 """
 
 import os
@@ -13,7 +13,7 @@ import time
 import argparse
 import numpy as np
 
-# Zajistíme dostupnost složek src a scripts
+# Ensure src and scripts directories are available
 src_dir = os.path.dirname(os.path.abspath(__file__))
 scripts_dir = os.path.abspath(os.path.join(src_dir, "..", "scripts"))
 for d in (src_dir, scripts_dir):
@@ -52,25 +52,25 @@ def _parse_float_list(val):
 
 def _parse_manual_pairs(val):
     """
-    Parcuje explicitně zadané dvojice zanoření (inset_b, inset_l).
-    Podporuje formáty:
+    Parse explicitly specified inset pairs (inset_b, inset_l).
+    Supported formats:
       - '4.8:5.2, 5.0:5.2, 5.2:5.4'
       - '4.8,5.2; 5.0,5.2'
-      - ['4.8:5.2', '5.0:5.2'] nebo ['4.8,5.2', '5.0,5.2']
+      - ['4.8:5.2', '5.0:5.2'] or ['4.8,5.2', '5.0,5.2']
       - [(4.8, 5.2), (5.0, 5.2)]
     """
     if not val:
         return None
     if isinstance(val, (list, tuple)):
-        # Pokud už jde o seznam n-tic/seznamů čísel
+        # If already a list of 2-element tuples/lists of numbers
         if val and isinstance(val[0], (list, tuple)) and len(val[0]) == 2:
             return [(float(b), float(l)) for b, l in val]
-        # Pokud jde o seznam řetězců z CLI (nargs="+")
+        # If a list of CLI strings (nargs="+")
         raw_items = []
         for x in val:
             raw_items.extend(str(x).replace(';', ' ').replace(',', ' ').split())
     else:
-        # Řetězec oddělený středníky nebo čárkami/mezerami
+        # String separated by semicolons or commas/spaces
         raw_items = str(val).replace(';', ' ').replace(',', ' ').split()
 
     pairs = []
@@ -86,7 +86,7 @@ def _parse_manual_pairs(val):
                     pass
         tokens.append(item)
 
-    # Pokud zbyly samostatné tokeny, zpracujeme je po dvojicích
+    # If standalone tokens remain, pair them sequentially
     i = 0
     while i < len(tokens) - 1:
         try:
@@ -187,30 +187,30 @@ def _resolve_env_bool(sweep_key, default_val=True):
 
 def build_sweep_pairs(mode, insets=None, insets_b=None, insets_l=None, fixed_name=None, fixed_val=None, manual_pairs=None):
     """
-    Sestaví seznam dvojic (inset_b, inset_l) pro daný simulační režim.
+    Build the list of (inset_b, inset_l) pairs for the given simulation mode.
     """
     mode = (mode or "symmetric").lower().strip()
 
     if mode == "manual":
-        # 1. Priorita: Přímo zadané dvojice v parametru manual_pairs
+        # 1. Priority: Explicitly passed pairs in manual_pairs parameter
         pairs = _parse_manual_pairs(manual_pairs)
 
-        # 2. Priorita: Explicitně zadané seznamy insets_b a insets_l z argumentů
+        # 2. Priority: Explicitly passed insets_b and insets_l lists from arguments
         if not pairs and (insets_b is not None or insets_l is not None):
             vals_b = insets_b or []
             vals_l = insets_l or []
             if len(vals_b) != len(vals_l):
                 raise ValueError(
-                    f"V režimu 'manual' musí mít insets_b a insets_l stejný počet hodnot. "
-                    f"Zadáno: insets_b={len(vals_b)} hodnot, insets_l={len(vals_l)} hodnot."
+                    f"In 'manual' mode, insets_b and insets_l must have the same number of values. "
+                    f"Given: insets_b={len(vals_b)} values, insets_l={len(vals_l)} values."
                 )
             pairs = [(float(b), float(l)) for b, l in zip(vals_b, vals_l)]
 
-        # 3. Priorita: Proměnná prostředí SWEEP_MANUAL_PAIRS
+        # 3. Priority: Environment variable SWEEP_MANUAL_PAIRS
         if not pairs:
             pairs = _parse_manual_pairs(os.getenv("SWEEP_MANUAL_PAIRS"))
 
-        # 4. Priorita: Proměnné prostředí SWEEP_INSETS_B a SWEEP_INSETS_L
+        # 4. Priority: Environment variables SWEEP_INSETS_B and SWEEP_INSETS_L
         if not pairs:
             env_b = _parse_float_list(os.getenv("SWEEP_INSETS_B"))
             env_l = _parse_float_list(os.getenv("SWEEP_INSETS_L"))
@@ -219,22 +219,22 @@ def build_sweep_pairs(mode, insets=None, insets_b=None, insets_l=None, fixed_nam
                     pairs = [(float(b), float(l)) for b, l in zip(env_b, env_l)]
                 elif (os.getenv("SWEEP_MODE") or "").lower().strip() == "manual":
                     raise ValueError(
-                        f"V režimu 'manual' musí mít insets_b a insets_l stejný počet hodnot. "
-                        f"Zadáno: insets_b={len(env_b)} hodnot, insets_l={len(env_l)} hodnot."
+                        f"In 'manual' mode, insets_b and insets_l must have the same number of values. "
+                        f"Given: insets_b={len(env_b)} values, insets_l={len(env_l)} values."
                     )
 
-        # 5. Fallback: Výchozí bod, pokud nebylo nic zadáno
+        # 5. Fallback: Default point if nothing was specified
         if not pairs:
             pairs = [(4.80, 5.20)]
 
-        desc = f"Manuálně zadané body (Manual): {len(pairs)} bodů -> {pairs}"
+        desc = f"Manual pairs: {len(pairs)} points -> {pairs}"
         return pairs, desc
 
     elif mode == "grid":
         vals_b = insets_b or _parse_float_list(os.getenv("SWEEP_INSETS_B")) or [2.0, 3.0, 4.0]
         vals_l = insets_l or _parse_float_list(os.getenv("SWEEP_INSETS_L")) or [1.0, 2.0, 3.0, 4.0]
         pairs = [(float(b), float(l)) for b in vals_b for l in vals_l]
-        return pairs, f"2D kartézská mřížka (Grid): {len(vals_b)} x {len(vals_l)} = {len(pairs)} bodů"
+        return pairs, f"2D Cartesian Grid: {len(vals_b)} x {len(vals_l)} = {len(pairs)} points"
 
     elif mode == "single_fixed":
         fname = fixed_name or os.getenv("SWEEP_FIXED_INSET_NAME", "inset_l").lower().strip()
@@ -242,21 +242,21 @@ def build_sweep_pairs(mode, insets=None, insets_b=None, insets_l=None, fixed_nam
         sweep_vals = insets or _parse_float_list(os.getenv("SWEEP_INSETS")) or DEFAULT_INSET_VALUES
 
         if "b" in fname:
-            # Fixní je spodní (inset_b), sweepujeme levý (inset_l)
+            # Bottom (inset_b) is fixed, sweep left (inset_l)
             pairs = [(fval, float(v)) for v in sweep_vals]
-            desc = f"Fixní spodní inset_b = {fval:.2f} mm, sweepujeme levý inset_l: {sweep_vals} mm"
+            desc = f"Fixed bottom inset_b = {fval:.2f} mm, sweeping left inset_l: {sweep_vals} mm"
         else:
-            # Fixní je levý (inset_l), sweepujeme spodní (inset_b)
+            # Left (inset_l) is fixed, sweep bottom (inset_b)
             pairs = [(float(v), fval) for v in sweep_vals]
-            desc = f"Fixní levý inset_l = {fval:.2f} mm, sweepujeme spodní inset_b: {sweep_vals} mm"
+            desc = f"Fixed left inset_l = {fval:.2f} mm, sweeping bottom inset_b: {sweep_vals} mm"
 
         return pairs, desc
 
     else:
-        # Výchozí symetrický režim (symmetric)
+        # Default symmetric mode
         vals = insets or _parse_float_list(os.getenv("SWEEP_INSETS")) or DEFAULT_INSET_VALUES
         pairs = [(float(v), float(v)) for v in vals]
-        return pairs, f"Symetrický párový sweep (inset_b = inset_l): {vals} mm"
+        return pairs, f"Symmetric paired sweep (inset_b = inset_l): {vals} mm"
 
 
 def build_sweep_steps(
@@ -281,13 +281,13 @@ def build_sweep_steps(
     patch_w=None,
 ):
     """
-    Sestaví seznam jednotlivých kroků sweepu pro Model 2 na základě cíle sweepu (sweep_target):
-      - 'inset': sweepování zanoření (výchozí)
-      - 'patch_l': sweepování délky flíčku (L / W)
-      - 'delta_l': sweepování fázovacího úseku Delta L
-      - 'feed_len_b': sweepování délky spodního napaječe
-      - 'feed_len_l': sweepování délky levého napaječe
-      - 'feed_lens': sweepování kombinací délek obou napaječů
+    Build the list of individual sweep steps for Model 2 based on sweep_target:
+      - 'inset': sweep inset depth (default)
+      - 'patch_l': sweep patch length (L / W)
+      - 'delta_l': sweep phasing section Delta L
+      - 'feed_len_b': sweep bottom feed length
+      - 'feed_len_l': sweep left feed length
+      - 'feed_lens': sweep combinations of both feed lengths
     """
     if sweep_target is not None:
         target = sweep_target
@@ -365,7 +365,7 @@ def build_sweep_steps(
                 step['feed_delta_l'] = fixed_dl
                 step['delta_l'] = fixed_dl
             steps.append(step)
-        desc = f"Délka flíčku patch_L (sweep_target=patch_l): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Patch length patch_L (sweep_target=patch_l): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     elif target == "delta_l":
@@ -386,7 +386,7 @@ def build_sweep_steps(
             if fixed_flb is not None:
                 step['feed_len_b'] = fixed_flb
             steps.append(step)
-        desc = f"Fázovací úsek Delta L (sweep_target=delta_l): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Phasing section Delta L (sweep_target=delta_l): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     elif target == "feed_len_b":
@@ -406,7 +406,7 @@ def build_sweep_steps(
             if fixed_dl is not None:
                 step['feed_delta_l'] = fixed_dl
             steps.append(step)
-        desc = f"Délka spodního napaječe (sweep_target=feed_len_b): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Bottom feed length (sweep_target=feed_len_b): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     elif target == "feed_len_l":
@@ -426,7 +426,7 @@ def build_sweep_steps(
             if fixed_dl is not None:
                 step['feed_delta_l'] = fixed_dl
             steps.append(step)
-        desc = f"Délka levého napaječe (sweep_target=feed_len_l): {vals} mm (celkem {len(steps)} kroků)"
+        desc = f"Left feed length (sweep_target=feed_len_l): {vals} mm ({len(steps)} steps total)"
         return steps, desc
 
     elif target == "feed_lens":
@@ -457,11 +457,11 @@ def build_sweep_steps(
                 step['feed_delta_l'] = fixed_dl
                 step['delta_l'] = fixed_dl
             steps.append(step)
-        desc = f"Délky obou napaječů feed_lens ({m}): {len(steps)} kroků"
+        desc = f"Both feed lengths feed_lens ({m}): {len(steps)} steps"
         return steps, desc
 
     else:
-        # Výchozí target 'inset'
+        # Default target 'inset'
         pairs, mode_desc = build_sweep_pairs(
             mode or os.getenv("SWEEP_MODE", "symmetric"),
             insets=insets,
@@ -525,7 +525,7 @@ def run_sweep_model2(
     driven_port=None,
 ):
     """
-    Spustí dedikovaný parametrický sweep pro Model 2.
+    Run dedicated parametric sweep for Model 2.
     """
     steps, sweep_desc = build_sweep_steps(
         sweep_target=sweep_target,
@@ -570,27 +570,27 @@ def run_sweep_model2(
 
     total_steps = len(steps)
     print("=" * 70)
-    print("ZAHÁJENÍ PARAMETRICKÉHO SWEEPU MODELU 2 (DVOUPOVRTOVÝ MODEL LHCP)")
+    print("STARTING MODEL 2 PARAMETRIC SWEEP (TWO-PORT LHCP MODEL)")
     print("=" * 70)
-    print(f"  • Cíl a režim sweepu:         {sweep_desc}")
-    print(f"  • Celkový počet kroků:        {total_steps}")
-    print(f"  • Frekvenční rozsah:          {freq_min:.3f} - {freq_max:.3f} GHz (krok {freq_step:.4f} GHz)")
+    print(f"  * Sweep target and mode:      {sweep_desc}")
+    print(f"  * Total steps:                {total_steps}")
+    print(f"  * Frequency range:            {freq_min:.3f} - {freq_max:.3f} GHz (step {freq_step:.4f} GHz)")
     if any('patch_L' in s for s in steps):
         p_lengths = [s['patch_L'] for s in steps]
-        print(f"  • Rozměry flíčku (sweep L):   {p_lengths} mm")
+        print(f"  * Patch dimensions (sweep L): {p_lengths} mm")
     else:
-        print(f"  • Rozměry flíčku:             L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
-    print(f"  • Síť Gmsh / AMR / Solver:    h_min={mesh_size_min} mm / {amr_max_its} it. (Tol {amr_threshold}) / {linear_tol}")
-    print(f"  • Ukládání 3D polí:           každých {save_step} kroků")
-    print(f"  • Export ParaView balíčků:    {'ANO' if export_each else 'NE'}")
-    print("  • Tabulka výsledků:           export/sweep_results_model2.csv")
+        print(f"  * Patch dimensions:           L = {patch_l:.2f} mm, W = {patch_w:.2f} mm")
+    print(f"  * Gmsh mesh / AMR / Solver:   h_min={mesh_size_min} mm / {amr_max_its} it. (Tol {amr_threshold}) / {linear_tol}")
+    print(f"  * 3D field saving:            every {save_step} steps")
+    print(f"  * Export ParaView packages:   {'YES' if export_each else 'NO'}")
+    print("  * Results table:              export/sweep_results_model2.csv")
     print("=" * 70)
 
     successful_runs = 0
 
     for i, step in enumerate(steps, start=1):
         export_name = step['run_name']
-        print(f"\n>>> [{i}/{total_steps}] Model 2 krok: {export_name} <<<")
+        print(f"\n>>> [{i}/{total_steps}] Model 2 step: {export_name} <<<")
 
         custom_params = {
             'antenna_model': 2,
@@ -620,61 +620,61 @@ def run_sweep_model2(
                 try:
                     export_paraview_package(output_name=export_name)
                 except Exception as exp_err:
-                    print(f"Varování: Export balíčku {export_name} selhal: {exp_err}")
+                    print(f"Warning: Export of package {export_name} failed: {exp_err}")
 
             successful_runs += 1
             time.sleep(1)
 
         except Exception as e:
-            print(f"[CHYBA] Krok {export_name} selhal: {e}")
+            print(f"[ERROR] Step {export_name} failed: {e}")
 
     print("\n" + "=" * 70)
-    print(f"SWEEP MODELU 2 DOKONČEN! Úspěšně proběhlo {successful_runs}/{total_steps} běhů.")
+    print(f"MODEL 2 SWEEP COMPLETED! {successful_runs}/{total_steps} runs succeeded.")
     print("=" * 70)
 
     print_summary_table(model_version=2)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Parametrický sweep Modelu 2 (Dvouportový LHCP)")
+    parser = argparse.ArgumentParser(description="Model 2 parametric sweep (Two-port LHCP)")
     parser.add_argument("--sweep-target", choices=["inset", "patch_l", "feed_len_b", "feed_len_l", "feed_delta_l", "delta_l", "feed_lens"], default=None,
-                        help="Cíl sweepování: 'inset' (výchozí), 'patch_l', 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
+                        help="Sweep target: 'inset' (default), 'patch_l', 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
     parser.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None,
-                        help="Režim sweepování: 'symmetric' (výchozí), 'single_fixed', 'grid', 'manual'")
+                        help="Sweep mode: 'symmetric' (default), 'single_fixed', 'grid', 'manual'")
     parser.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs",
-                        help="Explicitní dvojice ve formátu 'val1:val2' (např. --pairs 4.8:5.2 5.0:5.2)")
+                        help="Explicit pairs in 'val1:val2' format (e.g., --pairs 4.8:5.2 5.0:5.2)")
     parser.add_argument("--insets", type=float, nargs="+", default=None,
-                        help="Hodnoty zanoření pro režimy symmetric a single_fixed")
+                        help="Inset values for symmetric and single_fixed modes")
     parser.add_argument("--insets-b", type=float, nargs="+", default=None,
-                        help="Hodnoty spodního zanoření inset_b pro režimy grid a manual")
+                        help="Bottom inset_b values for grid and manual modes")
     parser.add_argument("--insets-l", type=float, nargs="+", default=None,
-                        help="Hodnoty levého zanoření inset_l pro režimy grid a manual")
+                        help="Left inset_l values for grid and manual modes")
     parser.add_argument("--fixed-name", choices=["inset_b", "inset_l"], default=None,
-                        help="Název fixovaného napaječe pro režim single_fixed")
+                        help="Name of the fixed feed for single_fixed mode")
     parser.add_argument("--fixed-val", type=float, default=None,
-                        help="Hodnota fixovaného napaječe v mm pro režim single_fixed")
+                        help="Value of the fixed feed in mm for single_fixed mode")
 
-    # Argumenty pro sweepování délky flíčku
+    # Arguments for patch length sweep
     parser.add_argument("--patch-lengths", type=float, nargs="+", default=None, dest="patch_lengths",
-                        help="Hodnoty délky flíčku patch_L v mm pro sweepování")
+                        help="Patch length patch_L values in mm to sweep")
 
-    # Argumenty pro sweepování a fixaci délek napaječů
+    # Arguments for sweeping and fixing feed lengths
     parser.add_argument("--delta-l", "--sweep-delta-l", type=float, nargs="+", default=None, dest="delta_l",
-                        help="Hodnoty fázovacího úseku Delta L v mm pro sweepování")
+                        help="Phasing section Delta L values in mm to sweep")
     parser.add_argument("--feed-delta-l", type=float, default=None, dest="feed_delta_l",
-                        help="Fixní rozdíl délek přívodů Delta L v mm")
+                        help="Fixed feed length difference Delta L in mm")
     parser.add_argument("--feed-lens-b", type=float, nargs="+", default=None, dest="feed_lens_b",
-                        help="Hodnoty délky spodního přívodu pro sweepování")
+                        help="Bottom feed length values to sweep")
     parser.add_argument("--feed-lens-l", type=float, nargs="+", default=None, dest="feed_lens_l",
-                        help="Hodnoty délky levého přívodu pro sweepování")
+                        help="Left feed length values to sweep")
     parser.add_argument("--feed-len-b", type=float, default=None, dest="feed_len_b",
-                        help="Fixní délka spodního přívodu v mm")
+                        help="Fixed bottom feed length in mm")
     parser.add_argument("--feed-len-l", type=float, default=None, dest="feed_len_l",
-                        help="Fixní délka levého přívodu v mm")
+                        help="Fixed left feed length in mm")
     parser.add_argument("--inset-b", type=float, default=None, dest="inset_b",
-                        help="Fixní zanoření spodního napaječe v mm")
+                        help="Fixed bottom feed inset in mm")
     parser.add_argument("--inset-l", type=float, default=None, dest="inset_l",
-                        help="Fixní zanoření levého napaječe v mm")
+                        help="Fixed left feed inset in mm")
 
     parser.add_argument("--patch-l", type=float, default=None, dest="patch_l")
     parser.add_argument("--patch-w", type=float, default=None, dest="patch_w")
@@ -688,7 +688,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-export", dest="export_each", action="store_false", default=None)
     parser.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true", default=False)
     parser.add_argument("--driven-port", choices=["all", "1", "2"], default=None,
-                        help="Volba buzeného portu pro Model 2: 'all' (obě větve LHCP), '1' (pouze spodní Ey), '2' (pouze levý Ex)")
+                        help="Driven port selection for Model 2: 'all' (both branches LHCP), '1' (bottom Ey only), '2' (left Ex only)")
 
     args = parser.parse_args()
     run_sweep_model2(

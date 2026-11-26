@@ -1,17 +1,17 @@
 """
-sweep.py - Štíhlý dispečer parametrického sweepu mikropáskové antény.
-Podle proměnné ANTENNA_MODEL v .env (nebo přepínače --model v CLI) automaticky deleguje:
-  - ANTENNA_MODEL=1 -> src/sweep_model1.py (Původní T-dělič, 1 port, 50 Ohm)
-  - ANTENNA_MODEL=2 -> src/sweep_model2.py (Nový dvouportový model, 100 Ohm LHCP)
-  - ANTENNA_MODEL=3 -> src/sweep_model3.py (Hybridní dvoustupňové přizpůsobení)
-  - ANTENNA_MODEL=4 -> src/sweep_model4.py (Finální model: 50 Ohm T-článek s oblouky)
+sweep.py - Thin parametric sweep dispatcher for the microstrip patch antenna.
+Automatically delegates based on the ANTENNA_MODEL variable in .env (or --model CLI flag):
+  - ANTENNA_MODEL=1 -> src/sweep_model1.py (Original T-splitter, 1 port, 50 Ohm)
+  - ANTENNA_MODEL=2 -> src/sweep_model2.py (Dual-port model, 100 Ohm LHCP)
+  - ANTENNA_MODEL=3 -> src/sweep_model3.py (Hybrid two-stage matching)
+  - ANTENNA_MODEL=4 -> src/sweep_model4.py (Final model: 50 Ohm T-junction with bends)
 """
 
 import os
 import sys
 import argparse
 
-# Zajistíme dostupnost složek src a scripts pro importy
+# Ensure src and scripts directories are available for imports
 src_dir = os.path.dirname(os.path.abspath(__file__))
 scripts_dir = os.path.abspath(os.path.join(src_dir, "..", "scripts"))
 for d in (src_dir, scripts_dir):
@@ -23,7 +23,7 @@ load_env()
 
 
 def run_sweep(**kwargs):
-    """Univerzální rozhraní pro spuštění sweepu zvoleného modelu antény."""
+    """Universal entry point to run the sweep for the selected antenna model."""
     profile = kwargs.pop('profile', None)
     if profile:
         load_env(profile=profile)
@@ -53,16 +53,16 @@ def run_sweep(**kwargs):
 
 
 if __name__ == "__main__":
-    # Rychlá předběžná detekce --profile a --model pro směrování
+    # Quick pre-detection of --profile and --model for routing
     parser = argparse.ArgumentParser(
-        description="Dispečer parametrického sweepu antény (Model 1..7)",
+        description="Antenna parametric sweep dispatcher (Model 1..7)",
         add_help=False,
         allow_abbrev=False
     )
     parser.add_argument("--profile", type=str, default=None, dest="profile",
-                        help="Název výrobního profilu varianty v results/<profile>/<profile>.env (přepíše kořenový .env; výchozí: ANTENNA_PROFILE)")
+                        help="Manufacturing profile name in results/<profile>/<profile>.env (overrides root .env; default: ANTENNA_PROFILE)")
     parser.add_argument("--model", type=int, choices=[1, 2, 3, 4, 5, 6, 7], default=None, dest="antenna_model",
-                        help="Verze modelu antény (1: T-dělič, 2: dvouportový LHCP, 3: hybridní přizpůsobení, 4: finální 50 Ohm T-článek, 5: dvouportový 100 Ohm model s oblouky, 6: dvouportový zakřivený s interními 100 Ohm porty, 7: zrcadlený Model 4 pro RHCP). Výchozí z ANTENNA_MODEL.")
+                        help="Antenna model version (1: T-splitter, 2: dual-port LHCP, 3: hybrid matching, 4: final 50 Ohm T-junction, 5: dual-port 100 Ohm model with bends, 6: dual-port curved with internal 100 Ohm ports, 7: mirrored Model 4 for RHCP). Defaults to ANTENNA_MODEL.")
     known_args, remaining_argv = parser.parse_known_args()
 
     if known_args.profile:
@@ -73,7 +73,7 @@ if __name__ == "__main__":
 
     if selected_model == 7:
         from sweep_model7 import run_sweep_model7
-        parser_m7 = argparse.ArgumentParser(description="Parametrický sweep Modelu 7 (Zrcadlený 50 Ohm T-článek pro RHCP)")
+        parser_m7 = argparse.ArgumentParser(description="Parametric sweep of Model 7 (Mirrored 50 Ohm T-junction for RHCP)")
         parser_m7.add_argument("--sweep-target", choices=["patch_l", "delta_l", "trans_w", "w_t", "trans_l", "l_t", "inset", "y0", "bend_radius", "feed_50_len"], default=None)
         parser_m7.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
         parser_m7.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")
@@ -151,7 +151,7 @@ if __name__ == "__main__":
 
     elif selected_model == 6:
         from sweep_model6 import run_sweep_model6
-        parser_m6 = argparse.ArgumentParser(description="Parametrický sweep Modelu 6 (Dvouportový 100 Ohm model s interními porty)")
+        parser_m6 = argparse.ArgumentParser(description="Parametric sweep of Model 6 (Dual-port 100 Ohm model with internal ports)")
         parser_m6.add_argument("--sweep-target", choices=["patch_l", "delta_l", "trans_w", "w_t", "trans_l", "l_t", "inset", "y0", "bend_radius", "t_fillet_r", "driven_port"], default=None)
         parser_m6.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
         parser_m6.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")
@@ -231,7 +231,7 @@ if __name__ == "__main__":
 
     elif selected_model == 5:
         from sweep_model5 import run_sweep_model5
-        parser_m5 = argparse.ArgumentParser(description="Parametrický sweep Modelu 5 (Dvouportový 100 Ohm model s oblouky)")
+        parser_m5 = argparse.ArgumentParser(description="Parametric sweep of Model 5 (Dual-port 100 Ohm model with bends)")
         parser_m5.add_argument("--sweep-target", choices=["patch_l", "delta_l", "trans_w", "w_t", "trans_l", "l_t", "inset", "y0", "bend_radius", "port_offset", "driven_port"], default=None)
         parser_m5.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
         parser_m5.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")
@@ -309,7 +309,7 @@ if __name__ == "__main__":
 
     elif selected_model == 4:
         from sweep_model4 import run_sweep_model4
-        parser_m4 = argparse.ArgumentParser(description="Parametrický sweep Modelu 4 (Finální 50 Ohm T-článek s oblouky)")
+        parser_m4 = argparse.ArgumentParser(description="Parametric sweep of Model 4 (Final 50 Ohm T-junction with bends)")
         parser_m4.add_argument("--sweep-target", choices=["patch_l", "delta_l", "trans_w", "w_t", "trans_l", "l_t", "inset", "y0", "bend_radius", "feed_50_len"], default=None)
         parser_m4.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
         parser_m4.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")
@@ -387,9 +387,9 @@ if __name__ == "__main__":
 
     elif selected_model == 3:
         from sweep_model3 import run_sweep_model3
-        parser_m3 = argparse.ArgumentParser(description="Parametrický sweep Modelu 3 (Hybridní dvoustupňové přizpůsobení)")
+        parser_m3 = argparse.ArgumentParser(description="Parametric sweep of Model 3 (Hybrid two-stage matching)")
         parser_m3.add_argument("--sweep-target", choices=["inset", "y0", "trans_w", "w_t", "trans_l", "l_t", "delta_l", "patch_l"], default=None,
-                                help="Cíl sweepování: 'inset' (y0, výchozí), 'trans_w' (w_T), 'trans_l' (l_T), 'delta_l', 'patch_l'")
+                                help="Sweep target: 'inset' (y0, default), 'trans_w' (w_T), 'trans_l' (l_T), 'delta_l', 'patch_l'")
         parser_m3.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
         parser_m3.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs")
         parser_m3.add_argument("--insets", type=float, nargs="+", default=None)
@@ -455,39 +455,39 @@ if __name__ == "__main__":
     elif selected_model == 2:
         from sweep_model2 import run_sweep_model2
         sys.argv = [sys.argv[0]] + remaining_argv
-        parser_m2 = argparse.ArgumentParser(description="Parametrický sweep Modelu 2 (Dvouportový LHCP)")
+        parser_m2 = argparse.ArgumentParser(description="Parametric sweep of Model 2 (Dual-port LHCP)")
         parser_m2.add_argument("--sweep-target", choices=["inset", "patch_l", "feed_len_b", "feed_len_l", "feed_delta_l", "delta_l", "feed_lens"], default=None,
-                                help="Cíl sweepování: 'inset' (výchozí), 'patch_l', 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
+                                help="Sweep target: 'inset' (default), 'patch_l', 'delta_l', 'feed_len_b', 'feed_len_l', 'feed_lens'")
         parser_m2.add_argument("--mode", choices=["symmetric", "single_fixed", "grid", "manual"], default=None)
         parser_m2.add_argument("--pairs", "--manual-pairs", type=str, nargs="+", default=None, dest="manual_pairs",
-                               help="Manuálně definované dvojice zanoření pro Model 2")
+                               help="Manually defined inset pairs for Model 2")
         parser_m2.add_argument("--insets", type=float, nargs="+", default=None)
         parser_m2.add_argument("--insets-b", type=float, nargs="+", default=None)
         parser_m2.add_argument("--insets-l", type=float, nargs="+", default=None)
         parser_m2.add_argument("--fixed-name", choices=["inset_b", "inset_l"], default=None)
         parser_m2.add_argument("--fixed-val", type=float, default=None)
 
-        # Argumenty pro sweepování délky flíčku
+        # Arguments for patch length sweep
         parser_m2.add_argument("--patch-lengths", type=float, nargs="+", default=None, dest="patch_lengths",
-                                help="Hodnoty délky flíčku patch_L v mm pro sweepování")
+                                help="Patch length values patch_L in mm for sweeping")
 
-        # Argumenty pro sweepování a fixaci délek napaječů
+        # Arguments for sweeping and fixing feedline lengths
         parser_m2.add_argument("--delta-l", "--sweep-delta-l", type=float, nargs="+", default=None, dest="delta_l",
-                                help="Hodnoty fázovacího úseku Delta L v mm pro sweepování")
+                                help="Phase-delay section Delta L values in mm for sweeping")
         parser_m2.add_argument("--feed-delta-l", type=float, default=None, dest="feed_delta_l",
-                                help="Fixní hodnota rozdílu délek přívodů Delta L v mm")
+                                help="Fixed feedline length difference Delta L in mm")
         parser_m2.add_argument("--feed-lens-b", type=float, nargs="+", default=None, dest="feed_lens_b",
-                                help="Hodnoty délky spodního přívodu pro sweepování")
+                                help="Bottom feedline length values for sweeping")
         parser_m2.add_argument("--feed-lens-l", type=float, nargs="+", default=None, dest="feed_lens_l",
-                                help="Hodnoty délky levého přívodu pro sweepování")
+                                help="Left feedline length values for sweeping")
         parser_m2.add_argument("--feed-len-b", type=float, default=None, dest="feed_len_b",
-                                help="Fixní délka spodního přívodu v mm")
+                                help="Fixed bottom feedline length in mm")
         parser_m2.add_argument("--feed-len-l", type=float, default=None, dest="feed_len_l",
-                                help="Fixní délka levého přívodu v mm")
+                                help="Fixed left feedline length in mm")
         parser_m2.add_argument("--inset-b", type=float, default=None, dest="inset_b",
-                                help="Fixní zanoření spodního napaječe v mm")
+                                help="Fixed bottom feedline inset in mm")
         parser_m2.add_argument("--inset-l", type=float, default=None, dest="inset_l",
-                                help="Fixní zanoření levého napaječe v mm")
+                                help="Fixed left feedline inset in mm")
         parser_m2.add_argument("--patch-l", type=float, default=None, dest="patch_l")
         parser_m2.add_argument("--patch-w", type=float, default=None, dest="patch_w")
         parser_m2.add_argument("--freq-min", type=float, default=None, dest="freq_min")
@@ -500,7 +500,7 @@ if __name__ == "__main__":
         parser_m2.add_argument("--no-export", dest="export_each", action="store_false", default=None)
         parser_m2.add_argument("--skip-simulation", "--no-docker", dest="skip_simulation", action="store_true", default=False)
         parser_m2.add_argument("--driven-port", choices=["all", "1", "2"], default=None,
-                                help="Volba buzeného portu pro Model 2: 'all' (obě větve LHCP), '1' (pouze spodní Ey), '2' (pouze levý Ex)")
+                                help="Driven port selection for Model 2: 'all' (both branches LHCP), '1' (bottom Ey only), '2' (left Ex only)")
         m2_args = parser_m2.parse_args(remaining_argv)
 
         run_sweep_model2(
@@ -537,7 +537,7 @@ if __name__ == "__main__":
 
     else:
         from sweep_model1 import run_sweep_model1
-        parser_m1 = argparse.ArgumentParser(description="Parametrický sweep Modelu 1 (T-dělič)")
+        parser_m1 = argparse.ArgumentParser(description="Parametric sweep of Model 1 (T-splitter)")
         parser_m1.add_argument("--param", choices=["inset", "patch_l"], default="inset")
         parser_m1.add_argument("--insets", type=float, nargs="+", default=None)
         parser_m1.add_argument("--patch-lengths", type=float, nargs="+", default=None, dest="patch_lengths")

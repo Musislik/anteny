@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 ARG TARGETARCH
 
-# Instalace Docker CLI (aby python skript mohl z kontejneru spustit palace kontejner) a závislostí pro Gmsh/PyVista
+# Install Docker CLI (so Python scripts can launch the palace container from within this container) and Gmsh/PyVista dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     docker.io \
@@ -27,6 +27,6 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /workspace
 
-# Instalace Python balíčků
+# Install Python packages
 COPY requirements.txt /tmp/
 RUN pip install --no-cache-dir -r /tmp/requirements.txt

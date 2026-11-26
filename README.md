@@ -215,20 +215,20 @@ For single-port excitation (`DRIVEN_PORT=1` or `2`), only the active port chain 
 The standalone tools follow three distinct CLI interfaces depending on their inputs (likewise, [`src/visualization.py`](src/visualization.py) accepts an optional directory, `params.json`, or output `.png` path, defaulting to reading `DATA_DIR/params.json` and writing `DATA_DIR/geometry_iso.png`):
 
 1. **Simulation / export directory plotters** — Accept an optional simulation or exported run directory (e.g., `export/<run_dir>`), defaulting to `DATA_DIR/postpro` (falling back to `DATA_DIR`) as configured in `.env`:
-   - [`scripts/plot_s_parameters.py`](scripts/plot_s_parameters.py) — Plots `S11`, `S22`, cross-port isolation `S21`/`S12`, and port input impedance (`graf_S_parametry.png` and individual sub-plots in `grafy/`):
+   - [`scripts/plot_s_parameters.py`](scripts/plot_s_parameters.py) — Plots `S11`, `S22`, cross-port isolation `S21`/`S12`, and port input impedance (`plot_s_parameters.png` and individual sub-plots in `plots/`):
      ```bash
      python scripts/plot_s_parameters.py [export/<run_dir>]
      ```
-   - [`scripts/plot_radiation_pattern.py`](scripts/plot_radiation_pattern.py) — Evaluates spherical `E_theta`/`E_phi`, LHCP/RHCP directivity in dBi, and Axial Ratio from `farfield-rE.csv`, generating `vyzarovaci_diagram_2d.png` (X-Z and Y-Z polar cuts + AR vs. θ) and `vyzarovaci_diagram_3d.png`:
+   - [`scripts/plot_radiation_pattern.py`](scripts/plot_radiation_pattern.py) — Evaluates spherical `E_theta`/`E_phi`, LHCP/RHCP directivity in dBi, and Axial Ratio from `farfield-rE.csv`, generating `radiation_pattern_2d.png` (X-Z and Y-Z polar cuts + AR vs. θ) and `radiation_pattern_3d.png`:
      ```bash
      python scripts/plot_radiation_pattern.py [export/<run_dir>] [--freq 2.333]
      ```
-   - [`scripts/plot_deembedding.py`](scripts/plot_deembedding.py) — Computes and plots the RP1/RP2/RP3 impedance de-embedding diagnostics (`graf_impedance_skoky.png`):
+   - [`scripts/plot_deembedding.py`](scripts/plot_deembedding.py) — Computes and plots the RP1/RP2/RP3 impedance de-embedding diagnostics (`plot_deembedding.png`):
      ```bash
      python scripts/plot_deembedding.py [export/<run_dir>] [--layout split]
      ```
 
-2. **ZIP archive packager** — Packages simulation outputs from `DATA_DIR` and accepts an optional output ZIP name (positional `filename` or `-n` / `--name`), writing into `EXPORT_DIR` (default `export/`, auto-incremented as `antena_export_<N>.zip` when omitted):
+2. **ZIP archive packager** — Packages simulation outputs from `DATA_DIR` and accepts an optional output ZIP name (positional `filename` or `-n` / `--name`), writing into `EXPORT_DIR` (default `export/`, auto-incremented as `antenna_export_<N>.zip` when omitted):
    - [`scripts/export_package.py`](scripts/export_package.py) — Bundles `.pvtu`/`.pvd` field datasets, `antenna_model.step`, CSV outputs, generated plots, and `paraview_dynamic_phase.py` into a portable ZIP archive:
      ```bash
      python scripts/export_package.py [filename]

@@ -1,10 +1,10 @@
 import os
 import json
 
-# Fyzikalni a konfiguracni konstanty
+# Physical and configuration constants
 SCALE_MM_TO_M = 1e-3
-DEFAULT_PORT_IMPEDANCE_V1 = 50.0   # Model 1, Model 4 a Model 7 (jediný 50 Ohm port)
-DEFAULT_PORT_IMPEDANCE_V2 = 100.0  # Model 2, Model 3, Model 5 a Model 6 (dva 100 Ohm porty)
+DEFAULT_PORT_IMPEDANCE_V1 = 50.0   # Model 1, Model 4, and Model 7 (single 50 Ohm port)
+DEFAULT_PORT_IMPEDANCE_V2 = 100.0  # Model 2, Model 3, Model 5, and Model 6 (two 100 Ohm ports)
 
 def build_palace_config(params, data_dir=None):
     model_version = int(params.get('antenna_model', 1))
@@ -13,11 +13,11 @@ def build_palace_config(params, data_dir=None):
         port_r = float(params.get('port_impedance', DEFAULT_PORT_IMPEDANCE_V2))
         driven_mode = str(params.get('driven_port', os.getenv('DRIVEN_PORT', 'all'))).lower().strip()
 
-        # Volba buzení portů pro Model 2, Model 3, Model 5 a Model 6:
-        # '1', 'b', 'bottom', 'ey' -> budit pouze Port 1 (spodní, Ey) pro čisté S11 a S21
-        # '2', 'l', 'left', 'ex'   -> budit pouze Port 2 (levý, Ex) pro čisté S22 a S12
-        # 'simultaneous', 'dual'   -> budit oba porty současně
-        # 'all', 'both', 'matrix'  -> výchozí 2-krokové buzení z main.py (staticky v config.json buzen Port 1)
+        # Port excitation selection for Model 2, Model 3, Model 5, and Model 6:
+        # '1', 'b', 'bottom', 'ey' -> excite only Port 1 (bottom, Ey) for pure S11 and S21
+        # '2', 'l', 'left', 'ex'   -> excite only Port 2 (left, Ex) for pure S22 and S12
+        # 'simultaneous', 'dual'   -> excite both ports simultaneously
+        # 'all', 'both', 'matrix'  -> default 2-step excitation from main.py (static config.json excites Port 1)
         if driven_mode in ('1', 'b', 'bottom', 'ey', 'port1'):
             exc1 = True
             exc2 = False
@@ -28,34 +28,34 @@ def build_palace_config(params, data_dir=None):
             exc1 = True
             exc2 = True
         else:
-            # Pro 'all', 'both', 'matrix' je v samostatném config.json přednastaven Port 1
+            # For 'all', 'both', 'matrix', Port 1 is preset in standalone config.json
             exc1 = True
             exc2 = False
 
         lumped_ports = [
             {
                 "Index": 1,
-                "Attributes": [4],  # 4: Spodní port (Port 1, pole Ey)
-                "Direction": "+Z",  # Vektor excitace od z=0 do z=h
+                "Attributes": [4],  # 4: Bottom port (Port 1, Ey field)
+                "Direction": "+Z",  # Excitation vector from z=0 to z=h
                 "R": port_r,
                 "Excitation": exc1
             },
             {
                 "Index": 2,
-                "Attributes": [6],  # 6: Levý port (Port 2, pole Ex)
-                "Direction": "+Z",  # Vektor excitace od z=0 do z=h
+                "Attributes": [6],  # 6: Left port (Port 2, Ex field)
+                "Direction": "+Z",  # Excitation vector from z=0 to z=h
                 "R": port_r,
                 "Excitation": exc2
             }
         ]
     else:
-        # Jednoportový model (Model 1, Model 4 nebo Model 7 s 50 Ohm T-článkem)
+        # Single-port model (Model 1, Model 4, or Model 7 with 50 Ohm T-junction)
         port_r = float(params.get('port_impedance', DEFAULT_PORT_IMPEDANCE_V1))
         lumped_ports = [
             {
                 "Index": 1,
-                "Attributes": [4],  # 4: Výstupní/vstupní 50 Ohm port
-                "Direction": "+Z",  # Vektor excitace od z=0 do z=h
+                "Attributes": [4],  # 4: Input/output 50 Ohm port
+                "Direction": "+Z",  # Excitation vector from z=0 to z=h
                 "R": port_r,
                 "Excitation": True
             }

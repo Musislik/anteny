@@ -1,11 +1,11 @@
 """
-test_model4.py - Komplexní jednotkové testy pro finální Model 4 (50 Ohm T-článek s oblouky).
-Ověřuje:
-  1. Analytiku drah s oblouky a přesný fázový rozdíl L_100_b - L_100_l == feed_delta_l.
-  2. Geometrii OpenCASCADE (oblouky bez 90° ohybů, T-článek, přebrání výchozích parametrů z Modelu 3).
-  3. Router geometry.py, konfiguraci Palace (1× 50 Ohm port) a 3D konformní síťování (mesh.py).
-  4. Parametrické sweepy (sweep_model4.py), tracking (sweep_results_model4.csv/.md), vizualizaci a de-embedding.
-  5. Kompletní end-to-end běh main(skip_simulation=True) včetně parametrizace z prostředí (.env).
+test_model4.py - Comprehensive unit tests for final Model 4 (50 Ohm T-junction with curved bends).
+Verifies:
+  1. Curved path analytics and exact phase difference L_100_b - L_100_l == feed_delta_l.
+  2. OpenCASCADE geometry (circular bends without 90° corners, T-junction, inherited Model 3 defaults).
+  3. geometry.py router, Palace config (1x 50 Ohm port), and 3D conformal meshing (mesh.py).
+  4. Parametric sweeps (sweep_model4.py), tracking (sweep_results_model4.csv/.md), visualization, and de-embedding.
+  5. Complete end-to-end run of main(skip_simulation=True) including environment (.env) parameterization.
 """
 
 import os
@@ -47,8 +47,8 @@ from visualization import plot_geometry
 
 
 def test_curved_path_length_and_phase_balance_model4():
-    """Ověření výpočtu délky obloukové trasy a přesné shody fázování Delta L."""
-    # Jednoduchý 90° roh se čtvrtkruhým obloukem: délka = (10 - R) + (10 - R) + pi*R/2
+    """Verify curved path length calculation and exact Delta L phasing match."""
+    # Simple 90° corner with quarter-circle arc: length = (10 - R) + (10 - R) + pi*R/2
     pts = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]
     expected = (10.0 - 3.0) + (10.0 - 3.0) + 0.5 * np.pi * 3.0
     assert np.isclose(calc_curved_path_length(pts, 3.0), expected, atol=1e-9)
@@ -61,7 +61,7 @@ def test_curved_path_length_and_phase_balance_model4():
         'port_impedance': 50.0,
     }
 
-    # Výchozí nastavení (otočený levý T-článek bez meandru), různý R/fillet i explicitní offset/y_T
+    # Default setup (left-facing T-junction without meander), varying R/fillet and explicit offset/y_T
     variants = [
         {},
         {'feed_bend_radius': 3.5, 'feed_end_straight': 4.6},
@@ -74,7 +74,7 @@ def test_curved_path_length_and_phase_balance_model4():
         info = compute_model4_routing(cfg)
         diff = info['L_100_b'] - info['L_100_l']
         assert np.isclose(diff, info['feed_delta_l'], atol=1e-6), (
-            f"Rozdíl drah L_100_b - L_100_l ({diff:.6f}) musí odpovídat delta_l ({info['feed_delta_l']:.6f})"
+            f"Path difference L_100_b - L_100_l ({diff:.6f}) must match delta_l ({info['feed_delta_l']:.6f})"
         )
         assert np.isclose(info['x_port'], -info['W_sub'] / 2.0, atol=1e-6)
         assert np.isclose(info['y_port'], info['y_T'], atol=1e-6)
@@ -84,14 +84,14 @@ def test_curved_path_length_and_phase_balance_model4():
         assert info['s_T_down'] >= 0.5 - 1e-6
         assert info['s_horiz_b'] >= -1e-6
 
-        # Ověření generování 2D obrysu pro obě zakřivené větve
+        # Verify 2D outline generation for both curved branches
         poly_l = compute_curved_ribbon_outline(info['arm_l_build_waypoints'], info['w_feed'], info['bend_radius'])
         poly_b = compute_curved_ribbon_outline(info['arm_b_build_waypoints'], info['w_feed'], info['bend_radius'])
         assert len(poly_l) > 10 and len(poly_b) > 10
 
 
 def test_geometry_model4_defaults_and_validation():
-    """Ověření převzetí výchozích hodnot Modelu 3, tvorby OCC entit a kontroly neplatných vstupů."""
+    """Verify inherited Model 3 defaults, OCC entity creation, and invalid input validation."""
     params = {
         'antenna_model': 4,
         'patch_L': 28.8,
@@ -105,7 +105,7 @@ def test_geometry_model4_defaults_and_validation():
         assert sub_tag is not None and air_tag is not None
         assert params['antenna_model'] == 4
 
-        # Převzaté výchozí hodnoty Modelu 3
+        # Inherited Model 3 defaults
         assert np.isclose(params['trans_w'], 0.42, atol=1e-4)
         assert 18.5 <= params['trans_l'] <= 19.2
         assert np.isclose(params['feed_inset_b'], 2.5, atol=1e-4)
@@ -113,13 +113,13 @@ def test_geometry_model4_defaults_and_validation():
         assert np.isclose(params['inset_gap_b'], 0.5, atol=1e-4)
         assert np.isclose(params['inset_gap_l'], 0.5, atol=1e-4)
 
-        # Šířky 50 Ohm a 100 Ohm vedení
+        # 50 Ohm and 100 Ohm trace widths
         expected_w50 = synth_microstrip_w(50.0, 1.52, 4.3)
         expected_w100 = synth_microstrip_w(100.0, 1.52, 4.3)
         assert np.isclose(params['w_50'], expected_w50, atol=1e-3)
         assert np.isclose(params['w_feed'], expected_w100, atol=1e-3)
 
-        # Jediný 50 Ohm port na levém okraji substrátu disjunktní s PEC
+        # Single 50 Ohm port on left substrate edge disjoint from PEC
         assert len(params['port_tags']) > 0
         assert len(params['pec_tags']) > 0
         assert set(params['port_tags']).isdisjoint(set(params['pec_tags']))
@@ -129,7 +129,7 @@ def test_geometry_model4_defaults_and_validation():
         if gmsh.isInitialized():
             gmsh.finalize()
 
-    # Kontrola neplatných geometrických vstupů
+    # Invalid geometric input checks
     for bad_override in (
         {'feed_bend_radius': 0.2},
         {'feed_inset_b': -1.0},
@@ -150,7 +150,7 @@ def test_geometry_model4_defaults_and_validation():
 
 
 def test_geometry_router_palace_and_mesh_model4(tmp_path):
-    """Ověření routeru, konfigurace Palace (1× 50 Ohm port) a 3D sítě Gmsh s oblouky."""
+    """Verify router, Palace config (1x 50 Ohm port), and 3D Gmsh mesh with curved bends."""
     orig_cwd = os.getcwd()
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
@@ -172,7 +172,7 @@ def test_geometry_router_palace_and_mesh_model4(tmp_path):
         'mesh_dist_max': 6.0,
         'feed_bend_radius': 3.0,
         'feed_end_straight': 4.6,
-        'feed_t_fillet_r': 0.0,    # Ostrý T-uzel fallback
+        'feed_t_fillet_r': 0.0,    # Sharp T-junction fallback
     }
     try:
         os.chdir(str(tmp_path))
@@ -200,7 +200,7 @@ def test_geometry_router_palace_and_mesh_model4(tmp_path):
 
 
 def test_sweep_model4_steps_and_run(tmp_path):
-    """Ověření generátoru kroků sweepu a běhu run_sweep_model4 s mockovaným main()."""
+    """Verify sweep step builder and run_sweep_model4 with mocked main()."""
     clear_keys = (
         "SWEEP_TARGET", "PATCH_L", "PATCH_W", "SWEEP_PATCH_L", "SWEEP_PATCH_W",
         "TRANS_W", "TRANS_L", "FEED_DELTA_L", "FEED_BEND_RADIUS", "FEED_T_FILLET_R",
@@ -245,7 +245,7 @@ def test_sweep_model4_steps_and_run(tmp_path):
 
 
 def test_tracker_deembedding_and_plots_model4(tmp_path):
-    """Ověření záznamu do sweep_results_model4.csv/.md, de-embeddingu a grafů pro Model 4."""
+    """Verify recording to sweep_results_model4.csv/.md, de-embedding, and plots for Model 4."""
     res_dir = str(tmp_path / "export")
     postpro_dir = str(tmp_path / "postpro")
     os.makedirs(postpro_dir, exist_ok=True)
@@ -296,11 +296,11 @@ def test_tracker_deembedding_and_plots_model4(tmp_path):
     csv_path = os.path.join(res_dir, "sweep_results_model4.csv")
     md_path = os.path.join(res_dir, "sweep_results_model4.md")
     assert os.path.exists(csv_path) and os.path.exists(md_path)
-    assert row['Polarizace'] == "LHCP"
+    assert row['Polarization'] == "LHCP"
     assert float(row['S11_min [dB]']) < -20.0
     print_summary_table_model4(csv_file=csv_path)
 
-    # Analytický de-embedding 50 Ohm přívodu -> T-článek
+    # Analytical de-embedding of 50 Ohm feed -> T-junction
     s11_c = 0.08 * np.ones_like(freqs, dtype=complex)
     deemb = calculate_deembedding_model3(freqs, s11_c, None, params=params)
     assert deemb['model'] == 4
@@ -308,9 +308,9 @@ def test_tracker_deembedding_and_plots_model4(tmp_path):
     assert 48.0 <= deemb['rp2']['z0_ref'] <= 52.0
     assert np.isclose(deemb['rp3']['z0_ref'], 100.0)
 
-    # Graf S-parametrů, de-embeddingu i geometrie
-    s_png = os.path.join(postpro_dir, "graf_S_parametry.png")
-    d_png = os.path.join(postpro_dir, "graf_impedance_skoky.png")
+    # S-parameter, de-embedding, and geometry plots
+    s_png = os.path.join(postpro_dir, "plot_s_parameters.png")
+    d_png = os.path.join(postpro_dir, "plot_deembedding.png")
     g_png = os.path.join(postpro_dir, "geometry_iso.png")
     assert plot_s_parameters(postpro_dir, output_png=s_png, params=params) is not None
     assert plot_impedance_deembedding(postpro_dir, params=params, output_png=d_png) is not None
@@ -320,14 +320,14 @@ def test_tracker_deembedding_and_plots_model4(tmp_path):
         s_png,
         d_png,
         g_png,
-        os.path.join(postpro_dir, "obrazky", "geometrie_shora.png"),
-        os.path.join(postpro_dir, "obrazky", "geometrie_detail_transformatoru.png"),
+        os.path.join(postpro_dir, "images", "geometry_top_view.png"),
+        os.path.join(postpro_dir, "images", "geometry_transformer_detail.png"),
     ):
         assert os.path.exists(p_check) and os.path.getsize(p_check) > 10000
 
 
 def test_main_skip_simulation_model4_and_env_defaults():
-    """Ověření kompletního dry-run běhu main() pro Model 4 včetně parametrů z prostředí (.env)."""
+    """Verify full dry-run main() execution for Model 4 including environment (.env) defaults."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         orig_cwd = os.getcwd()
         data_dir = os.path.join(tmp_dir, "data")

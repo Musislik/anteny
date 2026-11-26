@@ -19,25 +19,25 @@ def plot_e_field(vtu_file=None, output_image=None):
     if output_image is None:
         output_image = os.path.join(data_dir, "postpro", "efield.png")
 
-    print(f"Načítám soubor s polem: {vtu_file}")
+    print(f"Loading field file: {vtu_file}")
     if not os.path.exists(vtu_file):
-        print(f"Soubor {vtu_file} nenalezen. Ujistěte se, že simulátor Palace úspěšně vygeneroval pole.")
+        print(f"File {vtu_file} not found. Make sure Palace simulation generated the field output.")
         return
         
     try:
-        # Povolit off-screen rendering pro headless běh
-        pv.start_xvfb() # Může být potřeba na Linuxu, na Windows je ignorováno/nepotřebné
+        # Enable off-screen rendering for headless execution
+        pv.start_xvfb() # May be needed on Linux; ignored/unnecessary on Windows
     except Exception:
         pass
         
     mesh = pv.read(vtu_file)
     
-    # Palace ukládá elektrické pole typicky jako 'E' nebo 'E_real', 'E_imag'
-    # Pokud nemáme reálná data (mock), vykreslíme aspoň geometrii ze sítě
+    # Palace typically saves the electric field as 'E' or 'E_real', 'E_imag'
+    # If real field data is unavailable (mock), render the mesh geometry
     
     plotter = pv.Plotter(off_screen=True)
     try:
-        # Zkusíme najít vektorová data E
+        # Try to find electric field vector data
         e_field_key = None
         for key in mesh.point_data.keys():
             if 'E' in key or 'e' in key.lower():
@@ -47,15 +47,15 @@ def plot_e_field(vtu_file=None, output_image=None):
         if e_field_key:
             plotter.add_mesh(mesh, scalars=e_field_key, cmap='jet', show_scalar_bar=True)
         else:
-            # Pokud pole neexistuje, vykreslíme jen povrch a obarvíme podle osy Z
+            # If the field array does not exist, plot the surface colored by the Z-axis
             plotter.add_mesh(mesh, scalars=mesh.points[:, 2], cmap='viridis', show_scalar_bar=False)
-            print("Vektorové E-pole nenalezeno v datech, vykresluji pouze síť.")
+            print("Vector E-field not found in data, rendering mesh only.")
 
         plotter.view_isometric()
         plotter.add_axes()
         os.makedirs(os.path.dirname(os.path.abspath(output_image)) or ".", exist_ok=True)
         plotter.screenshot(output_image)
-        print(f"Rozložení pole bylo exportováno do: {output_image}")
+        print(f"Field distribution exported to: {output_image}")
     finally:
         plotter.close()
 

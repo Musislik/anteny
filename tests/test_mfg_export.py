@@ -1,6 +1,6 @@
 """
-test_mfg_export.py - Testy výrobních funkcí dle pokynů VUT (Manufacturing of antennas - instructions.pdf).
-Ověřuje výpočet ořezových značek, identifikačního symbolu 'PM.', zrcadlení a generování KiCad 10 desky.
+test_mfg_export.py - Tests for manufacturing features per BUT guidelines (Manufacturing of antennas - instructions.pdf).
+Verifies corner alignment marks calculation, 'PM.' identifier symbol, mirroring, and KiCad 10 board generation.
 """
 
 import os
@@ -48,43 +48,43 @@ class TestManufacturingExport(unittest.TestCase):
         }
 
     def test_corner_marks_count_and_positions(self):
-        """Ověří, že compute_mfg_corner_marks vygeneruje přesně 8 obdélníků přiléhajících k rohům."""
+        """Verify that compute_mfg_corner_marks generates exactly 8 rectangles adjacent to the corners."""
         xmin, xmax = -25.0, 35.0
         ymin, ymax = -20.0, 30.0
         lm = 8.0
         wm = 2.0
         marks = compute_mfg_corner_marks(xmin, xmax, ymin, ymax, mark_len=lm, mark_w=wm)
-        self.assertEqual(len(marks), 8, "Musí být vytvořeno přesně 8 ořezových značek (2 pro každý ze 4 rohů).")
+        self.assertEqual(len(marks), 8, "Exactly 8 corner marks must be created (2 for each of the 4 corners).")
 
         for poly in marks:
-            self.assertEqual(len(poly), 4, "Každá značka musí být čtyřúhelník/obdélník.")
+            self.assertEqual(len(poly), 4, "Each mark must be a quadrilateral/rectangle.")
             xs = [p[0] for p in poly]
             ys = [p[1] for p in poly]
             w = max(xs) - min(xs)
             h = max(ys) - min(ys)
-            # Každá značka má rozměry lm x wm nebo wm x lm
+            # Each mark has dimensions lm x wm or wm x lm
             self.assertTrue(
                 (abs(w - lm) < 1e-6 and abs(h - wm) < 1e-6) or (abs(w - wm) < 1e-6 and abs(h - lm) < 1e-6),
-                f"Rozměry značky ({w} x {h}) musí odpovídat mark_len ({lm}) a mark_w ({wm}).",
+                f"Mark dimensions ({w} x {h}) must match mark_len ({lm}) and mark_w ({wm}).",
             )
 
     def test_ident_polygons_generation_and_mirror(self):
-        """Ověří generování identifikačního symbolu 'PM.' v normálním i zrcadleném režimu."""
+        """Verify generation of the 'PM.' identifier symbol in normal and mirrored modes."""
         polys_normal = compute_mfg_ident_polygons(text="PM.", center_x=0.0, base_y=35.0, height=5.0, mirror=False)
-        self.assertGreater(len(polys_normal), 0, "Identifikační symbol musí obsahovat polygony.")
+        self.assertGreater(len(polys_normal), 0, "Identifier symbol must contain polygons.")
 
         polys_mirrored = compute_mfg_ident_polygons(text="PM.", center_x=0.0, base_y=35.0, height=5.0, mirror=True)
-        self.assertEqual(len(polys_normal), len(polys_mirrored), "Počet polygonů v normálním a zrcadleném režimu musí být stejný.")
+        self.assertEqual(len(polys_normal), len(polys_mirrored), "Polygon count in normal and mirrored modes must match.")
 
-        # V normálním režimu je P vlevo (zápornější X) a tečka vpravo (kladnější X)
+        # In normal mode, P is on the left (more negative X) and the dot is on the right (more positive X)
         xs_norm = [p[0] for poly in polys_normal for p in poly]
-        # V zrcadleném režimu se X převrátí (x -> -x)
+        # In mirrored mode, X is flipped (x -> -x)
         xs_mir = [p[0] for poly in polys_mirrored for p in poly]
         self.assertAlmostEqual(min(xs_norm), -max(xs_mir), places=4)
         self.assertAlmostEqual(max(xs_norm), -min(xs_mir), places=4)
 
     def test_kicad_geometry_data_with_mfg_vut(self):
-        """Ověří integraci výrobních prvků do KiCadGeometryData."""
+        """Verify integration of manufacturing features into KiCadGeometryData."""
         geom_default = get_model4_kicad_geometry(self.params, mfg_vut=False)
         self.assertEqual(len(geom_default.mfg_corner_marks), 0)
         self.assertEqual(len(geom_default.mfg_ident_polygons), 0)
@@ -101,7 +101,7 @@ class TestManufacturingExport(unittest.TestCase):
         self.assertTrue(geom_mfg_mir.is_mirrored)
 
     def test_generate_kicad_pcb_mfg(self):
-        """Ověří, že vygenerovaný soubor .kicad_pcb obsahuje výrobní zóny a masky."""
+        """Verify that the generated .kicad_pcb file contains manufacturing zones and masks."""
         with tempfile.TemporaryDirectory() as tmpdir:
             out_pcb = os.path.join(tmpdir, "test_antenna_mfg.kicad_pcb")
             res = generate_kicad_pcb(
@@ -117,18 +117,18 @@ class TestManufacturingExport(unittest.TestCase):
             with open(out_pcb, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            self.assertIn('(generator "antena_kicad_generator")', content)
+            self.assertIn('(generator "antenna_kicad_generator")', content)
             self.assertIn('(net "RF_IN")', content)
             self.assertIn('(net "GND")', content)
             self.assertIn('"Edge.Cuts"', content)
             self.assertIn('"F.Mask"', content)
-            # Ořezové značky mají prioritu 50..
+            # Corner marks have priority 50..
             self.assertIn("(priority 50)", content)
-            # Symbol má prioritu 70..
+            # Identifier symbol has priority 70..
             self.assertIn("(priority 70)", content)
 
     def test_generate_kicad_pcb_mfg_mirrored(self):
-        """Ověří generování zrcadlené desky (mirror_x=True) včetně rotace SMA konektoru."""
+        """Verify generation of a mirrored board (mirror_x=True) including SMA connector rotation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             out_pcb = os.path.join(tmpdir, "test_antenna_mfg_mirrored.kicad_pcb")
             res = generate_kicad_pcb(
@@ -143,7 +143,7 @@ class TestManufacturingExport(unittest.TestCase):
             with open(out_pcb, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            # Zrcadlený SMA konektor má rotaci 180 stupňů
+            # Mirrored SMA connector has 180-degree rotation
             self.assertIn('180)\n    (attr smd)', content)
 
 

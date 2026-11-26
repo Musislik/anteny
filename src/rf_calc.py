@@ -1,23 +1,23 @@
 """
-rf_calc.py - Analytické vysokofrekvenční výpočty a syntéza mikropáskových struktur
-Založeno na standardních modelech (Hammerstad & Jensen, Wheeler, Bahl & Bhartia).
+rf_calc.py - Analytical RF calculations and synthesis of microstrip structures
+Based on standard models (Hammerstad & Jensen, Wheeler, Bahl & Bhartia).
 """
 
 import numpy as np
 import warnings
 
-# Základní fyzikální a technické konstanty
-C_0_MM_GHZ = 299.792458       # Rychlost světla ve vakuu [mm * GHz]
-ETA_0 = 376.7303135           # Vlnová impedance vakua [Ohm]
-DESIGN_FREQ_GHZ = 2.3325      # Střední frekvence pásma SDARS (2.320 - 2.345 GHz) [GHz]
-PORT_Z0 = 50.0                # Jmenovitá impedance portu [Ohm]
+# Fundamental physical and engineering constants
+C_0_MM_GHZ = 299.792458       # Speed of light in vacuum [mm * GHz]
+ETA_0 = 376.7303135           # Free-space wave impedance [Ohm]
+DESIGN_FREQ_GHZ = 2.3325      # SDARS center frequency (2.320 - 2.345 GHz) [GHz]
+PORT_Z0 = 50.0                # Nominal port impedance [Ohm]
 
 def calc_microstrip_eps_eff(w, h, eps_r):
     """
-    Vypočte efektivní permitivitu mikropáskového vedení (Hammerstad & Jensen).
-    :param w: Šířka mikropásku [mm]
-    :param h: Výška substrátu [mm]
-    :param eps_r: Relativní permitivita substrátu [-]
+    Compute effective permittivity of a microstrip line (Hammerstad & Jensen).
+    :param w: Microstrip width [mm]
+    :param h: Substrate height [mm]
+    :param eps_r: Relative substrate permittivity [-]
     :return: eps_eff [-]
     """
     u = w / h
@@ -26,7 +26,7 @@ def calc_microstrip_eps_eff(w, h, eps_r):
 
 def calc_microstrip_z0(w, h, eps_r):
     """
-    Vypočte charakteristickou impedanci mikropáskového vedení Z0.
+    Compute characteristic impedance Z0 of a microstrip line.
     """
     u = w / h
     eps_eff = calc_microstrip_eps_eff(w, h, eps_r)
@@ -38,12 +38,12 @@ def calc_microstrip_z0(w, h, eps_r):
 
 def synth_microstrip_w(z0_target, h, eps_r):
     """
-    Syntetizuje šířku mikropásku w pro cílovou charakteristickou impedanci Z0 (Wheeler/Bahl).
+    Synthesize microstrip width w for target characteristic impedance Z0 (Wheeler/Bahl).
     """
     a = (z0_target / 60.0) * np.sqrt((eps_r + 1.0) / 2.0) + ((eps_r - 1.0) / (eps_r + 1.0)) * (0.23 + 0.11 / eps_r)
     b = (377.0 * np.pi) / (2.0 * z0_target * np.sqrt(eps_r))
     
-    # Počáteční odhad u = w / h
+    # Initial guess u = w / h
     if a > 1.52:
         u = 8.0 * np.exp(a) / (np.exp(2.0 * a) - 2.0)
     else:
@@ -51,13 +51,13 @@ def synth_microstrip_w(z0_target, h, eps_r):
         
     w = u * h
     
-    # Newtonova zpřesňující iterace
+    # Newton refinement iteration
     for _ in range(5):
         current_z0 = calc_microstrip_z0(w, h, eps_r)
         diff = current_z0 - z0_target
         if abs(diff) < 1e-4:
             break
-        # Numerická derivace
+        # Numerical derivative
         dw = 1e-4
         z0_plus = calc_microstrip_z0(w + dw, h, eps_r)
         dz_dw = (z0_plus - current_z0) / dw
@@ -67,10 +67,10 @@ def synth_microstrip_w(z0_target, h, eps_r):
 
 def calc_quarter_wave_length(freq_ghz, eps_eff):
     """
-    Vypočte čtvrtvlnnou délku vedení lambda_g / 4 pro danou frekvenci a efektivní permitivitu.
-    :param freq_ghz: Frekvence v GHz
-    :param eps_eff: Efektivní permitivita vedení
-    :return: lambda_g / 4 v mm
+    Compute quarter-wavelength lambda_g / 4 for a given frequency and effective permittivity.
+    :param freq_ghz: Frequency in GHz
+    :param eps_eff: Effective permittivity of the line
+    :return: lambda_g / 4 in mm
     """
     lambda_0 = C_0_MM_GHZ / freq_ghz
     lambda_g = lambda_0 / np.sqrt(eps_eff)
@@ -78,14 +78,14 @@ def calc_quarter_wave_length(freq_ghz, eps_eff):
 
 def calc_quarter_wave_transformer_z(z_source, z_load):
     """
-    Vypočte impedanci čtvrtvlnného přizpůsobovacího transformátoru:
+    Compute impedance of a quarter-wave matching transformer:
     Z_trans = sqrt(Z_source * Z_load)
     """
     return float(np.sqrt(z_source * z_load))
 
 def calc_patch_fringing(w, h, eps_r):
     """
-    Vypočte prodloužení flíčku delta_L způsobené rozptylovým polem (Hammerstad).
+    Compute patch length extension delta_L due to fringing fields (Hammerstad).
     """
     eps_eff = calc_microstrip_eps_eff(w, h, eps_r)
     u = w / h
@@ -94,7 +94,7 @@ def calc_patch_fringing(w, h, eps_r):
 
 def calc_patch_resonance(patch_w, patch_l, h, eps_r):
     """
-    Vypočte efektivní délku a rezonanční frekvenci flíčku.
+    Compute effective length and resonant frequency of the patch.
     """
     delta_l, eps_eff = calc_patch_fringing(patch_w, h, eps_r)
     l_eff = patch_l + 2.0 * delta_l
@@ -103,8 +103,8 @@ def calc_patch_resonance(patch_w, patch_l, h, eps_r):
 
 def synth_square_patch_size(freq_ghz, h, eps_r):
     """
-    Syntetizuje rozměr čtvercového mikropáskového flíčku L = W pro požadovanou rezonanční frekvenci.
-    Využívá analytický model rozptylu a Newtonovu iterační metodu.
+    Synthesize square microstrip patch dimension L = W for the target resonant frequency.
+    Uses an analytical fringing model and Newton's iterative method.
     """
     l = C_0_MM_GHZ / (2.0 * freq_ghz * np.sqrt(eps_r))
     for _ in range(20):
@@ -120,7 +120,7 @@ def synth_square_patch_size(freq_ghz, h, eps_r):
 
 def synth_patch_length(freq_ghz, patch_w, h, eps_r):
     """
-    Syntetizuje rezonanční délku flíčku L pro zadanou šířku patch_w.
+    Synthesize resonant patch length L for a given width patch_w.
     """
     delta_l, eps_eff = calc_patch_fringing(patch_w, h, eps_r)
     l_eff = C_0_MM_GHZ / (2.0 * freq_ghz * np.sqrt(eps_eff))
@@ -129,52 +129,52 @@ def synth_patch_length(freq_ghz, patch_w, h, eps_r):
 
 def calc_patch_edge_impedance(patch_w, patch_l, h, eps_r):
     """
-    Orientační vstupní odpor na okraji mikropáskového flíčku (Bahl & Bhartia).
-    Typicky se pohybuje mezi 150 a 300 Ohmy.
+    Approximate input resistance at the edge of a microstrip patch (Bahl & Bhartia).
+    Typically ranges between 150 and 300 Ohms.
     """
-    # Pro čtvercový/blízce čtvercový flíček:
+    # For a square / nearly square patch:
     g1 = (patch_w / 120.0) * (1.0 - (1.0 / 24.0) * (2.0 * np.pi * DESIGN_FREQ_GHZ * h / C_0_MM_GHZ)**2)
     # R_in = 1 / (2 * G1)
     r_in = 1.0 / max(2.0 * g1, 1e-4)
-    # Zastropujeme do fyzikálně realistického rozsahu
+    # Clamp to a physically realistic range
     return float(np.clip(r_in, 150.0, 300.0))
 
 def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3, inset=0.0):
     """
-    Uživatelská funkce pro výpočet jednotlivých délek mikropáskového vedení l1 až l8
-    napájecí sítě cross-fed patch antény (kruhová polarizace LHCP).
-    Umožňuje zanoření napaječe (inset feed) o hloubku inset do vyzařujícího flíčku.
+    Compute individual microstrip segment lengths l1 through l8
+    of the cross-fed patch antenna feed network (LHCP circular polarization).
+    Supports inset feeding by depth `inset` into the radiating patch.
 
-    Přiřazení a definice délek l1 až l8:
-    -----------------------------------
-    1. Vstupní přívod (šířka w1 = 50 Ohm, budicí port -> T-uzel):
-       - l1: Délka přívodního vedení od budicího portu na okraji substrátu (y = -L_sub/2)
-             k T-uzlu děliče (x_T, y_T).
+    Segment assignment and definitions l1 through l8:
+    -------------------------------------------------
+    1. Input feed (width w1 = 50 Ohm, excitation port -> T-junction):
+       - l1: Feed line length from the excitation port on substrate edge (y = -L_sub/2)
+             to the divider T-junction (x_T, y_T).
 
-    2. Spodní referenční větev (fáze 0°, buzení pole Ey, spodní hrana flíčku):
-       - l2: Horizontální úsek z T-uzlu doprava ke skoku šířky (šířka w2 = 100 Ohm, délka Delta).
-       - l3: Horizontální úsek od skoku šířky k rohovému ohybu (šířka w3, přechod k ose flíčku x = 0).
-       - l4: Vertikální úsek od rohového ohybu nahoru k napájecímu bodu flíčku (šířka w3, y = -L/2 + inset).
+    2. Bottom reference branch (phase 0 deg, Ey field excitation, bottom patch edge):
+       - l2: Horizontal section from T-junction rightward to width step (width w2 = 100 Ohm, length Delta).
+       - l3: Horizontal section from width step to corner bend (width w3, transition to patch centerline x = 0).
+       - l4: Vertical section from corner bend upward to patch feed point (width w3, y = -L/2 + inset).
 
-    3. Levá zpožďovací větev (fáze -90°, buzení pole Ex, levá hrana flíčku):
-       - l5: Horizontální úsek z T-uzlu doleva k rohovému ohybu (šířka w2 = 100 Ohm, vybočení jog).
-       - l6: Vertikální úsek od ohybu nahoru ke skoku šířky (šířka w2 = 100 Ohm, délka Delta + lambda_g/4).
-       - l7: Vertikální úsek od skoku šířky k hornímu rohovému ohybu (šířka w3, k úrovni y = 0).
-       - l8: Horizontální úsek od horního ohybu doprava k napájecímu bodu flíčku (šířka w3, x = -W/2 + inset).
+    3. Left delay branch (phase -90 deg, Ex field excitation, left patch edge):
+       - l5: Horizontal section from T-junction leftward to corner bend (width w2 = 100 Ohm, jog offset).
+       - l6: Vertical section from bend upward to width step (width w2 = 100 Ohm, length Delta + lambda_g/4).
+       - l7: Vertical section from width step to upper corner bend (width w3, to level y = 0).
+       - l8: Horizontal section from upper bend rightward to patch feed point (width w3, x = -W/2 + inset).
 
-    Vstupní parametry:
-        L (float): délka rezonančního flíčku [mm]
-        W (float): šířka rezonančního flíčku [mm]
-        h (float): výška dielektrického substrátu [mm]
-        lambda_g (float): efektivní vlnová délka mikropásku v 100 Ohm větvi [mm]
+    Input parameters:
+        L (float): resonant patch length [mm]
+        W (float): resonant patch width [mm]
+        h (float): dielectric substrate height [mm]
+        lambda_g (float): effective microstrip wavelength in 100 Ohm branch [mm]
                           (lambda_g = c_0 / (f_c * sqrt(eps_eff_w2)))
-        w1 (float): šířka hlavního 50 Ohm přívodu [mm]
-        w2 (float): šířka 100 Ohm ramen děliče výkonu [mm]
-        w3 (float): šířka propojovacího vedení k anténě [mm]
-        inset (float): hloubka zanoření napaječe do flíčku [mm] (výchozí: 0.0)
+        w1 (float): main 50 Ohm feed width [mm]
+        w2 (float): 100 Ohm power divider arm width [mm]
+        w3 (float): connecting line width to the antenna [mm]
+        inset (float): feed inset depth into the patch [mm] (default: 0.0)
 
-    Návratová hodnota:
-        dict: {'l1': float, 'l2': float, ..., 'l8': float} (všechny rozměry v mm)
+    Returns:
+        dict: {'l1': float, 'l2': float, ..., 'l8': float} (all dimensions in mm)
     """
 
     l1 = 10*h + w2/2
@@ -197,55 +197,55 @@ def calc_feed_lengths(L, W, h, lambda_g, w1, w2, w3, inset=0.0):
         'l8': float(np.round(l8, 3)),
     }
 
-    # 1. Vyhodnocení chyby: nulový nebo záporný rozměr
+    # 1. Error check: zero or negative dimension
     for name, val in lengths.items():
         if val <= 0.0:
-            raise ValueError(f"Chyba návrhu napájecího obvodu: Rozměr {name} nesmí být nulový ani záporný ({name} = {val:.3f} mm)!")
+            raise ValueError(f"Feed network design error: Dimension {name} must not be zero or negative ({name} = {val:.3f} mm)!")
 
-    # 2. Vyhodnocení upozornění: nedodržení minimálního odstupu 5*h + w3/2 vně flíčku
+    # 2. Warning check: minimum clearance 5*h + w3/2 outside the patch
     limit = 5.0 * h + (w3 / 2.0)
     if (l8 - inset) < limit:
-        msg = f"Nedodržena podmínka odstupu l8 vně flíčku: ({l8 - inset:.3f} mm) < 5*h + w3/2 ({limit:.3f} mm). Hrozí parazitní vazba flíčku s napájecím vedením!"
+        msg = f"Minimum clearance outside patch violated for l8: ({l8 - inset:.3f} mm) < 5*h + w3/2 ({limit:.3f} mm). Risk of parasitic coupling between patch and feed line!"
         warnings.warn(msg, UserWarning, stacklevel=2)
-        print(f"[VAROVÁNÍ] {msg}")
+        print(f"[WARNING] {msg}")
     if (l4 - inset) < limit:
-        msg = f"Nedodržena podmínka odstupu l4 vně flíčku: ({l4 - inset:.3f} mm) < 5*h + w3/2 ({limit:.3f} mm). Hrozí parazitní vazba flíčku s napájecím vedením!"
+        msg = f"Minimum clearance outside patch violated for l4: ({l4 - inset:.3f} mm) < 5*h + w3/2 ({limit:.3f} mm). Risk of parasitic coupling between patch and feed line!"
         warnings.warn(msg, UserWarning, stacklevel=2)
-        print(f"[VAROVÁNÍ] {msg}")
+        print(f"[WARNING] {msg}")
     return lengths
 
 def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FREQ_GHZ, port_z0=PORT_Z0, w3=None, sub_margin=None, inset=0.0):
     """
-    Vypočte rozměry napájecí sítě cross-fed patch antény:
-    1. w1: Hlavní vstupní vedení (50 Ohm, přirozeně přizpůsobeno T-uzlu 100 || 100 = 50 Ohm).
-    2. w2: Větve děliče výkonu (100 Ohm), ze kterých se počítá fázovací zpoždění lambda_g/4.
-    3. w3: Vodič k samotné anténě (optimalizační stupeň volnosti, w3 <= w2).
-    4. inset: Zanoření napájecího vedení do flíčku (jediný parametr pro inset feed).
+    Compute dimensions of the cross-fed patch antenna feed network:
+    1. w1: Main input line (50 Ohm, naturally matched to T-junction 100 || 100 = 50 Ohm).
+    2. w2: Power divider branches (100 Ohm), used to compute the lambda_g/4 phase delay.
+    3. w3: Connecting line to the antenna (optimization degree of freedom, w3 <= w2).
+    4. inset: Feed line inset into the patch (single inset feed parameter).
     """
-    # 1. Hlavní přívodní vedení (w1, 50 Ohm)
+    # 1. Main feed line (w1, 50 Ohm)
     w1 = synth_microstrip_w(port_z0, h, eps_r)
     eps_eff_w1 = calc_microstrip_eps_eff(w1, h, eps_r)
 
-    # 2. Větve děliče výkonu (w2, 100 Ohm)
-    # Z2 = 2 * Z1 = 100 Ohm -> Z_in,T = 100 || 100 = 50 Ohm (přirozené přizpůsobení, bez transformátoru)
+    # 2. Power divider branches (w2, 100 Ohm)
+    # Z2 = 2 * Z1 = 100 Ohm -> Z_in,T = 100 || 100 = 50 Ohm (natural matching, no transformer)
     z_branch = 2.0 * port_z0
     w2 = synth_microstrip_w(z_branch, h, eps_r)
     eps_eff_w2 = calc_microstrip_eps_eff(w2, h, eps_r)
     lambda_g2_4 = calc_quarter_wave_length(freq_ghz, eps_eff_w2)
     lambda_g2 = 4.0 * lambda_g2_4
 
-    # 3. Vodič k anténě (w3, stupeň volnosti, mez: w3 <= w2)
+    # 3. Line to antenna (w3, degree of freedom, bound: w3 <= w2)
     if w3 is None:
         w3 = w2
 
     eps_eff_w3 = calc_microstrip_eps_eff(w3, h, eps_r)
     lambda_g3_4 = calc_quarter_wave_length(freq_ghz, eps_eff_w3)
 
-    # Vlnová délka rovinné vlny v dielektriku (TEM)
+    # Plane-wave wavelength in dielectric (TEM)
     lambda_0 = C_0_MM_GHZ / freq_ghz
     lambda_sub = lambda_0 / np.sqrt(eps_r)
 
-    # Výpočet délek vedení l1 až l8 uživatelskou funkcí s efektivní vlnovou délkou mikropásku lambda_g2 a parametrem inset
+    # Compute segment lengths l1..l8 using effective microstrip wavelength lambda_g2 and inset parameter
     feed_lengths = calc_feed_lengths(L=patch_l, W=patch_w, h=h, lambda_g=lambda_g2, w1=w1, w2=w2, w3=w3, inset=inset)
 
     l1 = float(feed_lengths['l1'])
@@ -254,25 +254,25 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
     l4 = float(feed_lengths['l4'])
     l5 = float(feed_lengths['l5'])
 
-    # Poloha T-uzlu odvozená přímo z délek spodní větve:
-    # Dolní ohyb je na x=0, y=y_T. Spodní větev vede od T-uzlu (x_T, y_T) doprava: x_T + l2 + l3 = 0 -> x_T = -(l2 + l3)
-    # Vertikální úsek l4 vede od y_T k napájecímu bodu (-L/2 + inset): y_T = -(patch_l / 2.0) + inset - l4
+    # T-junction position derived directly from bottom branch lengths:
+    # Bottom bend is at x=0, y=y_T. Bottom branch goes right from T-junction (x_T, y_T): x_T + l2 + l3 = 0 -> x_T = -(l2 + l3)
+    # Vertical section l4 goes from y_T to feed point (-L/2 + inset): y_T = -(patch_l / 2.0) + inset - l4
     x_T = -(l2 + l3)
     y_T = -(patch_l / 2.0) + inset - l4
 
     feed_offset_x = float(np.round(abs(x_T) - (patch_w / 2.0), 1))
     feed_offset_y = float(np.round(abs(y_T) - (patch_l / 2.0), 1))
 
-    # Fyzikální rezerva dielektrika substrátu za kovem (standardní odstup 5*h pro doznění rozptylových polí)
+    # Physical dielectric margin of substrate beyond metal (standard 5*h clearance for fringing field decay)
     if sub_margin is None:
         sub_margin = 5.0 * h
 
-    # Rozměry substrátu odvozené z reálného dosahu vedení l1 až l8 a šířek w1, w2, w3:
-    # V ose Y: od portu (y_T - l1) k horní hraně patche (+L/2) s rezervou sub_margin
+    # Substrate dimensions derived from actual span of lines l1..l8 and widths w1, w2, w3:
+    # Along Y-axis: from port (y_T - l1) to top patch edge (+L/2) with sub_margin
     y_needed = max(abs(y_T - l1), (patch_l / 2.0) + sub_margin)
     sub_l = float(np.round(2.0 * y_needed, 1))
 
-    # V ose X: od levého okraje vedení (x_T - l5 - w2/2) k pravé hraně patche (+W/2) s rezervou sub_margin
+    # Along X-axis: from left trace edge (x_T - l5 - w2/2) to right patch edge (+W/2) with sub_margin
     x_needed = max(abs(x_T - l5) + (w2 / 2.0), (patch_w / 2.0)) + sub_margin
     sub_w = float(np.round(2.0 * x_needed, 1))
 
@@ -280,14 +280,14 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
         'w1': float(np.round(w1, 2)),
         'w2': float(np.round(w2, 2)),
         'w3': float(np.round(w3, 2)),
-        'feed_w': float(np.round(w1, 2)),          # Zpětná kompatibilita pro port
+        'feed_w': float(np.round(w1, 2)),          # Backward compatibility for port
         'eps_eff_w1': float(np.round(eps_eff_w1, 3)),
         'eps_eff_w2': float(np.round(eps_eff_w2, 3)),
         'eps_eff_w3': float(np.round(eps_eff_w3, 3)),
         'lambda_g': float(np.round(lambda_g2, 3)),
         'lambda_g2_4': float(np.round(lambda_g2_4, 3)),
         'lambda_g3_4': float(np.round(lambda_g3_4, 3)),
-        'lambda_g_4': float(np.round(lambda_g2_4, 3)),  # Zpětná kompatibilita
+        'lambda_g_4': float(np.round(lambda_g2_4, 3)),  # Backward compatibility
         'lambda_sub': float(np.round(lambda_sub, 3)),
         'feed_x_T': float(np.round(x_T, 3)),
         'feed_y_T': float(np.round(y_T, 3)),
@@ -300,7 +300,7 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
         'inset': float(np.round(inset, 3)),
         'feed_lengths': feed_lengths,
     }
-    # Pro přímý přístup k l1 až l8 v params
+    # For direct access to l1..l8 in params
     if isinstance(feed_lengths, dict):
         res.update(feed_lengths)
     elif isinstance(feed_lengths, (list, tuple)):
@@ -312,15 +312,15 @@ def calc_feed_network_dimensions(patch_w, patch_l, h, eps_r, freq_ghz=DESIGN_FRE
 
 def calc_microstrip_propagation(w, h, eps_r, tan_delta=0.02, freqs_ghz=DESIGN_FREQ_GHZ):
     """
-    Vypočte vlnové parametry mikropáskového vedení:
-    Z0, eps_eff, fázovou konstantu beta [rad/mm], konstantu útlumu alpha [Np/mm]
-    a komplexní konstantu šíření gamma = alpha + j*beta [1/mm].
+    Compute wave propagation parameters of a microstrip line:
+    Z0, eps_eff, phase constant beta [rad/mm], attenuation constant alpha [Np/mm],
+    and complex propagation constant gamma = alpha + j*beta [1/mm].
 
-    :param w: Šířka mikropásku [mm]
-    :param h: Výška substrátu [mm]
-    :param eps_r: Relativní permitivita substrátu [-]
-    :param tan_delta: Ztrátový činitel dielektrika [-]
-    :param freqs_ghz: Frekvence v GHz (skalár nebo numpy pole)
+    :param w: Microstrip width [mm]
+    :param h: Substrate height [mm]
+    :param eps_r: Relative substrate permittivity [-]
+    :param tan_delta: Dielectric loss tangent [-]
+    :param freqs_ghz: Frequency in GHz (scalar or numpy array)
     :return: (Z0, eps_eff, beta, alpha, gamma)
     """
     w = float(w)
@@ -334,19 +334,19 @@ def calc_microstrip_propagation(w, h, eps_r, tan_delta=0.02, freqs_ghz=DESIGN_FR
     is_scalar = np.ndim(freqs_ghz) == 0
     freqs = np.atleast_1d(np.asarray(freqs_ghz, dtype=float))
 
-    # Vlnové číslo ve vakuu k0 [rad/mm]
+    # Free-space wavenumber k0 [rad/mm]
     k0 = (2.0 * np.pi * freqs) / C_0_MM_GHZ
 
-    # Fázová konstanta beta [rad/mm]
+    # Phase constant beta [rad/mm]
     beta = k0 * np.sqrt(eps_eff)
 
-    # Útlum dielektrikem alpha_d [Np/mm]
+    # Dielectric attenuation alpha_d [Np/mm]
     if eps_r > 1.0 and tan_delta > 0.0:
         alpha_d = (k0 * eps_r * (eps_eff - 1.0) * tan_delta) / (2.0 * np.sqrt(eps_eff) * (eps_r - 1.0))
     else:
         alpha_d = np.zeros_like(freqs)
 
-    # Útlum vodičem alpha_c [Np/mm] (měď: sigma = 5.8e7 S/m)
+    # Conductor attenuation alpha_c [Np/mm] (copper: sigma = 5.8e7 S/m)
     # R_s = sqrt(pi * f * mu0 / sigma)
     mu_0 = 4.0 * np.pi * 1e-7
     sigma_cu = 5.8e7
@@ -364,19 +364,19 @@ def calc_microstrip_propagation(w, h, eps_r, tan_delta=0.02, freqs_ghz=DESIGN_FR
 
 def deembed_transmission_line(zin, z0_line, gamma, length_mm):
     """
-    Provede analytický de-embedding úseku přenosového vedení (zpětná transformace impedance/odrazu).
-    Posouvá referenční rovinu směrem k zátěži (odečtení délky vedení length_mm).
+    Perform analytical de-embedding of a transmission line section (reverse impedance/reflection transformation).
+    Shifts the reference plane toward the load (subtracting line length length_mm).
 
-    Využívá zpětnou transformaci komplexního činitele odrazu:
+    Uses reverse transformation of the complex reflection coefficient:
     Gamma_L = Gamma_in * exp(+2 * gamma * length_mm)
-    a následný přepočet na impedanci zátěže:
+    followed by conversion to load impedance:
     Z_L = Z0_line * (1 + Gamma_L) / (1 - Gamma_L)
 
-    :param zin: Komplexní vstupní impedance před de-embeddingem [Ohm]
-    :param z0_line: Charakteristická impedance de-embedovaného vedení [Ohm]
-    :param gamma: Komplexní konstanta šíření vedení gamma = alpha + j*beta [1/mm]
-    :param length_mm: Fyzická délka úseku vedení k odečtení [mm]
-    :return: Komplexní impedance Z_L v de-embedované rovině [Ohm]
+    :param zin: Complex input impedance before de-embedding [Ohm]
+    :param z0_line: Characteristic impedance of the de-embedded line [Ohm]
+    :param gamma: Complex propagation constant gamma = alpha + j*beta [1/mm]
+    :param length_mm: Physical length of the line section to subtract [mm]
+    :return: Complex impedance Z_L at the de-embedded plane [Ohm]
     """
     zin_arr = np.asarray(zin, dtype=complex)
     is_scalar = np.ndim(zin) == 0
@@ -387,13 +387,13 @@ def deembed_transmission_line(zin, z0_line, gamma, length_mm):
     z0 = float(z0_line)
     length = float(length_mm)
 
-    # Vstupní činitel odrazu vztažený k impedanci daného vedení Z0
+    # Input reflection coefficient referenced to line impedance Z0
     gamma_in = (zin_arr - z0) / (zin_arr + z0 + 1e-12)
 
-    # Posun roviny k zátěži (odstranění fázového zpoždění a útlumu: exp(+2 * gamma * length))
+    # Shift plane toward load (remove phase delay and attenuation: exp(+2 * gamma * length))
     gamma_l = gamma_in * np.exp(2.0 * gamma * length)
 
-    # Zpětný přepočet na impedanci zátěže
+    # Convert back to load impedance
     denom = 1.0 - gamma_l
     safe_denom = np.where(np.abs(denom) < 1e-12, 1e-12, denom)
     z_load = z0 * (1.0 + gamma_l) / safe_denom
@@ -405,17 +405,17 @@ def deembed_transmission_line(zin, z0_line, gamma, length_mm):
 
 def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=None):
     """
-    Provede kompletní kaskádní de-embedding impedančních skoků pro Model 3 (i Model 2 a Model 1 fallback)
-    přes 3 referenční roviny:
-      - RP1 (Port): svorka lumped portu na okraji substrátu (Z0_port = 100 Ohm)
-      - RP2 (Svorka transformátoru): po odečtení délky vnějšího 100 Ohm vedení L_100
-      - RP3 (Vstup do flíčku): po odečtení čtvrtvlnného transformátoru w_T, l_T (cíl ~140 Ohm)
+    Perform complete cascaded de-embedding of impedance steps for Model 3 (as well as Model 2 and Model 1 fallback)
+    across 3 reference planes:
+      - RP1 (Port): lumped port terminal on the substrate edge (Z0_port = 100 Ohm)
+      - RP2 (Transformer terminal): after subtracting outer 100 Ohm line length L_100
+      - RP3 (Patch input): after subtracting quarter-wave transformer w_T, l_T (target ~140 Ohm)
 
-    :param freqs: Pole frekvencí [GHz]
-    :param s11_complex: Komplexní odraz Portu 1 (spodní rameno Ey) na RP1
-    :param s22_complex: Komplexní odraz Portu 2 (levé rameno Ex) na RP1 (volitelné)
-    :param params: Slovník parametrů modelu (geometrie, substrát, délky)
-    :return: Slovník s výsledky pro RP1, RP2, RP3
+    :param freqs: Frequency array [GHz]
+    :param s11_complex: Complex reflection of Port 1 (bottom arm Ey) at RP1
+    :param s22_complex: Complex reflection of Port 2 (left arm Ex) at RP1 (optional)
+    :param params: Model parameter dictionary (geometry, substrate, lengths)
+    :return: Dictionary with results for RP1, RP2, RP3
     """
     if params is None:
         params = {}
@@ -433,7 +433,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
     s11_arr = np.atleast_1d(np.asarray(s11_complex, dtype=complex)) if s11_complex is not None else None
     s22_arr = np.atleast_1d(np.asarray(s22_complex, dtype=complex)) if s22_complex is not None else None
 
-    # --- 1. RP1: Rovina portu ---
+    # --- 1. RP1: Port plane ---
     if s11_arr is not None:
         z1_rp1 = port_z0 * (1.0 + s11_arr) / (1.0 - s11_arr + 1e-12)
         gamma1_rp1_db = 20.0 * np.log10(np.clip(np.abs(s11_arr), 1e-10, 10.0))
@@ -448,7 +448,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         z2_rp1 = None
         gamma2_rp1_db = None
 
-    # Fallback pro Model 1 a finální Model 4 (1-port 50 Ohm de-embedding)
+    # Fallback for Model 1 and final Model 4 (1-port 50 Ohm de-embedding)
     if model == 1:
         return {
             'freqs': freqs_arr,
@@ -462,7 +462,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
                 'z0_ref': port_z0,
             },
             'rp2': {
-                'name': 'RP2 (T-dělič)',
+                'name': 'RP2 (T-divider)',
                 'z1': z1_rp1,
                 'z2': None,
                 'gamma1_db': gamma1_rp1_db,
@@ -470,7 +470,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
                 'z0_ref': port_z0,
             },
             'rp3': {
-                'name': 'RP3 (Flíček)',
+                'name': 'RP3 (Patch)',
                 'z1': z1_rp1,
                 'z2': None,
                 'gamma1_db': gamma1_rp1_db,
@@ -485,7 +485,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         l_50 = float(params.get('feed_50_len', params.get('l1', 9.0)))
         z0_50, _, _, _, gamma_50 = calc_microstrip_propagation(w_50, h, eps_r, tan_delta, freqs_arr)
 
-        # 100 Ohm mikropáskové větve a čtvrtvlnný transformátor pro plný de-embedding k flíčku
+        # 100 Ohm microstrip branches and quarter-wave transformer for full de-embedding to the patch
         w_feed = float(params.get('w_feed', params.get('feed_W', synth_microstrip_w(2.0 * port_z0, h, eps_r))))
         z0_feed, eps_eff_feed, _, _, gamma_feed = calc_microstrip_propagation(w_feed, h, eps_r, tan_delta, freqs_arr)
 
@@ -509,13 +509,13 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
             gamma1_rp2 = (z1_rp2 - z0_50) / (z1_rp2 + z0_50 + 1e-12)
             gamma1_rp2_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp2), 1e-10, 10.0))
 
-            # Ekvivalentní paralelní větev na vstupu T-uzlu (2 * Z_T vůči 100 Ohm)
+            # Equivalent parallel branch at T-junction input (2 * Z_T relative to 100 Ohm)
             z1_rp3 = 2.0 * z1_rp2
             z0_branch = 2.0 * port_z0
             gamma1_rp3 = (z1_rp3 - z0_branch) / (z1_rp3 + z0_branch + 1e-12)
             gamma1_rp3_db = 20.0 * np.log10(np.clip(np.abs(gamma1_rp3), 1e-10, 10.0))
 
-            # Plný de-embedding přes 100 Ohm větev ke svorce transformátoru a přes transformátor k flíčku
+            # Full de-embedding through 100 Ohm branch to transformer terminal and through transformer to patch
             z1_trans_in = deembed_transmission_line(z1_rp3, z0_feed, gamma_feed, l_100_avg)
             z1_patch = deembed_transmission_line(z1_trans_in, z0_trans, gamma_trans, l_T)
             z0_patch_ref = float(np.mean(z0_trans ** 2 / 100.0))
@@ -543,7 +543,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
                 'z0_ref': port_z0,
             },
             'rp2': {
-                'name': 'RP2 (T-článek 50 Ω)',
+                'name': 'RP2 (T-junction 50 Ω)',
                 'z1': z1_rp2,
                 'z2': None,
                 'gamma1_db': gamma1_rp2_db,
@@ -551,7 +551,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
                 'z0_ref': z0_50,
             },
             'rp3': {
-                'name': 'RP3 (Ekvivalentní větev 2·Z_T)',
+                'name': 'RP3 (Equivalent branch 2·Z_T)',
                 'z1': z1_rp3,
                 'z2': None,
                 'gamma1_db': gamma1_rp3_db,
@@ -559,7 +559,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
                 'z0_ref': 2.0 * port_z0,
             },
             'patch': {
-                'name': 'RP_Patch (Vstup do flíčku)',
+                'name': 'RP_Patch (Patch input)',
                 'z1': z1_patch,
                 'gamma1_db': gamma1_patch_db,
                 'z0_ref': z0_patch_ref,
@@ -576,11 +576,11 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
             }
         }
 
-    # Parametry vnějšího 100 Ohm mikropáskového vedení
+    # Outer 100 Ohm microstrip line parameters
     w_feed = float(params.get('w_feed', params.get('feed_W', synth_microstrip_w(100.0, h, eps_r))))
     z0_feed, eps_eff_feed, _, _, gamma_feed = calc_microstrip_propagation(w_feed, h, eps_r, tan_delta, freqs_arr)
 
-    # Odvození délek vnějšího 100 Ohm úseku
+    # Derive lengths of outer 100 Ohm sections
     l_T_default_val = None
     w_T_def = float(params.get('trans_w', params.get('w_T', 0.42)))
     if model in (3, 5, 6):
@@ -602,7 +602,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
     elif params.get('feed_len_b') is not None:
         L_100_b = float(params['feed_len_b']) - l_T_b
     else:
-        # Výchozí geometrie
+        # Default geometry
         W = float(params.get('patch_W', params.get('patch_L', 28.8)))
         W_sub = float(params.get('sub_W', params.get('sub_w', 80.0)))
         inset_b = float(params.get('feed_inset_b', params.get('inset_b', 2.5 if model == 3 else 0.0)))
@@ -620,7 +620,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         inset_l = float(params.get('feed_inset_l', params.get('inset_l', 2.5 if model == 3 else 0.0)))
         L_100_l = max(8.0, (W_sub / 2.0) - (W / 2.0) + inset_l - l_T_l)
 
-    # --- 2. RP2: Svorka transformátoru (po odečtení L_100) ---
+    # --- 2. RP2: Transformer terminal (after subtracting L_100) ---
     if z1_rp1 is not None:
         z1_rp2 = deembed_transmission_line(z1_rp1, z0_feed, gamma_feed, L_100_b)
         gamma1_rp2 = (z1_rp2 - z0_feed) / (z1_rp2 + z0_feed + 1e-12)
@@ -637,7 +637,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         z2_rp2 = None
         gamma2_rp2_db = None
 
-    # --- 3. RP3: Vstup do flíčku (po odečtení l_T) ---
+    # --- 3. RP3: Patch input (after subtracting l_T) ---
     if model in (3, 5, 6) and (l_T_b > 0.0 or l_T_l > 0.0):
         w_T_b = float(params.get('trans_w_b', params.get('w_T_b', params.get('trans_w', 0.42))))
         w_T_l = float(params.get('trans_w_l', params.get('w_T_l', params.get('trans_w', 0.42))))
@@ -648,11 +648,11 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
         z1_rp3 = deembed_transmission_line(z1_rp2, z0_Tb, gamma_Tb, l_T_b) if z1_rp2 is not None else None
         z2_rp3 = deembed_transmission_line(z2_rp2, z0_Tl, gamma_Tl, l_T_l) if z2_rp2 is not None else None
 
-        # Cílová reference na flíčku v zářezu ~140 Ohm (R_patch = Z_T^2 / 100)
+        # Target reference at patch inside notch ~140 Ohm (R_patch = Z_T^2 / 100)
         z0_ref_calc = z0_Tb if z0_Tb is not None else z0_Tl
         z0_rp3 = float(params.get('z_target_rp3', (z0_ref_calc**2) / 100.0 if np.ndim(z0_ref_calc) == 0 else (z0_ref_calc[0]**2) / 100.0))
     else:
-        # Pro Model 2 je l_T = 0, RP2 splývá s RP3
+        # For Model 2, l_T = 0, so RP2 coincides with RP3
         w_T_b = None
         w_T_l = None
         z0_Tb = None
@@ -685,7 +685,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
             'z0_ref': port_z0,
         },
         'rp2': {
-            'name': 'RP2 (Transformátor svorka)' if model == 3 else 'RP2 (Flíček)',
+            'name': 'RP2 (Transformer terminal)' if model == 3 else 'RP2 (Patch)',
             'z1': z1_rp2,
             'z2': z2_rp2,
             'gamma1_db': gamma1_rp2_db,
@@ -693,7 +693,7 @@ def calculate_deembedding_model3(freqs, s11_complex, s22_complex=None, params=No
             'z0_ref': z0_feed,
         },
         'rp3': {
-            'name': 'RP3 (Flíček vstup)',
+            'name': 'RP3 (Patch input)',
             'z1': z1_rp3,
             'z2': z2_rp3,
             'gamma1_db': gamma1_rp3_db,

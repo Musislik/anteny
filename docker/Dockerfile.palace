@@ -1,4 +1,4 @@
-# Multi-stage sestavení reálného FEM řešiče Palace ze zdrojových kódů (AWS Labs)
+# Multi-stage build of the AWS Labs Palace FEM solver from source
 FROM ubuntu:24.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -29,10 +29,10 @@ RUN cmake .. \
 ARG PALACE_BUILD_JOBS
 RUN cmake --build . -j"${PALACE_BUILD_JOBS:-$(nproc)}"
 
-# Nyní bezpečně posbíráme všechny postavené knihovny, ať už jsou kdekoliv v adresáři build
+# Collect all built shared libraries wherever they are located in the build directory
 RUN mkdir -p /opt/palace_libs && find /opt/palace/build -name "*.so*" -exec cp {} /opt/palace_libs/ \;
 
-# Minimální finální runtime obraz
+# Minimal final runtime image
 FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y \
     openmpi-bin \
@@ -42,9 +42,9 @@ RUN apt-get update && apt-get install -y \
     python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Zkopírujeme přímo výslednou binárku a wrapper skripty
+# Copy the compiled binary and wrapper scripts directly
 COPY --from=builder /opt/palace/build/bin/* /usr/local/bin/
-# Zkopírujeme všechny posbírané sdílené knihovny
+# Copy all collected shared libraries
 COPY --from=builder /opt/palace_libs/ /usr/local/lib/
 RUN ldconfig
 

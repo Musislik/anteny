@@ -1,18 +1,18 @@
 """
-test_model7.py - Komplexní jednotkové testy pro Model 7 (zrcadlený Model 4 pro RHCP).
-Ověřuje:
-  1. Analytiku trasování podél osy Y:
-       - Zrcadlení souřadnic x -> -x, y -> y (x_T_m7 == -x_T_m4, x_port_m7 == +W_sub/2).
-       - Přesnou rovnost délek drah L_100_r == L_100_l a L_100_b == L_100_b.
-       - Splnění fázovací podmínky L_100_b - L_100_r == feed_delta_l.
-  2. Geometrii OpenCASCADE:
-       - Správné umístění pravého zářezu, pravého transformátoru a pravého 50 Ohm přívodu.
-       - Hladké kruhové oblouky a zaoblený T-článek vpravo bez překryvů.
-       - 1 výstupní 50 Ohm port na pravé hraně substrátu (x = +W_sub/2).
-  3. Integraci routeru geometry.py, konfigurace Palace (1× 50 Ohm port) a 3D sítě (mesh.py).
-  4. Generování opačné polarizace RHCP (Right-Hand Circular Polarization) z vyzařovacích dat.
-  5. Parametrické sweepy (sweep_model7.py), tracking (sweep_results_model7.csv/.md) a 2D vizualizaci.
-  6. Kompletní end-to-end běh main(skip_simulation=True) pro Model 7.
+test_model7.py - Comprehensive unit tests for Model 7 (mirrored Model 4 for RHCP).
+Verifies:
+  1. Routing analytics along the Y axis:
+       - Coordinate mirroring x -> -x, y -> y (x_T_m7 == -x_T_m4, x_port_m7 == +W_sub/2).
+       - Exact path length equality L_100_r == L_100_l and L_100_b == L_100_b.
+       - Phasing condition satisfaction L_100_b - L_100_r == feed_delta_l.
+  2. OpenCASCADE geometry:
+       - Correct placement of right inset, right transformer, and right 50 Ohm feed.
+       - Smooth circular arcs and filleted right T-junction without overlaps.
+       - Single 50 Ohm output port on the right substrate edge (x = +W_sub/2).
+  3. Integration of geometry.py router, Palace config (1x 50 Ohm port), and 3D mesh (mesh.py).
+  4. Opposite RHCP (Right-Hand Circular Polarization) generation from farfield data.
+  5. Parametric sweeps (sweep_model7.py), tracking (sweep_results_model7.csv/.md), and 2D visualization.
+  6. Complete end-to-end run of main(skip_simulation=True) for Model 7.
 """
 
 import os
@@ -55,7 +55,7 @@ from visualization import plot_geometry
 
 
 def test_model7_mirroring_and_phase_balance():
-    """Ověření, že Model 7 je přesným zrcadlením Modelu 4 podél osy Y se stejným fázováním."""
+    """Verify that Model 7 is an exact Y-axis mirror of Model 4 with identical phasing."""
     base = {
         'patch_L': 29.81,
         'patch_W': 29.81,
@@ -77,7 +77,7 @@ def test_model7_mirroring_and_phase_balance():
         info4 = compute_model4_routing(cfg)
         info7 = compute_model7_routing(cfg)
 
-        # 1. Zrcadlení souřadnic kolem osy Y: x_7 == -x_4, y_7 == y_4
+        # 1. Coordinate mirroring across the Y axis: x_7 == -x_4, y_7 == y_4
         assert np.isclose(info7['x_T'], -info4['x_T'], atol=1e-7)
         assert np.isclose(info7['y_T'], info4['y_T'], atol=1e-7)
         assert np.isclose(info7['x_port'], -info4['x_port'], atol=1e-7)
@@ -87,15 +87,15 @@ def test_model7_mirroring_and_phase_balance():
         assert np.isclose(info7['y_junc_b'], info4['y_junc_b'], atol=1e-7)
         assert np.isclose(info7['y_bot'], info4['y_bot'], atol=1e-7)
 
-        # 2. Shoda délek drah (izometrie reflexe)
+        # 2. Path length equality (reflection isometry)
         assert np.isclose(info7['L_100_r'], info4['L_100_l'], atol=1e-7)
         assert np.isclose(info7['L_100_b'], info4['L_100_b'], atol=1e-7)
 
-        # 3. Přesný fázový posuv Delta L
+        # 3. Exact phase offset Delta L
         diff = info7['L_100_b'] - info7['L_100_r']
         assert np.isclose(diff, info7['feed_delta_l'], atol=1e-6)
 
-        # 4. Zrcadlení všech waypoints
+        # 4. Mirroring of all waypoints
         for (x7, y7), (x4, y4) in zip(info7['arm_r_waypoints'], info4['arm_l_waypoints']):
             assert np.isclose(x7, -x4, atol=1e-4)
             assert np.isclose(y7, y4, atol=1e-4)
@@ -104,14 +104,14 @@ def test_model7_mirroring_and_phase_balance():
             assert np.isclose(x7, -x4, atol=1e-4)
             assert np.isclose(y7, y4, atol=1e-4)
 
-        # 5. Generování 2D polygonů bez chyb
+        # 5. Error-free 2D polygon generation
         poly_r = compute_curved_ribbon_outline(info7['arm_r_build_waypoints'], info7['w_feed'], info7['bend_radius'])
         poly_b = compute_curved_ribbon_outline(info7['arm_b_build_waypoints'], info7['w_feed'], info7['bend_radius'])
         assert len(poly_r) > 10 and len(poly_b) > 10
 
 
 def test_geometry_model7_defaults_and_validation():
-    """Ověření OCC geometrie Modelu 7, portu na pravé straně a kontroly mezních hodnot."""
+    """Verify Model 7 OCC geometry, right-side port, and boundary value checks."""
     params = {
         'antenna_model': 7,
         'patch_L': 28.8,
@@ -126,17 +126,17 @@ def test_geometry_model7_defaults_and_validation():
         assert params['antenna_model'] == 7
         assert params['polarization_type'] == 'RHCP'
 
-        # Převzaté a zrcadlené parametry
+        # Inherited and mirrored parameters
         assert np.isclose(params['trans_w'], 0.42, atol=1e-4)
         assert np.isclose(params['trans_w_r'], 0.42, atol=1e-4)
         assert np.isclose(params['feed_inset_r'], 2.5, atol=1e-4)
         assert np.isclose(params['feed_inset_b'], 2.5, atol=1e-4)
 
-        # Port na pravé hraně substrátu (x = +W_sub / 2)
+        # Port on right substrate edge (x = +W_sub / 2)
         assert np.isclose(params['x_port'], params['sub_W'] / 2.0, atol=1e-3)
         assert np.isclose(params['y_port'], params['feed_y_T'], atol=1e-3)
 
-        # Disjunktní port a PEC
+        # Disjoint port and PEC
         assert len(params['port_tags']) > 0
         assert len(params['pec_tags']) > 0
         assert set(params['port_tags']).isdisjoint(set(params['pec_tags']))
@@ -144,7 +144,7 @@ def test_geometry_model7_defaults_and_validation():
         if gmsh.isInitialized():
             gmsh.finalize()
 
-    # Kontrola neplatných vstupů
+    # Invalid input checks
     for bad_override in (
         {'feed_bend_radius': 0.2},
         {'feed_inset_b': -1.0},
@@ -164,7 +164,7 @@ def test_geometry_model7_defaults_and_validation():
 
 
 def test_geometry_router_palace_and_mesh_model7(tmp_path):
-    """Ověření routeru build_model pro antenna_model=7, mesh.py a palace_builder."""
+    """Verify build_model router for antenna_model=7, mesh.py, and palace_builder."""
     orig_cwd = os.getcwd()
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
@@ -214,7 +214,7 @@ def test_geometry_router_palace_and_mesh_model7(tmp_path):
 
 
 def test_tracker_and_rhcp_polarization_model7(tmp_path):
-    """Ověření vyhodnocení pravotočivé polarizace RHCP pro Model 7."""
+    """Verify evaluation of right-hand circular polarization (RHCP) for Model 7."""
     res_dir = str(tmp_path / "export")
     postpro_dir = str(tmp_path / "postpro")
     os.makedirs(postpro_dir, exist_ok=True)
@@ -228,7 +228,7 @@ def test_tracker_and_rhcp_polarization_model7(tmp_path):
             s11_db = -23.0 + 15.0 * (delta ** 2)
             f.write(f"{fq:.6e},{s11_db:.4e},{-35.0 * delta:.4e}\n")
 
-    # Syntetická data pro čistou RHCP: Ex = 1.0, Ey = +1.0j
+    # Synthetic data for pure RHCP: Ex = 1.0, Ey = +1.0j
     # E_LHCP = abs(Ex + j*Ey)/sqrt(2) = abs(1.0 + 1j*1j)/sqrt(2) = 0
     # E_RHCP = abs(Ex - j*Ey)/sqrt(2) = abs(1.0 - 1j*1j)/sqrt(2) = 2/sqrt(2) = sqrt(2)
     ff_path = os.path.join(postpro_dir, "farfield-rE.csv")
@@ -268,13 +268,13 @@ def test_tracker_and_rhcp_polarization_model7(tmp_path):
     csv_path = os.path.join(res_dir, "sweep_results_model7.csv")
     md_path = os.path.join(res_dir, "sweep_results_model7.md")
     assert os.path.exists(csv_path) and os.path.exists(md_path)
-    assert row['Polarizace'] == "RHCP", f"Očekávána polarizace RHCP, získána: {row['Polarizace']}"
+    assert row['Polarization'] == "RHCP", f"Expected RHCP polarization, got: {row['Polarization']}"
     assert float(row['Gain_RHCP [dBi]']) > float(row['Gain_LHCP [dBi]']) + 20.0
     assert float(row['S11_min [dB]']) < -20.0
 
 
 def test_sweep_model7_steps_and_run(tmp_path):
-    """Ověření generátoru kroků sweepu Modelu 7 a mockovaného běhu."""
+    """Verify Model 7 sweep step builder and mocked run."""
     with patch.dict(os.environ, {"SWEEP_PROFILE": "fast", "SWEEP_EXPORT_EACH": "false"}):
         steps_pl, _ = build_sweep_steps_m7(sweep_target="patch_l", patch_lengths=[28.6, 28.8])
         assert len(steps_pl) == 2
@@ -298,7 +298,7 @@ def test_sweep_model7_steps_and_run(tmp_path):
 
 
 def test_model7_visualization_generation(tmp_path):
-    """Ověření vykreslení 2D náhledu geometrie a detailu T-článku Modelu 7."""
+    """Verify 2D geometry preview and T-junction detail plotting for Model 7."""
     params = {
         'antenna_model': 7,
         'patch_L': 28.8,
@@ -309,12 +309,12 @@ def test_model7_visualization_generation(tmp_path):
     out_png = str(tmp_path / "geom_m7.png")
     plot_geometry(params, filename=out_png)
     assert os.path.exists(out_png) and os.path.getsize(out_png) > 10000
-    det_png = os.path.join(str(tmp_path), "obrazky", "geometrie_detail_transformatoru.png")
+    det_png = os.path.join(str(tmp_path), "images", "geometry_transformer_detail.png")
     assert os.path.exists(det_png) and os.path.getsize(det_png) > 10000
 
 
 def test_model7_end_to_end_main(tmp_path):
-    """Kompletní end-to-end běh main() se skip_simulation=True pro Model 7."""
+    """Full end-to-end main() execution with skip_simulation=True for Model 7."""
     orig_cwd = os.getcwd()
     data_dir = str(tmp_path / "data")
     export_dir = str(tmp_path / "export")

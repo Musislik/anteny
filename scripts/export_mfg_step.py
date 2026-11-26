@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-export_mfg_step.py - Uživatelský CLI nástroj pro export 3D STEP výrobního modelu dle pokynů VUT.
+export_mfg_step.py - User CLI tool for exporting the 3D STEP manufacturing model per VUT instructions.
 (Manufacturing of antennas - instructions.pdf)
 
-Vygeneruje soubor .step, který splňuje všech 6 bodů výrobních pokynů:
-  1. Horní plocha vyzařovače i značek je umístěna v z = 0.
-  2. 8 ořezových kvádrů (2 pro každý roh substrátu) s horní plochou v z = 0 a výškou h.
-  3. Identifikační znak 'PM.' s horní plochou v z = 0 umístěný nad horní hranou.
-  4. Zrcadlový obraz horní strany (x -> -x).
-  5. V modelu je ponechán POUZE motiv antény, ořezové značky a identifikační znak.
-  6. Uloženo do standardního formátu STEP pro výrobu.
+Generates a .step file satisfying all 6 manufacturing requirements:
+  1. Top surface of the radiating patch and marks is located at z = 0.
+  2. 8 corner alignment blocks (2 per substrate corner) with top face at z = 0 and height h.
+  3. Identification symbol 'PM.' with top face at z = 0 placed above the upper edge.
+  4. Mirrored image of the top side (x -> -x).
+  5. Only the antenna pattern, alignment marks, and identification symbol are kept in the model.
+  6. Saved in standard STEP format for manufacturing.
 """
 
 import argparse
@@ -17,7 +17,7 @@ import os
 import sys
 from typing import Any, Dict
 
-# Automatické nastavení sys.path pro import z src/
+# Automatic sys.path setup for imports from src/
 try:
     import _env  # noqa: F401
 except ImportError:
@@ -32,54 +32,54 @@ from export_kicad import load_model4_params_from_env
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generátor výrobního 3D STEP modelu pro VUT (Manufacturing of antennas - instructions.pdf)."
+        description="3D STEP manufacturing model generator for VUT (Manufacturing of antennas - instructions.pdf)."
     )
     parser.add_argument(
         "--profile",
         type=str,
         default=None,
-        help="Název výrobního profilu varianty v results/<profile>/<profile>.env (výchozí: ANTENNA_PROFILE)",
+        help="Manufacturing variant profile name in results/<profile>/<profile>.env (default: ANTENNA_PROFILE)",
     )
     parser.add_argument(
         "--output",
         "-o",
         type=str,
         default=None,
-        help="Cílová cesta pro uložení .step souboru (výchozí: export/vut_mfg/antenna_model4_mfg_PM.step)",
+        help="Output path for the .step file (default: export/vut_mfg/antenna_model4_mfg_PM.step)",
     )
     parser.add_argument(
         "--ident-symbol",
         type=str,
         default="PM.",
-        help="Identifikační značka na vrstvě mědi (výchozí: 'PM.')",
+        help="Identification mark on the copper layer (default: 'PM.')",
     )
     parser.add_argument(
         "--copper-thickness",
         type=float,
         default=0.035,
-        help="Tloušťka mědi pro 3D tělesa [mm] (výchozí: 0.035 mm = 35 µm)",
+        help="Copper thickness for 3D solids [mm] (default: 0.035 mm = 35 um)",
     )
     parser.add_argument(
         "--mark-len",
         type=float,
         default=8.0,
-        help="Délka ramen ořezových kvádrů [mm] (výchozí: 8.0)",
+        help="Arm length of corner alignment blocks [mm] (default: 8.0)",
     )
     parser.add_argument(
         "--mark-w",
         type=float,
         default=2.0,
-        help="Šířka ořezových kvádrů [mm] (výchozí: 2.0)",
+        help="Width of corner alignment blocks [mm] (default: 2.0)",
     )
     parser.add_argument(
         "--sheet",
         action="store_true",
-        help="Exportovat jako 2D plochy v z=0 místo 3D těles (solids)",
+        help="Export as 2D sheet surfaces at z=0 instead of 3D solids",
     )
 
     args = parser.parse_args()
 
-    # 1. Načtení .env
+    # 1. Load .env
     profile_arg = args.profile.strip() if args.profile else None
     root_dir, _ = load_env(profile=profile_arg)
     active_profile_env = os.getenv("ANTENNA_PROFILE", "").strip() or None
@@ -90,7 +90,7 @@ def main() -> int:
 
     params = load_model4_params_from_env()
 
-    # 2. Cílová cesta
+    # 2. Target output path
     if args.output:
         out_path = os.path.abspath(args.output)
     else:
@@ -102,20 +102,20 @@ def main() -> int:
             out_path = os.path.join(mfg_dir, f"antenna_model4_mfg_{args.ident_symbol.rstrip('.')}.step")
 
     print("=" * 80)
-    print(" VÝROBNÍ 3D STEP EXPORT DLE POKYNŮ VUT (Manufacturing of antennas)")
+    print(" MANUFACTURING 3D STEP EXPORT PER VUT INSTRUCTIONS (Manufacturing of antennas)")
     print("=" * 80)
     if profile_slug:
-        print(f"Aktivní profil:       {profile_slug}")
-    print(f"Identifikační symbol: {args.ident_symbol}")
-    print(f"Orientace:            Zrcadlená (x -> -x, horní strana v z = 0)")
-    print(f"Cílový soubor:        {out_path}")
+        print(f"Active profile:        {profile_slug}")
+    print(f"Identification symbol: {args.ident_symbol}")
+    print(f"Orientation:           Mirrored (x -> -x, top side at z = 0)")
+    print(f"Output file:           {out_path}")
     print("-" * 80)
 
     try:
         from geometry_mfg import build_mfg_model
     except ImportError as e:
-        print(f"Chyba importu geometry_mfg: {e}", file=sys.stderr)
-        print("Ujistěte se, že spouštíte skript v prostředí s nainstalovaným Gmsh (např. přes Docker pipeline):", file=sys.stderr)
+        print(f"Error importing geometry_mfg: {e}", file=sys.stderr)
+        print("Make sure you run the script in an environment with Gmsh installed (e.g., via the Docker pipeline):", file=sys.stderr)
         print("  docker compose run --rm pipeline python scripts/export_mfg_step.py", file=sys.stderr)
         return 1
 
@@ -129,13 +129,13 @@ def main() -> int:
         extrude_solids=not args.sheet,
     )
 
-    print(f"Export dokončen:")
-    print(f"  Soubor:             {res['output_path']}")
-    print(f"  Velikost:           {res['file_size_bytes']} B")
-    print(f"  Počet ořezů:        {res['corner_marks_count']} kvádrů (8 po obvodu substrátu)")
-    print(f"  Rozměr substrátu:   {res['substrate_w']:.2f} mm x {res['substrate_l']:.2f} mm (tloušťka h = {res['h']:.2f} mm)")
-    print(f"  Z-souřadnice:       Horní plocha vyzařovače i značek na z = {res['top_z']:.1f}")
-    print(f"  Tělesa:             {'3D Solids (objemová tělesa)' if not args.sheet else '2D Sheet Surfaces'}")
+    print("Export completed:")
+    print(f"  File:                {res['output_path']}")
+    print(f"  Size:                {res['file_size_bytes']} B")
+    print(f"  Alignment marks:     {res['corner_marks_count']} blocks (8 along substrate perimeter)")
+    print(f"  Substrate size:      {res['substrate_w']:.2f} mm x {res['substrate_l']:.2f} mm (thickness h = {res['h']:.2f} mm)")
+    print(f"  Z-coordinate:        Top surface of radiator and marks at z = {res['top_z']:.1f}")
+    print(f"  Geometry type:       {'3D Solids' if not args.sheet else '2D Sheet Surfaces'}")
     print("=" * 80)
     return 0
 

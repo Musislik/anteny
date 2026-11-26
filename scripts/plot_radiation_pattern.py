@@ -1,6 +1,6 @@
 """
-plot_radiation_pattern.py - Vykreslení 2D polárních řezů a 3D vyzařovacího diagramu
-z datového souboru farfield-rE.csv (Palace FEM řešič).
+plot_radiation_pattern.py - Plot 2D polar cuts and 3D radiation pattern
+from the farfield-rE.csv data file (Palace FEM solver).
 """
 
 import os
@@ -27,8 +27,8 @@ from postpro_utils import load_env
 
 def compute_farfield_metrics(sub_df):
     """
-    Vypočte sférické složky E-pole, LHCP/RHCP polarizaci, směrovost v dBi a osový poměr (AR).
-    Podporuje i více excitačních režimů (exc) koherentní superpozicí pro každý směr (theta, phi).
+    Compute spherical E-field components, LHCP/RHCP polarization, directivity in dBi, and Axial Ratio (AR).
+    Also supports multiple excitation modes (exc) via coherent superposition for each direction (theta, phi).
     """
     if sub_df.shape[1] >= 10 and sub_df.iloc[:, 1].nunique() > 1:
         cols = list(sub_df.columns)
@@ -54,11 +54,11 @@ def compute_farfield_metrics(sub_df):
     ey = e_vals[:, 2] + 1j * e_vals[:, 3]
     ez = e_vals[:, 4] + 1j * e_vals[:, 5]
 
-    # Sférické složky vektoru E
+    # Spherical components of the E-field vector
     e_th = (ex * np.cos(ph) + ey * np.sin(ph)) * np.cos(th) - ez * np.sin(th)
     e_ph = -ex * np.sin(ph) + ey * np.cos(ph)
 
-    # Kruhová polarizace dle IEEE standardu (+r šíření):
+    # Circular polarization per IEEE standard (+r propagation):
     # LHCP = (E_theta + j * E_phi) / sqrt(2)
     # RHCP = (E_theta - j * E_phi) / sqrt(2)
     e_lhcp = (e_th + 1j * e_ph) / np.sqrt(2.0)
@@ -68,21 +68,21 @@ def compute_farfield_metrics(sub_df):
     u_lhcp = np.abs(e_lhcp)**2
     u_rhcp = np.abs(e_rhcp)**2
 
-    # Průměrná vyzařovací intenzita (vzorky jsou rovnoměrně rozprostřeny po kouli)
+    # Average radiation intensity (samples are uniformly distributed on the sphere)
     u_avg = max(float(np.mean(u_tot)), 1e-30)
     
     d_tot_dbi = 10.0 * np.log10(np.maximum(u_tot / u_avg, 1e-4))
     d_lhcp_dbi = 10.0 * np.log10(np.maximum(u_lhcp / u_avg, 1e-4))
     d_rhcp_dbi = 10.0 * np.log10(np.maximum(u_rhcp / u_avg, 1e-4))
     
-    # Osový poměr (Axial Ratio v dB)
+    # Axial Ratio in dB
     mag_l = np.abs(e_lhcp)
     mag_r = np.abs(e_rhcp)
     major = mag_l + mag_r
     minor = np.maximum(np.abs(mag_l - mag_r), 1e-6)
     ar_db = 20.0 * np.log10(major / minor)
     
-    # Kartézské souřadnice bodů na jednotkové kouli pro rychlé prostorové dotazování
+    # Cartesian coordinates on the unit sphere for fast spatial queries
     xs = np.sin(th) * np.cos(ph)
     ys = np.sin(th) * np.sin(ph)
     zs = np.cos(th)
@@ -95,9 +95,9 @@ def compute_farfield_metrics(sub_df):
     }
 
 def interpolate_cut(tree, metric_vals, target_points):
-    """Interpoluje hodnoty podél řezu pomocí váženého k-NN z cKDTree."""
+    """Interpolate values along a cut using weighted k-NN from cKDTree."""
     dists, idxs = tree.query(target_points, k=4)
-    # Vážený průměr podle převrácené vzdálenosti (IDW)
+    # Inverse distance weighting (IDW)
     weights = 1.0 / np.maximum(dists, 1e-6)
     weights /= np.sum(weights, axis=1, keepdims=True)
     return np.sum(metric_vals[idxs] * weights, axis=1)
@@ -113,33 +113,33 @@ def _find_farfield_csv(export_dir):
 def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
     csv_path = _find_farfield_csv(export_dir)
     if not csv_path:
-        print(f"Soubor farfield-rE.csv nebyl v {export_dir} nalezen.")
+        print(f"File farfield-rE.csv was not found in {export_dir}.")
         return
         
-    print(f"Načítám dálkové pole z {csv_path}...")
+    print(f"Loading far-field data from {csv_path}...")
     df = pd.read_csv(csv_path)
     
     freq_col = df.columns[0]
     freqs = np.unique(df[freq_col].values)
     
     if freq_target is None:
-        # Výchozí: 2.333 GHz nebo střed pásma
+        # Default: 2.333 GHz or band center
         eval_f = 2.333 if any(np.isclose(freqs, 2.333, atol=1e-4)) else freqs[len(freqs)//2]
     else:
         eval_f = freqs[np.argmin(np.abs(freqs - float(freq_target)))]
         
-    print(f"Vykresluji diagram pro frekvenci: {eval_f:.3f} GHz (z dostupných {freqs.min():.3f} - {freqs.max():.3f} GHz)")
+    print(f"Plotting pattern for frequency: {eval_f:.3f} GHz (available range {freqs.min():.3f} - {freqs.max():.3f} GHz)")
     sub = df[np.isclose(df[freq_col], eval_f, atol=1e-5)]
     
     m = compute_farfield_metrics(sub)
     tree = cKDTree(np.column_stack([m['xs'], m['ys'], m['zs']]))
     
-    # Generování úhlů pro řezy: theta od -180° do +180°
-    # V polárním diagramu: 0° je osa +Z (hlavní směr vyzařování), +/-90° je horizont, 180° je nadir (-Z)
+    # Generate cut angles: theta from -180 deg to +180 deg
+    # Polar plot convention: 0 deg is +Z (boresight), +/-90 deg is horizon, 180 deg is nadir (-Z)
     angles_deg = np.linspace(-180, 180, 361)
     angles_rad = np.deg2rad(angles_deg)
     
-    # 1. Řez X-Z (Phi = 0° pro kladné úhly, Phi = 180° pro záporné úhly)
+    # 1. X-Z cut (Phi = 0 deg for positive angles, Phi = 180 deg for negative angles)
     xz_pts = np.column_stack([
         np.sin(angles_rad),               # X
         np.zeros_like(angles_rad),         # Y
@@ -149,7 +149,7 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
     d_tot_xz  = interpolate_cut(tree, m['d_tot'],  xz_pts)
     ar_xz     = interpolate_cut(tree, m['ar_db'],   xz_pts)
     
-    # 2. Řez Y-Z (Phi = 90° pro kladné úhly, Phi = 270° pro záporné úhly)
+    # 2. Y-Z cut (Phi = 90 deg for positive angles, Phi = 270 deg for negative angles)
     yz_pts = np.column_stack([
         np.zeros_like(angles_rad),         # X
         np.sin(angles_rad),               # Y
@@ -159,125 +159,125 @@ def plot_radiation_pattern_2d(export_dir, freq_target=None, output_png=None):
     d_tot_yz  = interpolate_cut(tree, m['d_tot'],  yz_pts)
     ar_yz     = interpolate_cut(tree, m['ar_db'],   yz_pts)
     
-    # Vykreslení grafu: 2 polární diagramy + 1 kartézský pro Axial Ratio
+    # Plot: 2 polar cuts + 1 Cartesian Axial Ratio plot
     fig = plt.figure(figsize=(15, 6))
     
-    # Polární plot X-Z
+    # Polar plot X-Z
     ax1 = fig.add_subplot(131, projection='polar')
-    ax1.set_theta_zero_location('N')       # 0° (osa +Z) nahoře
-    ax1.set_theta_direction(-1)            # Po směru hodinových ručiček
+    ax1.set_theta_zero_location('N')       # 0 deg (+Z axis) at top
+    ax1.set_theta_direction(-1)            # Clockwise
     
     r_min = -25
     r_max = np.ceil(max(np.max(d_tot_xz), np.max(d_tot_yz)) + 1)
     
-    ax1.plot(angles_rad, np.clip(d_lhcp_xz, r_min, r_max), 'b-', lw=2.2, label='LHCP (hlavní)')
-    ax1.plot(angles_rad, np.clip(d_tot_xz,  r_min, r_max), 'k:',  lw=1.2, label='Celková směrovost')
+    ax1.plot(angles_rad, np.clip(d_lhcp_xz, r_min, r_max), 'b-', lw=2.2, label='LHCP (co-pol)')
+    ax1.plot(angles_rad, np.clip(d_tot_xz,  r_min, r_max), 'k:',  lw=1.2, label='Total directivity')
     ax1.set_ylim([r_min, r_max])
-    ax1.set_title(rf"Řez rovinou X-Z ($\phi = 0^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold', pad=15)
+    ax1.set_title(rf"X-Z Plane Cut ($\phi = 0^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold', pad=15)
     ax1.legend(loc='lower left', bbox_to_anchor=(-0.1, -0.2), fontsize=9)
     ax1.grid(True, linestyle=':', alpha=0.7)
     
-    # Polární plot Y-Z
+    # Polar plot Y-Z
     ax2 = fig.add_subplot(132, projection='polar')
     ax2.set_theta_zero_location('N')
     ax2.set_theta_direction(-1)
-    ax2.plot(angles_rad, np.clip(d_lhcp_yz, r_min, r_max), 'b-', lw=2.2, label='LHCP (hlavní)')
-    ax2.plot(angles_rad, np.clip(d_tot_yz,  r_min, r_max), 'k:',  lw=1.2, label='Celková směrovost')
+    ax2.plot(angles_rad, np.clip(d_lhcp_yz, r_min, r_max), 'b-', lw=2.2, label='LHCP (co-pol)')
+    ax2.plot(angles_rad, np.clip(d_tot_yz,  r_min, r_max), 'k:',  lw=1.2, label='Total directivity')
     ax2.set_ylim([r_min, r_max])
-    ax2.set_title(rf"Řez rovinou Y-Z ($\phi = 90^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold', pad=15)
+    ax2.set_title(rf"Y-Z Plane Cut ($\phi = 90^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold', pad=15)
     ax2.legend(loc='lower left', bbox_to_anchor=(-0.1, -0.2), fontsize=9)
     ax2.grid(True, linestyle=':', alpha=0.7)
     
-    # Kartézský plot Axial Ratio pro horní poloprostor (-90° až +90°)
+    # Cartesian Axial Ratio plot for upper hemisphere (-90 deg to +90 deg)
     ax3 = fig.add_subplot(133)
     mask_hemi = (angles_deg >= -90) & (angles_deg <= 90)
     theta_hemi = angles_deg[mask_hemi]
-    ax3.plot(theta_hemi, ar_xz[mask_hemi], 'b-', lw=2.0, label='AR (řez X-Z)')
-    ax3.plot(theta_hemi, ar_yz[mask_hemi], 'm--', lw=2.0, label='AR (řez Y-Z)')
-    ax3.axhline(3.0, color='red', linestyle='--', lw=1.5, label='Mez 3 dB (čistá kruhová)')
+    ax3.plot(theta_hemi, ar_xz[mask_hemi], 'b-', lw=2.0, label='AR (X-Z cut)')
+    ax3.plot(theta_hemi, ar_yz[mask_hemi], 'm--', lw=2.0, label='AR (Y-Z cut)')
+    ax3.axhline(3.0, color='red', linestyle='--', lw=1.5, label='3 dB threshold (CP)')
     ax3.set_ylim([0, 15])
     ax3.set_xlim([-90, 90])
-    ax3.set_xlabel(r"Úhel od kolmice $\theta$ [$^\circ$]", fontsize=11)
-    ax3.set_ylabel("Osový poměr AR [dB]", fontsize=11)
-    ax3.set_title(f"Osový poměr AR (Axial Ratio)\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold')
+    ax3.set_xlabel(r"Angle from boresight $\theta$ [$^\circ$]", fontsize=11)
+    ax3.set_ylabel("Axial Ratio AR [dB]", fontsize=11)
+    ax3.set_title(f"Axial Ratio (AR)\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold')
     ax3.grid(True, linestyle=':', alpha=0.7)
     ax3.legend(loc='upper right', fontsize=9)
     
-    # Hodnoty v ose +Z (theta = 0) umístěné do levého horního rohu bez překryvu křivek
+    # Boresight (+Z, theta = 0) metrics placed in the upper-left corner without overlapping curves
     zenith_idx = np.argmin(np.abs(angles_deg))
-    ax3.annotate(f"Směr +Z: AR = {ar_xz[zenith_idx]:.2f} dB\nMax LHCP: {np.max(d_lhcp_xz):.2f} dBi",
+    ax3.annotate(f"+Z boresight: AR = {ar_xz[zenith_idx]:.2f} dB\nMax LHCP: {np.max(d_lhcp_xz):.2f} dBi",
                  xy=(0.04, 0.95), xycoords='axes fraction',
                  verticalalignment='top',
                  fontsize=9.5, bbox=dict(boxstyle="round,pad=0.35", fc="lightyellow", ec="goldenrod", alpha=0.9))
     
     plt.tight_layout()
     if output_png is None:
-        output_png = os.path.join(export_dir, "vyzarovaci_diagram_2d.png")
+        output_png = os.path.join(export_dir, "radiation_pattern_2d.png")
     output_png = os.path.abspath(output_png)
     os.makedirs(os.path.dirname(output_png) or ".", exist_ok=True)
     plt.savefig(output_png, dpi=200)
     plt.close()
-    print(f"Uložen 2D vyzařovací diagram: {output_png}")
+    print(f"Saved 2D radiation pattern: {output_png}")
 
-    # Uložení samostatných dílčích grafů do složky grafy/
-    grafy_dirs = [os.path.join(export_dir, "grafy")]
+    # Save standalone sub-plots to the plots/ directory
+    plots_dirs = [os.path.join(export_dir, "plots")]
     out_dir = os.path.dirname(output_png)
     if os.path.abspath(out_dir) != os.path.abspath(export_dir):
-        grafy_dirs.append(os.path.join(out_dir, "grafy"))
+        plots_dirs.append(os.path.join(out_dir, "plots"))
 
-    for g_dir in grafy_dirs:
-        os.makedirs(g_dir, exist_ok=True)
+    for p_dir in plots_dirs:
+        os.makedirs(p_dir, exist_ok=True)
 
-        # 1. Samostatný řez X-Z
+        # 1. Standalone X-Z cut
         fig_xz = plt.figure(figsize=(6.5, 6))
         ax_xz = fig_xz.add_subplot(111, projection='polar')
         ax_xz.set_theta_zero_location('N')
         ax_xz.set_theta_direction(-1)
-        ax_xz.plot(angles_rad, np.clip(d_lhcp_xz, r_min, r_max), 'b-', lw=2.2, label='LHCP (hlavní)')
-        ax_xz.plot(angles_rad, np.clip(d_tot_xz, r_min, r_max), 'k:', lw=1.2, label='Celková směrovost')
+        ax_xz.plot(angles_rad, np.clip(d_lhcp_xz, r_min, r_max), 'b-', lw=2.2, label='LHCP (co-pol)')
+        ax_xz.plot(angles_rad, np.clip(d_tot_xz, r_min, r_max), 'k:', lw=1.2, label='Total directivity')
         ax_xz.set_ylim([r_min, r_max])
-        ax_xz.set_title(rf"Vyzařovací diagram — Řez rovinou X-Z ($\phi = 0^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=11, fontweight='bold', pad=15)
+        ax_xz.set_title(rf"Radiation Pattern — X-Z Plane Cut ($\phi = 0^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=11, fontweight='bold', pad=15)
         ax_xz.legend(loc='lower left', bbox_to_anchor=(-0.08, -0.15), fontsize=9)
         ax_xz.grid(True, linestyle=':', alpha=0.7)
         plt.tight_layout()
-        p_xz = os.path.join(g_dir, "vyzarovaci_diagram_rez_XZ.png")
+        p_xz = os.path.join(p_dir, "radiation_pattern_cut_xz.png")
         plt.savefig(p_xz, dpi=200)
         plt.close(fig_xz)
 
-        # 2. Samostatný řez Y-Z
+        # 2. Standalone Y-Z cut
         fig_yz = plt.figure(figsize=(6.5, 6))
         ax_yz = fig_yz.add_subplot(111, projection='polar')
         ax_yz.set_theta_zero_location('N')
         ax_yz.set_theta_direction(-1)
-        ax_yz.plot(angles_rad, np.clip(d_lhcp_yz, r_min, r_max), 'b-', lw=2.2, label='LHCP (hlavní)')
-        ax_yz.plot(angles_rad, np.clip(d_tot_yz, r_min, r_max), 'k:', lw=1.2, label='Celková směrovost')
+        ax_yz.plot(angles_rad, np.clip(d_lhcp_yz, r_min, r_max), 'b-', lw=2.2, label='LHCP (co-pol)')
+        ax_yz.plot(angles_rad, np.clip(d_tot_yz, r_min, r_max), 'k:', lw=1.2, label='Total directivity')
         ax_yz.set_ylim([r_min, r_max])
-        ax_yz.set_title(rf"Vyzařovací diagram — Řez rovinou Y-Z ($\phi = 90^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=11, fontweight='bold', pad=15)
+        ax_yz.set_title(rf"Radiation Pattern — Y-Z Plane Cut ($\phi = 90^\circ$)" + f"\nf = {eval_f:.3f} GHz", fontsize=11, fontweight='bold', pad=15)
         ax_yz.legend(loc='lower left', bbox_to_anchor=(-0.08, -0.15), fontsize=9)
         ax_yz.grid(True, linestyle=':', alpha=0.7)
         plt.tight_layout()
-        p_yz = os.path.join(g_dir, "vyzarovaci_diagram_rez_YZ.png")
+        p_yz = os.path.join(p_dir, "radiation_pattern_cut_yz.png")
         plt.savefig(p_yz, dpi=200)
         plt.close(fig_yz)
 
-        # 3. Samostatný graf osového poměru AR
+        # 3. Standalone Axial Ratio plot
         fig_ar, ax_ar = plt.subplots(figsize=(7, 5))
-        ax_ar.plot(theta_hemi, ar_xz[mask_hemi], 'b-', lw=2.0, label='AR (řez X-Z)')
-        ax_ar.plot(theta_hemi, ar_yz[mask_hemi], 'm--', lw=2.0, label='AR (řez Y-Z)')
-        ax_ar.axhline(3.0, color='red', linestyle='--', lw=1.5, label='Mez 3 dB (čistá kruhová)')
+        ax_ar.plot(theta_hemi, ar_xz[mask_hemi], 'b-', lw=2.0, label='AR (X-Z cut)')
+        ax_ar.plot(theta_hemi, ar_yz[mask_hemi], 'm--', lw=2.0, label='AR (Y-Z cut)')
+        ax_ar.axhline(3.0, color='red', linestyle='--', lw=1.5, label='3 dB threshold (CP)')
         ax_ar.set_ylim([0, 15])
         ax_ar.set_xlim([-90, 90])
-        ax_ar.set_xlabel(r"Úhel od kolmice $\theta$ [$^\circ$]", fontsize=11)
-        ax_ar.set_ylabel("Osový poměr AR [dB]", fontsize=11)
-        ax_ar.set_title(f"Osový poměr AR (Axial Ratio)\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold')
+        ax_ar.set_xlabel(r"Angle from boresight $\theta$ [$^\circ$]", fontsize=11)
+        ax_ar.set_ylabel("Axial Ratio AR [dB]", fontsize=11)
+        ax_ar.set_title(f"Axial Ratio (AR)\nf = {eval_f:.3f} GHz", fontsize=12, fontweight='bold')
         ax_ar.grid(True, linestyle=':', alpha=0.7)
         ax_ar.legend(loc='upper right', fontsize=9)
-        ax_ar.annotate(f"Směr +Z: AR = {ar_xz[zenith_idx]:.2f} dB\nMax LHCP: {np.max(d_lhcp_xz):.2f} dBi",
+        ax_ar.annotate(f"+Z boresight: AR = {ar_xz[zenith_idx]:.2f} dB\nMax LHCP: {np.max(d_lhcp_xz):.2f} dBi",
                        xy=(0.04, 0.95), xycoords='axes fraction',
                        verticalalignment='top',
                        fontsize=9.5, bbox=dict(boxstyle="round,pad=0.35", fc="lightyellow", ec="goldenrod", alpha=0.9))
         plt.tight_layout()
-        p_ar = os.path.join(g_dir, "graf_osovy_pomer_AR.png")
+        p_ar = os.path.join(p_dir, "plot_axial_ratio.png")
         plt.savefig(p_ar, dpi=200)
         plt.close(fig_ar)
 
@@ -298,7 +298,7 @@ def plot_radiation_pattern_3d(export_dir, freq_target=None, output_png=None):
     m = compute_farfield_metrics(sub)
     tree = cKDTree(np.column_stack([m['xs'], m['ys'], m['zs']]))
     
-    # Sférická mřížka pro 3D povrch
+    # Spherical grid for 3D surface
     u = np.linspace(0, np.pi, 60)      # theta
     v = np.linspace(0, 2 * np.pi, 120)  # phi
     u_grid, v_grid = np.meshgrid(u, v)
@@ -311,7 +311,7 @@ def plot_radiation_pattern_3d(export_dir, freq_target=None, output_png=None):
     d_lhcp_flat = interpolate_cut(tree, m['d_lhcp'], query_pts)
     d_lhcp_surf = d_lhcp_flat.reshape(u_grid.shape)
     
-    # Poloměr pro 3D graf: lineární škálování od r_min
+    # Radius for 3D plot: linear scaling above r_floor
     r_floor = -15.0
     r_vals = np.maximum(d_lhcp_surf - r_floor, 0.0)
     
@@ -331,34 +331,34 @@ def plot_radiation_pattern_3d(export_dir, freq_target=None, output_png=None):
     mappable = plt.cm.ScalarMappable(cmap=plt.cm.jet, norm=norm)
     mappable.set_array(d_lhcp_surf)
     cbar = plt.colorbar(mappable, ax=ax, shrink=0.6, pad=0.1)
-    cbar.set_label('LHCP Směrovost [dBi]', fontsize=11)
+    cbar.set_label('LHCP Directivity [dBi]', fontsize=11)
     
-    ax.set_title(f"3D Vyzařovací diagram (LHCP)\nf = {eval_f:.3f} GHz | Max: {np.max(d_lhcp_surf):.2f} dBi",
+    ax.set_title(f"3D Radiation Pattern (LHCP)\nf = {eval_f:.3f} GHz | Max: {np.max(d_lhcp_surf):.2f} dBi",
                  fontsize=13, fontweight='bold')
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('+Z')
     
-    # Nastavení pohledu
+    # View orientation
     ax.view_init(elev=25, azim=45)
     
     plt.tight_layout()
     if output_png is None:
-        output_png = os.path.join(export_dir, "vyzarovaci_diagram_3d.png")
+        output_png = os.path.join(export_dir, "radiation_pattern_3d.png")
     os.makedirs(os.path.dirname(os.path.abspath(output_png)) or ".", exist_ok=True)
     plt.savefig(output_png, dpi=200)
     plt.close()
-    print(f"Uložen 3D vyzařovací diagram: {output_png}")
+    print(f"Saved 3D radiation pattern: {output_png}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Vykreslení vyzařovacích diagramů antény z farfield-rE.csv")
+    parser = argparse.ArgumentParser(description="Plot antenna radiation patterns from farfield-rE.csv")
     parser.add_argument(
         "export_dir",
         nargs="?",
         default=None,
-        help="Cesta k exportní složce (výchozí: DATA_DIR/postpro z .env)",
+        help="Path to export directory (default: DATA_DIR/postpro from .env)",
     )
-    parser.add_argument("--freq", type=float, default=2.333, help="Frekvence pro vyhodnocení v GHz")
+    parser.add_argument("--freq", type=float, default=2.333, help="Evaluation frequency in GHz")
     args = parser.parse_args()
 
     target_dir = args.export_dir
@@ -370,12 +370,12 @@ if __name__ == "__main__":
         elif _find_farfield_csv(data_dir):
             target_dir = data_dir
         else:
-            print(f"[CHYBA] Soubor farfield-rE.csv nebyl nalezen v {postpro_dir} ani v {data_dir}.")
-            print("Zadejte cestu k exportní složce jako argument nebo nejprve spusťte simulaci.")
+            print(f"[ERROR] File farfield-rE.csv was not found in {postpro_dir} or {data_dir}.")
+            print("Provide the export directory path as an argument or run the simulation first.")
             parser.print_help()
             sys.exit(1)
     elif not _find_farfield_csv(target_dir):
-        print(f"[CHYBA] Soubor farfield-rE.csv nebyl nalezen v {target_dir}.")
+        print(f"[ERROR] File farfield-rE.csv was not found in {target_dir}.")
         parser.print_help()
         sys.exit(1)
 

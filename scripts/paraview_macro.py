@@ -10,7 +10,7 @@ def setup_scene():
     os.chdir(root_dir)
     ensure_paraview_linked(data_dir)
 
-    # Cesta k simulovanému PVD souboru přímo z DATA_DIR
+    # Path to simulated PVD file directly from DATA_DIR
     boundary_pvd = os.path.join(data_dir, "postpro", "paraview", "driven_boundary", "driven_boundary.pvd")
     domain_pvd = os.path.join(data_dir, "postpro", "paraview", "driven", "driven.pvd")
 
@@ -21,25 +21,25 @@ def setup_scene():
         pvd_file = domain_pvd
 
     if not pvd_file:
-        print(f"[CHYBA] Soubor driven_boundary.pvd nebyl nalezen v {data_dir}/postpro/paraview.")
-        print("Ujistěte se, že existují výstupní data simulace a že je správně nastaven DATA_DIR v .env.")
+        print(f"[ERROR] File driven_boundary.pvd was not found in {data_dir}/postpro/paraview.")
+        print("Verify that simulation output data exists and DATA_DIR is properly set in .env.")
         return
 
-    # 1. Kompletni reset ParaView session (vymaze pamet, starou pipeline a uvolni cache pro nacteni novych dat)
+    # 1. Full ParaView session reset (clears memory, old pipeline, and cache to load fresh data)
     ResetSession()
     renderView1 = GetActiveViewOrCreate('RenderView')
     
-    # 2. Nacteni pole z Palace / simulace
-    print(f"Nacitam PVD casovou radu: {pvd_file}")
+    # 2. Load field data from Palace / simulation
+    print(f"Loading PVD time series: {pvd_file}")
     driven_vtu = PVDReader(registrationName='Palace_Field', FileName=pvd_file)
 
-    # 3. Zobrazit obrysovou krabici (Domain Bounding Box) pro 3D orientaci
+    # 3. Display Domain Bounding Box for 3D orientation
     domain_box = Outline(registrationName='Domain_Box', Input=driven_vtu)
     disp_box = Show(domain_box, renderView1, 'GeometryRepresentation')
     disp_box.DiffuseColor = [0.45, 0.45, 0.45]
     
-    # 4. Vytvoreni horizontalniho rezu v rovine patche (z = sub_h)
-    sub_h_mm = 1.52  # Vychozi hodnota pro FR4
+    # 4. Create horizontal slice in the patch plane (z = sub_h)
+    sub_h_mm = 1.52  # Default value for FR4
     config_file = os.path.join(data_dir, "config.json")
     if not os.path.exists(config_file):
         config_file = os.path.join(root_dir, "config.json")
@@ -50,9 +50,9 @@ def setup_scene():
                 if "_Metadata" in cfg and "sub_h" in cfg["_Metadata"]:
                     sub_h_mm = float(cfg["_Metadata"]["sub_h"])
         except Exception as e:
-            print(f"Nelze nacist sub_h z config.json: {e}")
+            print(f"Unable to load sub_h from config.json: {e}")
 
-    sub_h_m = sub_h_mm * 1e-3  # Prepocet mm na metry
+    sub_h_m = sub_h_mm * 1e-3  # Convert mm to meters
     slice_patch = Slice(registrationName='Slice_Patch_XY', Input=driven_vtu)
     slice_patch.SliceType = 'Plane'
     slice_patch.SliceOffsetValues = [0.0]
@@ -62,19 +62,19 @@ def setup_scene():
     disp_slice = Show(slice_patch, renderView1, 'GeometryRepresentation')
     disp_slice.Representation = 'Surface'
     
-    # 5. Obarveni podle intenzity pole (|E_real|)
+    # 5. Color by field intensity (|E_real|)
     ColorBy(disp_slice, ('POINTS', 'E_real', 'Magnitude'))
     e_realLUT = GetColorTransferFunction('E_real')
     e_realLUT.ApplyPreset('Cool to Warm', True)
     
-    # Nastaveni legendy (Color Bar)
+    # Configure Color Bar legend
     sb = GetScalarBar(e_realLUT, renderView1)
     sb.Title = '|E| [V/m]'
-    sb.ComponentTitle = 'Intenzita pole'
+    sb.ComponentTitle = 'Field Intensity'
     sb.Visibility = 1
     sb.WindowLocation = 'Lower Right Corner'
     
-    # 6. Vertikalni rez (Slice_Cut_XZ) pro zobrazeni vyzarovani do vzduchu (vychozi skryty)
+    # 6. Vertical slice (Slice_Cut_XZ) to visualize air radiation (hidden by default)
     slice_xz = Slice(registrationName='Slice_Cut_XZ', Input=driven_vtu)
     slice_xz.SliceType = 'Plane'
     slice_xz.SliceType.Origin = [0.0, 0.0, 0.0]
@@ -84,12 +84,12 @@ def setup_scene():
     ColorBy(disp_xz, ('POINTS', 'E_real', 'Magnitude'))
     Hide(slice_xz, renderView1)
     
-    # 7. Vektorove sipky (E_Vectors) - pripraveny s korektnim meritkem (skryte ve vychozim stavu)
+    # 7. Vector arrows (E_Vectors) - configured with proper scale (hidden by default)
     glyph1 = Glyph(registrationName='E_Vectors', Input=slice_patch)
     glyph1.GlyphType = 'Arrow'
     glyph1.OrientationArray = ['POINTS', 'E_real']
     glyph1.ScaleArray = ['POINTS', 'E_real']
-    glyph1.ScaleFactor = 0.000006  # Rozumne meritko v metrech odpovidajici poli ~3000 V/m
+    glyph1.ScaleFactor = 0.000006  # Reasonable scale in meters for ~3000 V/m field
     glyph1.GlyphMode = 'Every Nth Point'
     glyph1.Stride = 4
     
@@ -97,11 +97,11 @@ def setup_scene():
     ColorBy(disp_glyph, ('POINTS', 'E_real', 'Magnitude'))
     Hide(glyph1, renderView1)
     
-    # 8. Aktivnim objektem ucinime rez s intenzitou (Slice_Patch_XY)
+    # 8. Set intensity slice (Slice_Patch_XY) as active object
     Show(slice_patch, renderView1)
     SetActiveSource(slice_patch)
     
-    # 9. Nastaveni izometrickeho uhlu kamery
+    # 9. Set isometric camera angle
     renderView1.ResetCamera()
     renderView1.CameraPosition = [0.08, -0.15, 0.12]
     renderView1.CameraFocalPoint = [0.0, 0.0, sub_h_m]
@@ -109,12 +109,12 @@ def setup_scene():
     renderView1.Update()
     
     print("==================================================")
-    print("Scena byla uspesne pripravena pro zobrazeni intenzity E-pole!")
-    print(f"- [Aktivni] Slice_Patch_XY: Rez v rovine patche (z={sub_h_mm} mm) - intenzita pole")
-    print("- [Skryto]  Slice_Cut_XZ:   Vertikalni rez vyzarovani do vzduchu (kliknete na oko)")
-    print("- [Skryto]  E_Vectors:      Vektorove sipky s korektnim meritkem (kliknete na oko)")
-    print("- [Skryto]  Domain_Box:     3D obrys vypocetni oblasti")
+    print("Scene successfully prepared for E-field intensity visualization!")
+    print(f"- [Active] Slice_Patch_XY: Patch-plane slice (z={sub_h_mm} mm) - field intensity")
+    print("- [Hidden] Slice_Cut_XZ:   Vertical radiation slice in air (click eye icon)")
+    print("- [Hidden] E_Vectors:      Vector arrows with proper scaling (click eye icon)")
+    print("- [Hidden] Domain_Box:     3D computational domain outline")
     print("==================================================")
 
-# Spusteni sceny automaticky pri zavolani skriptu
+# Run scene setup automatically when script is invoked
 setup_scene()

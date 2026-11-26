@@ -1,6 +1,6 @@
 """
-test_profiles.py - Jednotkové testy systému výrobních profilů variant desek (results/<variant>/).
-Navrženo pro běh v čistém standardním Pythonu bez závislosti na numpy/gmsh.
+test_profiles.py - Unit tests for the board variant manufacturing profile system (results/<variant>/).
+Designed to run in pure standard Python without dependencies on numpy/gmsh.
 """
 
 import ast
@@ -33,7 +33,7 @@ from postpro_utils import (
 
 
 class TestProfileHelpersAndLoadEnv(unittest.TestCase):
-    """Testy helper funkcí pro profily a rozšířeného load_env(profile=...)."""
+    """Tests for profile helper functions and extended load_env(profile=...)."""
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -82,30 +82,30 @@ class TestProfileHelpersAndLoadEnv(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_get_profile_env_path_and_kicad_dir(self):
-        """Ověření cest k .env souboru profilu a výstupní složce kicad/."""
+        """Verify paths to profile .env file and output kicad/ directory."""
         env_path = get_profile_env_path("rogers_08", root_dir=self.root_dir)
         self.assertEqual(env_path, os.path.abspath(self.rogers_env))
 
         kicad_dir = get_profile_kicad_dir("rogers_08", root_dir=self.root_dir)
         self.assertEqual(kicad_dir, os.path.abspath(os.path.join(self.rogers_dir, "kicad")))
 
-        # Přímá cesta na existující .env soubor
+        # Direct path to an existing .env file
         direct_env = get_profile_env_path(self.rogers_env, root_dir=self.root_dir)
         self.assertEqual(direct_env, os.path.abspath(self.rogers_env))
         direct_kicad = get_profile_kicad_dir(self.rogers_env, root_dir=self.root_dir)
         self.assertEqual(direct_kicad, os.path.abspath(os.path.join(self.rogers_dir, "kicad")))
 
     def test_missing_profile_raises_file_not_found(self):
-        """Neexistující profil musí vyhodit FileNotFoundError."""
+        """Nonexistent profile must raise FileNotFoundError."""
         with self.assertRaises(FileNotFoundError):
-            get_profile_env_path("neexistujici_deska", root_dir=self.root_dir)
+            get_profile_env_path("nonexistent_board", root_dir=self.root_dir)
 
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(FileNotFoundError):
-                load_env(env_path=self.root_env, profile="neexistujici_deska")
+                load_env(env_path=self.root_env, profile="nonexistent_board")
 
     def test_path_traversal_and_invalid_names_rejected(self):
-        """Ochrana proti path traversal a neplatným názvům profilů."""
+        """Protection against path traversal and invalid profile names."""
         invalid_names = [
             "../evil",
             "../../.env",
@@ -126,9 +126,9 @@ class TestProfileHelpersAndLoadEnv(unittest.TestCase):
                     get_profile_kicad_dir(bad_name, root_dir=self.root_dir)
 
     def test_load_env_profile_overrides_root_and_survives_repeated_calls(self):
-        """Profil přepíše hodnoty z kořenového .env i po předchozím volání load_env()."""
+        """Profile overrides values from root .env even after a prior load_env() call."""
         with mock.patch.dict(os.environ, {}, clear=True):
-            # 1. Prvotní načtení kořenového .env (jako při importu sweep.py)
+            # 1. Initial load of root .env (as when importing sweep.py)
             root_dir, data_dir = load_env(env_path=self.root_env)
             self.assertEqual(root_dir, os.path.abspath(self.root_dir))
             self.assertEqual(data_dir, os.path.abspath(os.path.join(self.root_dir, "data")))
@@ -138,24 +138,24 @@ class TestProfileHelpersAndLoadEnv(unittest.TestCase):
             self.assertEqual(os.environ["PALACE_CORES"], "5")
             self.assertNotIn("ANTENNA_PROFILE", os.environ)
 
-            # 2. Následné načtení profilu musí přepsat dříve načtené hodnoty z kořenového .env
+            # 2. Subsequent profile load must override previously loaded root .env values
             load_env(env_path=self.root_env, profile="rogers_08")
             self.assertEqual(os.environ["SUB_H"], "0.813")
             self.assertEqual(os.environ["EPS_R"], "3.55")
             self.assertEqual(os.environ["TAN_DELTA"], "0.0027")
             self.assertEqual(os.environ["PATCH_L"], "31.20")
             self.assertEqual(os.environ["ANTENNA_MODEL"], "7")
-            self.assertEqual(os.environ["PALACE_CORES"], "5")  # zachováno z kořenového .env
+            self.assertEqual(os.environ["PALACE_CORES"], "5")  # preserved from root .env
             self.assertEqual(os.environ["ANTENNA_PROFILE"], "rogers_08")
             self.assertEqual(os.environ["PROFILE_NAME"], "rogers_08")
 
-            # 3. Opakované volání load_env() bez profilu (např. uvnitř main/sweep_model) udrží profil
+            # 3. Repeated load_env() call without profile (e.g. inside main/sweep_model) preserves profile
             load_env(env_path=self.root_env)
             self.assertEqual(os.environ["SUB_H"], "0.813")
             self.assertEqual(os.environ["EPS_R"], "3.55")
             self.assertEqual(os.environ["ANTENNA_PROFILE"], "rogers_08")
 
-            # 4. Přepnutí na jiný profil s vlastním PROFILE_NAME a SILKSCREEN_SUBTITLE
+            # 4. Switching to another profile with custom PROFILE_NAME and SILKSCREEN_SUBTITLE
             load_env(env_path=self.root_env, profile="custom_16")
             self.assertEqual(os.environ["SUB_H"], "1.60")
             self.assertEqual(os.environ["EPS_R"], "4.40")
@@ -164,7 +164,7 @@ class TestProfileHelpersAndLoadEnv(unittest.TestCase):
             self.assertEqual(os.environ["SILKSCREEN_SUBTITLE"], "Custom 1.6mm er=4.40")
 
     def test_load_env_uses_antenna_profile_env_var_and_preserves_shell_vars(self):
-        """Proměnná prostředí ANTENNA_PROFILE aktivuje profil; externí shell proměnné zůstanou zachovány."""
+        """Environment variable ANTENNA_PROFILE activates the profile; external shell variables are preserved."""
         initial_env = {
             "ANTENNA_PROFILE": "rogers_08",
             "SMA_GAP": "0.95",
@@ -178,7 +178,7 @@ class TestProfileHelpersAndLoadEnv(unittest.TestCase):
 
 
 class TestKiCadGeneratorProfiles(unittest.TestCase):
-    """Testy potisku F.SilkS a pojmenování footprintu v kicad_generator.py."""
+    """Tests for F.SilkS silkscreen text and footprint naming in kicad_generator.py."""
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -195,7 +195,7 @@ class TestKiCadGeneratorProfiles(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_pcb_without_profile_preserves_existing_silkscreen(self):
-        """Bez profile_name a silkscreen_subtitle se nevytváří žádný dodatečný podtitulek."""
+        """Without profile_name and silkscreen_subtitle, no extra subtitle is created."""
         pcb_path = os.path.join(self.temp_dir.name, "base.kicad_pcb")
         generate_kicad_pcb(self.base_params, pcb_path)
         with open(pcb_path, "r", encoding="utf-8") as f:
@@ -206,7 +206,7 @@ class TestKiCadGeneratorProfiles(unittest.TestCase):
         self.assertIn('(gr_text "50 Ohm RF IN"', content)
 
     def test_pcb_with_profile_name_generates_auto_subtitle(self):
-        """S profile_name bez silkscreen_subtitle se vygeneruje automatický popisek na F.SilkS."""
+        """With profile_name and no silkscreen_subtitle, an automatic label is generated on F.SilkS."""
         params = dict(self.base_params, sub_h=0.813, eps_r=3.55, profile_name="rogers_08")
         pcb_path = os.path.join(self.temp_dir.name, "rogers.kicad_pcb")
         generate_kicad_pcb(params, pcb_path)
@@ -219,7 +219,7 @@ class TestKiCadGeneratorProfiles(unittest.TestCase):
         self.assertIn('(layer "F.SilkS")', content)
 
     def test_pcb_with_explicit_silkscreen_subtitle(self):
-        """Explicitní silkscreen_subtitle má přednost před automatickým popiskem."""
+        """Explicit silkscreen_subtitle takes precedence over automatic label."""
         params = dict(
             self.base_params,
             profile_name="rogers_08",
@@ -234,7 +234,7 @@ class TestKiCadGeneratorProfiles(unittest.TestCase):
         self.assertNotIn("rogers_08 | h=", content)
 
     def test_footprint_naming_with_profile_and_explicit_name(self):
-        """Footprint použije Antenna_Model4_LHCP_<profile_name>, resp. explicitní footprint_name."""
+        """Footprint uses Antenna_Model4_LHCP_<profile_name>, or explicit footprint_name."""
         fp_default = os.path.join(self.temp_dir.name, "default.kicad_mod")
         generate_kicad_footprint(self.base_params, fp_default)
         with open(fp_default, "r", encoding="utf-8") as f:
@@ -261,7 +261,7 @@ class TestKiCadGeneratorProfiles(unittest.TestCase):
 
 
 class TestExportKicadProfileWorkflow(unittest.TestCase):
-    """End-to-end testy scripts/export_kicad.py s profilem i zpětné kompatibility bez profilu."""
+    """End-to-end tests of scripts/export_kicad.py with profile and backwards compatibility without profile."""
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -288,7 +288,7 @@ class TestExportKicadProfileWorkflow(unittest.TestCase):
                 "SILKSCREEN_SUBTITLE=FR4 0.80mm er=4.40\n"
             )
 
-        # Pracovní složka kicad/antena1/ se strážným souborem (při profilu se NESMÍ přepsat)
+        # Working directory kicad/antena1/ with sentinel file (MUST NOT be overwritten when using a profile)
         self.alt_kicad_dir = os.path.join(self.fake_root, "kicad", "antena1")
         os.makedirs(self.alt_kicad_dir, exist_ok=True)
         self.sentinel_pcb = os.path.join(self.alt_kicad_dir, "antenna_model4.kicad_pcb")
@@ -299,7 +299,7 @@ class TestExportKicadProfileWorkflow(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_export_kicad_with_profile_writes_to_results_and_skips_antena1_sync(self):
-        """export_kicad.py --profile generuje do results/<name>/kicad/ a nesynchronizuje do kicad/antena1/."""
+        """export_kicad.py --profile outputs to results/<name>/kicad/ and does not sync to kicad/antena1/."""
         buf = io.StringIO()
         with mock.patch.dict(os.environ, {}, clear=True), \
              mock.patch.object(postpro_utils, "get_project_root", return_value=self.fake_root), \
@@ -309,8 +309,8 @@ class TestExportKicadProfileWorkflow(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         stdout = buf.getvalue()
-        self.assertIn("Aktivní profil: fr4_thin", stdout)
-        self.assertIn("Aktivní profil varianty:           fr4_thin", stdout)
+        self.assertRegex(stdout, r"Active profile:\s*fr4_thin")
+        self.assertRegex(stdout, r"Active variant profile:\s*fr4_thin")
 
         expected_kicad_dir = os.path.join(self.fake_root, "results", "fr4_thin", "kicad")
         pcb_file = os.path.join(expected_kicad_dir, "antenna_model4_fr4_thin.kicad_pcb")
@@ -329,13 +329,13 @@ class TestExportKicadProfileWorkflow(unittest.TestCase):
         self.assertIn('(footprint "Antenna_Model4_LHCP_fr4_thin"', fp_content)
         self.assertIn('(property "Value" "Antenna_Model4_LHCP_fr4_thin"', fp_content)
 
-        # Ověření, že kicad/antena1/ nebylo přepsáno
+        # Verify kicad/antena1/ was not overwritten
         with open(self.sentinel_pcb, "r", encoding="utf-8") as f:
             self.assertEqual(f.read(), "SENTINEL_UNTOUCHED")
         self.assertFalse(os.path.exists(os.path.join(self.alt_kicad_dir, "Antenna_Model4_LHCP_fr4_thin.kicad_mod")))
 
     def test_export_kicad_without_profile_backwards_compatibility(self):
-        """Bez --profile se generují výchozí soubory v export/kicad/ bez profilového podtitulku."""
+        """Without --profile, default files are generated in export/kicad/ without profile subtitle."""
         buf = io.StringIO()
         with mock.patch.dict(os.environ, {}, clear=True), \
              mock.patch.object(postpro_utils, "get_project_root", return_value=self.fake_root), \
@@ -345,7 +345,7 @@ class TestExportKicadProfileWorkflow(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         stdout = buf.getvalue()
-        self.assertNotIn("Aktivní profil varianty:", stdout)
+        self.assertNotIn("Active variant profile:", stdout)
 
         default_dir = os.path.join(self.fake_root, "export", "kicad")
         pcb_file = os.path.join(default_dir, "antenna_model4.kicad_pcb")
@@ -364,7 +364,7 @@ class TestExportKicadProfileWorkflow(unittest.TestCase):
         self.assertIn('(property "Value" "Antenna_Model4_LHCP"', fp_content)
 
     def test_export_kicad_cli_subprocess_direct_profile_env_file(self):
-        """Spuštění scripts/export_kicad.py jako subprocess s přímou cestou na dočasný .env profil."""
+        """Run scripts/export_kicad.py as a subprocess with a direct path to a temporary .env profile."""
         cmd = [
             sys.executable,
             os.path.join(SCRIPTS_DIR, "export_kicad.py"),
@@ -376,14 +376,14 @@ class TestExportKicadProfileWorkflow(unittest.TestCase):
         env.pop("PROFILE_NAME", None)
         env.pop("SILKSCREEN_SUBTITLE", None)
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
-        self.assertEqual(proc.returncode, 0, f"CLI selhalo:\n{proc.stderr}")
+        self.assertEqual(proc.returncode, 0, f"CLI failed:\n{proc.stderr}")
 
         out_dir = os.path.join(self.profile_dir, "kicad")
         pcb_file = os.path.join(out_dir, "antenna_model4_fr4_thin.kicad_pcb")
         fp_file = os.path.join(out_dir, "Antenna_Model4_LHCP_fr4_thin.kicad_mod")
         self.assertTrue(os.path.isfile(pcb_file))
         self.assertTrue(os.path.isfile(fp_file))
-        self.assertIn("Aktivní profil varianty:           fr4_thin", proc.stdout)
+        self.assertRegex(proc.stdout, r"Active variant profile:\s*fr4_thin")
 
         with open(pcb_file, "r", encoding="utf-8") as f:
             self.assertIn("(thickness 0.800)", f.read())
@@ -392,7 +392,7 @@ class TestExportKicadProfileWorkflow(unittest.TestCase):
 
 
 class TestMainAndSweepCliContracts(unittest.TestCase):
-    """Kontrola CLI rozhraní src/main.py a src/sweep.py bez nutnosti importovat numpy/gmsh."""
+    """CLI interface contract checks for src/main.py and src/sweep.py without importing numpy/gmsh."""
 
     @staticmethod
     def _extract_cli_flags(file_path):
@@ -411,7 +411,7 @@ class TestMainAndSweepCliContracts(unittest.TestCase):
         return tree, flags
 
     def test_main_py_has_profile_and_no_substrate_cli_flags(self):
-        """src/main.py má --profile a parametr profile=None, ale NEMÁ --sub-h, --eps-r, --tan-delta."""
+        """src/main.py has --profile and parameter profile=None, but does NOT have --sub-h, --eps-r, --tan-delta."""
         main_path = os.path.join(SRC_DIR, "main.py")
         tree, flags = self._extract_cli_flags(main_path)
 
@@ -428,7 +428,7 @@ class TestMainAndSweepCliContracts(unittest.TestCase):
         arg_names = [a.arg for a in main_fn.args.args]
         self.assertIn("profile", arg_names)
 
-        # Kontrola, že main() předává profile do load_env(profile=profile)
+        # Verify that main() passes profile to load_env(profile=profile)
         load_env_calls = [
             n
             for n in ast.walk(main_fn)
@@ -438,11 +438,11 @@ class TestMainAndSweepCliContracts(unittest.TestCase):
         ]
         self.assertTrue(
             any(any(kw.arg == "profile" for kw in call.keywords) for call in load_env_calls),
-            "main() musí předávat profile do load_env(profile=...)",
+            "main() must pass profile to load_env(profile=...)",
         )
 
     def test_sweep_py_parses_profile_before_antenna_model(self):
-        """src/sweep.py registruje --profile a volá load_env(profile=...) před vyhodnocením ANTENNA_MODEL."""
+        """src/sweep.py registers --profile and calls load_env(profile=...) before evaluating ANTENNA_MODEL."""
         sweep_path = os.path.join(SRC_DIR, "sweep.py")
         with open(sweep_path, "r", encoding="utf-8") as f:
             source = f.read()
